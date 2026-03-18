@@ -1,6 +1,17 @@
-# Navipod
+<p align="center">
+  <img src="Navipod/assets/icon.png" alt="Navipod" width="180">
+</p>
 
-Navipod is a Docker-based personal music platform built around isolated Navidrome user containers, a FastAPI control plane, remote search across multiple music sources, and a shared download pool.
+<h1 align="center">Navipod</h1>
+
+<p align="center">
+  Personal music platform with isolated Navidrome user containers, a FastAPI control plane,
+  multi-source remote search, and a shared download pool.
+</p>
+
+<p align="center">
+  <strong>Docker-based</strong> · <strong>Multi-user</strong> · <strong>Spotify / YouTube / Last.fm / MusicBrainz</strong> · <strong>Subsonic-compatible</strong>
+</p>
 
 ## Usage Notice
 
@@ -16,11 +27,20 @@ You are not allowed to:
 
 If you need rights beyond personal use, you must obtain explicit prior written permission from the copyright holder.
 
-See [LICENSE](C:\Users\user\Documents\Navipod\LICENSE) for the binding license terms.
+See [LICENSE](LICENSE) for the binding license terms.
 
 This repository has two levels:
 - repository root: documentation and helper files
 - `Navipod/`: the actual application, Docker Compose stack, backend, templates, and assets
+
+## Highlights
+
+- Isolated per-user Navidrome containers managed by a central concierge service
+- Unified search across local tracks, YouTube, Spotify, Last.fm, and MusicBrainz
+- Shared download pool with deduplication and metadata enrichment
+- Recommendation feeds backed by local history and remote providers
+- Admin panel with system monitor, pool quota controls, and maintenance tools
+- Subsonic-compatible endpoints for mobile clients and remote playback
 
 ## Features
 
