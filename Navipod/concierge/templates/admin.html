@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block title %}{{ _('admin.title') }}{% endblock %}
+
+{% block content %}
+<div class="admin-container">
+    <div class="admin-header">
+        <div>
+            <span class="admin-subtitle">{{ _('admin.system_root') }}</span>
+            <h1 class="admin-title">{{ _('admin.user_management') }}</h1>
+        </div>
+
+        <div style="display: flex; gap: 12px;">
+            <a href="/admin/system" onclick="loadView('system_monitor'); return false;" class="glass-panel"
+                style="padding: 12px 24px; border-radius: 12px; color: #4ade80; text-decoration: none; font-size: 0.85rem; font-weight: 800; transition: 0.3s; display: flex; align-items: center; gap: 10px; border: 1px solid rgba(74, 222, 128, 0.2);">
+                <i data-lucide="activity" width="18" height="18"></i> {{ _('admin.monitor_button') }}
+            </a>
+
+            <a href="/" onclick="loadView('home'); return false;" class="glass-panel"
+                style="padding: 12px 24px; border-radius: 12px; color: #aaa; text-decoration: none; font-size: 0.85rem; font-weight: 700; transition: 0.3s; display: flex; align-items: center; gap: 10px;">
+                <i data-lucide="arrow-left" width="18" height="18"></i> {{ _('menu.home') }}
+            </a>
+        </div>
+    </div>
+
+    {% if request.query_params.msg %}
+    <div class="alert alert-success"
+        style="border-radius: 16px; margin-bottom: 32px; border: 1px solid rgba(74, 222, 128, 0.2); padding: 20px; background: rgba(74, 222, 128, 0.05); color: #4ade80; display: flex; align-items: center; gap: 12px; backdrop-filter: blur(10px);">
+        <i data-lucide="check-circle" width="20" height="20"></i>
+        <span style="font-weight: 600;">{{ request.query_params.msg }}</span>
+    </div>
+    {% endif %}
+
+    {% if request.query_params.error %}
+    <div class="alert alert-error"
+        style="border-radius: 16px; margin-bottom: 32px; border: 1px solid rgba(239, 68, 68, 0.2); padding: 20px; background: rgba(239, 68, 68, 0.05); color: #ef4444; display: flex; align-items: center; gap: 12px; backdrop-filter: blur(10px);">
+        <i data-lucide="alert-circle" width="20" height="20"></i>
+        <span style="font-weight: 600;">{{ request.query_params.error }}</span>
+    </div>
+    {% endif %}
+
+    <div class="admin-section admin-section-padding" style="border-radius: 20px;">
+        <h3 class="admin-section-header"
+            style="background: none; padding: 0; border: none; margin-bottom: 32px; font-size: 1.2rem; letter-spacing: -0.5px;">
+            <i data-lucide="user-plus" style="color: var(--accent);" width="22" height="22"></i>
+            {{ _('admin.register_new') }}
+        </h3>
+
+        <form onsubmit="handleAdminForm(event, '/admin/users/create')"
+            style="display: grid; grid-template-columns: 1fr 1fr 200px 200px; gap: 24px; align-items: flex-end;">
+            <div class="admin-input-group">
+                <label class="admin-label">{{ _('admin.username_label') }}</label>
+                <div class="admin-input-wrapper">
+                    <i data-lucide="user" class="admin-input-icon" width="18" height="18"></i>
+                    <input type="text" name="username" placeholder="{{ _('admin.username_placeholder') }}" required
+                        class="admin-input">
+                </div>
+            </div>
+
+            <div class="admin-input-group">
+                <label class="admin-label">{{ _('admin.password_label') }}</label>
+                <div class="admin-input-wrapper">
+                    <i data-lucide="lock" class="admin-input-icon" width="18" height="18"></i>
+                    <input type="password" name="password" placeholder="{{ _('admin.password_placeholder') }}" required
+                        class="admin-input">
+                </div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 15px; height: 54px; background: rgba(0,0,0,0.3); padding: 0 24px; border-radius: 10px;"
+                class="admin-checkbox-card">
+                <input type="checkbox" name="is_admin" value="true" id="is_admin_check"
+                    style="width: 20px; height: 20px; accent-color: var(--accent); cursor: pointer;">
+                <label for="is_admin_check"
+                    style="font-size: 0.95rem; color: #fff; cursor: pointer; white-space: nowrap; font-weight: 700;">{{
+                    _('admin.admin_checkbox') }}</label>
+            </div>
+
+            <button type="submit" class="admin-btn-primary" style="height: 54px; width: 100%;">
+                {{ _('admin.create_button') }}
+            </button>
+        </form>
+    </div>
+
+    <div class="admin-section" style="border-radius: 20px;">
+        <div class="admin-section-header" style="padding: 24px 32px;">
+            <i data-lucide="users" width="20" height="20"></i>
+            <h3 style="margin:0; font-size: 1.2rem; flex: 1; letter-spacing: -0.5px;">{{ _('admin.active_accounts') }}
+            </h3>
+            <span
+                style="font-family: monospace; font-size: 0.75rem; color: var(--text-sub); opacity: 0.6; text-transform: uppercase; letter-spacing: 1px;">{{
+                _('admin.auth_status') }}</span>
+        </div>
+
+        <div style="overflow-x: auto;">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th class="admin-th" style="width: 50%; padding: 20px 32px;">{{ _('admin.table_identity') }}
+                        </th>
+                        <th class="admin-th">{{ _('admin.table_privileges') }}</th>
+                        <th class="admin-th" style="text-align: right; padding: 20px 32px;">{{ _('admin.table_actions')
+                            }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in users %}
+                    <tr class="admin-tr">
+                        <td class="admin-td" style="padding: 24px 32px;">
+                            <div style="font-weight: 800; font-size: 1.2rem; color: #fff; letter-spacing: -0.3px;">{{
+                                u.username }}</div>
+                            <div
+                                style="font-size: 0.8rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; margin-top: 6px; opacity: 0.6; display: flex; align-items: center; gap: 6px;">
+                                <i data-lucide="fingerprint" width="12" height="12"></i> AUTH_ID: {{ u.id }}
+                            </div>
+                        </td>
+                        <td class="admin-td">
+                            {% if u.is_admin %}
+                            <div
+                                style="display: inline-flex; align-items: center; gap: 8px; background: rgba(74, 222, 128, 0.1); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.2); padding: 6px 16px; border-radius: 10px; font-size: 0.75rem; font-weight: 900; text-transform: uppercase; letter-spacing: 1px;">
+                                <i data-lucide="shield" width="12" height="12"></i> {{ _('admin.role_root') }}
+                            </div>
+                            {% else %}
+                            <div
+                                style="display: inline-flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.05); color: var(--text-sub); border: 1px solid rgba(255, 255, 255, 0.1); padding: 6px 16px; border-radius: 10px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">
+                                <i data-lucide="user" width="12" height="12"></i> {{ _('admin.role_standard') }}
+                            </div>
+                            {% endif %}
+                        </td>
+                        <td class="admin-td" style="text-align: right; padding: 24px 32px;">
+                            <div style="display: flex; justify-content: flex-end; gap: 20px; align-items: center;">
+                                <button onclick="toggleReset('{{ u.id }}')" class="btn-icon" title="Reset Password"
+                                    style="color: var(--accent); width: 44px; height: 44px; background: rgba(var(--accent-rgb), 0.05);">
+                                    <i data-lucide="key-round" width="20" height="20"></i>
+                                </button>
+
+                                {% if u.username != username %}
+                                <div style="display: flex; align-items: center; margin: 0;">
+                                    <button type="button" class="btn-delete-pro"
+                                        onclick="deleteUser('{{ u.id }}', '{{ u.username }}')"
+                                        style="width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center;">
+                                        <i data-lucide="trash-2" width="20" height="20"></i>
+                                    </button>
+                                </div>
+                                {% else %}
+                                <div
+                                    style="color: var(--accent); font-size: 0.7rem; font-weight: 900; letter-spacing: 2px; padding: 10px 20px; border: 1px solid rgba(var(--accent-rgb), 0.2); border-radius: 10px; background: rgba(var(--accent-rgb), 0.03);">
+                                    OWNER</div>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+
+                    <tr id="reset-row-{{ u.id }}" style="display: none; background: rgba(255, 255, 255, 0.01);">
+                        <td colspan="3" style="padding: 40px 60px; border-left: 6px solid var(--accent);">
+                            <div style="max-width: 650px;">
+                                <div
+                                    style="font-size: 0.8rem; color: var(--text-sub); font-weight: 900; text-transform: uppercase; margin-bottom: 24px; letter-spacing: 2px; display: flex; align-items: center; gap: 12px; color: var(--accent);">
+                                    <i data-lucide="shield-check" width="18" height="18"></i> {{
+                                    _('admin.update_security') }}
+                                </div>
+                                <form onsubmit="handleAdminForm(event, '/admin/users/reset-password')"
+                                    style="display: flex; gap: 20px; flex-wrap: wrap;">
+                                    <input type="hidden" name="user_id" value="{{ u.id }}">
+                                    <div style="flex: 1; min-width: 250px;" class="admin-input-wrapper">
+                                        <i data-lucide="lock" width="18" height="18" class="admin-input-icon"></i>
+                                        <input type="password" name="new_password"
+                                            placeholder="{{ _('admin.new_pass_placeholder') }}"
+                                            pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*]).{8,}"
+                                            title="{{ _('admin.pass_requirements_title') }}" required
+                                            class="admin-input" style="width: 100%;">
+                                    </div>
+                                    <button type="submit" class="admin-btn-primary"
+                                        style="padding: 0 40px; height: 54px;">
+                                        {{ _('admin.apply_button') }}
+                                    </button>
+                                </form>
+
+                                <div style="margin-top: 32px;">
+                                    <button type="button" onclick="toggleReset('{{ u.id }}')"
+                                        style="background: transparent; border: none; color: #777; cursor: pointer; font-size: 0.9rem; font-weight: 700; display: flex; align-items: center; gap: 8px; transition: 0.3s;"
+                                        onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#777'">
+                                        <i data-lucide="chevron-up" width="18" height="18"></i> {{
+                                        _('admin.close_panel') }}
+                                    </button>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- LIBRARY MANAGEMENT SECTION -->
+    <div class="admin-section" style="border-radius: 20px; margin-top: 32px;">
+        <div class="admin-section-header" style="padding: 24px 32px;">
+            <i data-lucide="music" width="20" height="20"></i>
+            <span style="font-weight: 800; font-size: 1.1rem; letter-spacing: -0.5px;">Library Management</span>
+        </div>
+
+        <div style="padding: 24px 32px;">
+            <div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">
+                <input type="text" id="library-search-input" placeholder="Search tracks by title or artist..."
+                    class="admin-input" style="flex: 1; min-width: 200px;"
+                    onkeyup="if(event.key==='Enter') adminSearchLibrary()">
+                <button onclick="adminSearchLibrary()" class="admin-btn-primary" style="padding: 0 24px;">
+                    <i data-lucide="search" width="18" height="18"></i> Search
+                </button>
+                <button onclick="adminFindDuplicates()" class="admin-btn-danger-soft" style="padding: 0 24px;">
+                    <i data-lucide="copy" width="18" height="18"></i> Find Duplicates
+                </button>
+            </div>
+
+            <div id="library-results" style="max-height: 400px; overflow-y: auto;">
+                <p style="color: var(--text-sub); text-align: center;">Search for tracks or click "Find Duplicates" to
+                    scan the library.</p>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

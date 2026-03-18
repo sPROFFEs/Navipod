@@ -1,0 +1,62 @@
+version: '3.9'
+
+networks:
+  navidrome-net:
+    name: navipod-global
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+services:
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel run
+    restart: unless-stopped
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    networks:
+      navidrome-net:
+        ipv4_address: 172.20.0.2
+
+  concierge:
+    build: ./concierge
+    container_name: concierge
+    user: root
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock # Para controlar Docker
+      - /opt/saas-data:/saas-data # Donde se guardan las DBs y configs de usuarios
+      - ./concierge/templates:/app/templates
+      - ./concierge:/app
+      - ./assets:/app/assets
+    environment:
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM:-HS256}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
+      - DOMAIN=${DOMAIN}
+      - CHECK_INTERVAL_MINUTES=${CHECK_INTERVAL_MINUTES:-30}
+      - IDLE_THRESHOLD_MINUTES=${IDLE_THRESHOLD_MINUTES:-30}
+      - HOST_DATA_ROOT=${HOST_DATA_ROOT:-/opt/saas-data}
+      - NAVIDROME_IMAGE=${NAVIDROME_IMAGE:-deluan/navidrome:latest}
+      - CONCURRENT_DOWNLOADS=${CONCURRENT_DOWNLOADS:-3}
+    networks:
+      navidrome-net:
+        ipv4_address: 172.20.0.5
+
+  nginx:
+    image: nginx:latest
+    container_name: navipod_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./assets:/app/assets:ro
+    depends_on:
+      - concierge
+    networks:
+      navidrome-net:
+        ipv4_address: 172.20.0.6

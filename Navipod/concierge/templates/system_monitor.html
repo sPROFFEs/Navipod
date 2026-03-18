@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}{{ _("monitor.title") }}{% endblock %}
+{% block content %}
+
+<div class="admin-container">
+    <div class="admin-header">
+        <div class="header-text">
+            <span class="admin-subtitle">{{ _("monitor.badge") }}</span>
+            <h1 class="admin-title">{{ _("monitor.header") }}</h1>
+        </div>
+
+        <div class="action-group" style="display: flex; gap: 12px;">
+            <form action="/admin/system/purge-storage" method="post"
+                onsubmit="return confirm('{{ _('monitor.purge_confirm') }}')">
+                <button type="submit" class="btn-admin-action btn-admin-warning">
+                    <i data-lucide="trash-2"></i> <span>{{ _("monitor.purge_trash") }}</span>
+                </button>
+            </form>
+
+            <form action="/admin/system/flush-ram" method="post">
+                <button type="submit" class="btn-admin-action btn-admin-danger">
+                    <i data-lucide="zap"></i> <span>{{ _("monitor.flush_ram") }}</span>
+                </button>
+            </form>
+
+            <a href="/admin" class="btn-admin-action btn-admin-glass">
+                <i data-lucide="users"></i> <span>{{ _("monitor.admin_link") }}</span>
+            </a>
+        </div>
+    </div>
+
+    {% if request.query_params.msg %}
+    <div class="toast show success" style="position: static; transform: none; margin-bottom: 24px;">
+        <i data-lucide="check-circle" width="18" height="18"></i> {{ request.query_params.msg }}
+    </div>
+    {% endif %}
+    {% if request.query_params.error %}
+    <div class="toast show error" style="position: static; transform: none; margin-bottom: 24px;">
+        <i data-lucide="alert-circle" width="18" height="18"></i> {{ request.query_params.error }}
+    </div>
+    {% endif %}
+
+    <!-- Resource Stats Grid -->
+    <div class="grid-shelf" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); margin-bottom: 32px;">
+        <!-- CPU Card -->
+        <div class="admin-section admin-section-padding"
+            style="display: flex; flex-direction: column; justify-content: space-between; min-height: 200px; position: relative; overflow: hidden; margin-bottom: 0;">
+            <div class="card-bg-glow"
+                style="position: absolute; top: -50px; right: -50px; width: 100px; height: 100px; background: var(--accent); opacity: 0.1; filter: blur(50px); border-radius: 50%;">
+            </div>
+
+            <div class="card-label"
+                style="font-size: 0.75rem; font-weight: 700; color: var(--text-sub); text-transform: uppercase; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                <div style="padding: 6px; background: rgba(29, 185, 84, 0.1); border-radius: 6px; display: flex;">
+                    <i data-lucide="cpu" style="color: var(--accent); width: 16px; height: 16px;"></i>
+                </div>
+                {{ _("monitor.cpu_load") }}
+            </div>
+
+            <div>
+                <div class="value" id="cpu-value"
+                    style="font-size: 3.5rem; font-weight: 800; color: white; line-height: 1;">{{ stats.cpu_usage
+                    }}<span style="font-size: 1.5rem; color: #555;">%</span></div>
+                <div class="sub-value" style="font-size: 0.85rem; color: var(--text-sub); margin-top: 8px;">{{
+                    _("monitor.system_load") }}
+                </div>
+            </div>
+
+            <div class="progress-bg"
+                style="height: 4px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden; margin-top: 24px;">
+                <div class="progress-fill" id="cpu-bar"
+                    style="width: {{ stats.cpu_usage }}%; height: 100%; background: var(--accent); transition: width 1s ease-in-out;">
+                </div>
+            </div>
+        </div>
+
+        <!-- RAM Card -->
+        <div class="admin-section admin-section-padding"
+            style="display: flex; flex-direction: column; justify-content: space-between; min-height: 200px; position: relative; overflow: hidden; margin-bottom: 0;">
+            <div class="card-bg-glow"
+                style="position: absolute; top: -50px; right: -50px; width: 100px; height: 100px; background: #a855f7; opacity: 0.1; filter: blur(50px); border-radius: 50%;">
+            </div>
+
+            <div class="card-label"
+                style="font-size: 0.75rem; font-weight: 700; color: var(--text-sub); text-transform: uppercase; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                <div style="padding: 6px; background: rgba(168, 85, 247, 0.1); border-radius: 6px; display: flex;">
+                    <i data-lucide="layers" style="color: #a855f7; width: 16px; height: 16px;"></i>
+                </div>
+                {{ _("monitor.ram_usage") }}
+            </div>
+
+            <div>
+                <div class="value" id="ram-value"
+                    style="font-size: 3.5rem; font-weight: 800; color: white; line-height: 1;">{{ stats.ram.percent
+                    }}<span style="font-size: 1.5rem; color: #555;">%</span></div>
+                <div class="sub-value" id="ram-sub"
+                    style="font-size: 0.85rem; color: var(--text-sub); margin-top: 8px;">{{ (stats.ram.used /
+                    1024**3)|round(2) }}GB / {{ (stats.ram.total / 1024**3)|round(2) }}GB</div>
+            </div>
+
+            <div class="progress-bg"
+                style="height: 4px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden; margin-top: 24px;">
+                <div class="progress-fill" id="ram-bar"
+                    style="width: {{ stats.ram.percent }}%; height: 100%; background: #a855f7; transition: width 1s ease-in-out;">
+                </div>
+            </div>
+        </div>
+
+        <!-- Storage Card (Global Pool) -->
+        <div class="admin-section admin-section-padding"
+            style="display: flex; flex-direction: column; justify-content: space-between; min-height: 200px; position: relative; overflow: hidden; margin-bottom: 0;">
+            <div class="card-bg-glow"
+                style="position: absolute; top: -50px; right: -50px; width: 100px; height: 100px; background: #3b82f6; opacity: 0.1; filter: blur(50px); border-radius: 50%;">
+            </div>
+
+            <div class="card-label"
+                style="font-size: 0.75rem; font-weight: 700; color: var(--text-sub); text-transform: uppercase; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                <div style="padding: 6px; background: rgba(59, 130, 246, 0.1); border-radius: 6px; display: flex;">
+                    <i data-lucide="hard-drive" style="color: #3b82f6; width: 16px; height: 16px;"></i>
+                </div>
+                {{ _("monitor.storage_usage") }}
+            </div>
+
+            <div>
+                <div class="value" id="pool-value"
+                    style="font-size: 3.5rem; font-weight: 800; color: white; line-height: 1;">{{ pool.percent }}<span
+                        style="font-size: 1.5rem; color: #555;">%</span></div>
+                <div class="sub-value" id="pool-sub"
+                    style="font-size: 0.85rem; color: var(--text-sub); margin-top: 8px;">{{ pool.used }}GB {{
+                    _("monitor.used_of") }} {{ pool.limit }}GB (Pool)</div>
+            </div>
+
+            <div class="progress-bg"
+                style="height: 4px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden; margin-top: 24px;">
+                <div class="progress-fill" id="pool-bar"
+                    style="width: {{ pool.percent }}%; height: 100%; background: {% if pool.percent > 90 %}#ef4444{% else %}#3b82f6{% endif %}; transition: width 1s ease-in-out;">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pool Configuration Section -->
+    <div class="admin-section" style="border-radius: 16px; padding: 0; overflow: hidden;">
+        <div
+            style="padding: 24px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <div style="background: rgba(59, 130, 246, 0.1); padding: 10px; border-radius: 12px; color: #3b82f6;">
+                    <i data-lucide="database" width="24" height="24"></i>
+                </div>
+                <div>
+                    <h3 style="margin: 0; font-size: 1.1rem; color: white;">{{ _("monitor.pool_limit_title") }}</h3>
+                    <p style="margin: 4px 0 0 0; font-size: 0.9rem; color: var(--text-sub);">{{
+                        _("monitor.pool_limit_desc") }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div style="padding: 24px; background: rgba(0,0,0,0.2);">
+            <form action="/admin/system/pool-limit" method="post"
+                style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                <div class="admin-input-wrapper" style="flex: 1; min-width: 200px; padding: 4px 16px;">
+                    <input type="number" name="limit_gb" value="{{ pool.limit }}"
+                        style="width: 100%; background: transparent; border: none; padding: 12px 0; color: white; font-size: 1.1rem; font-weight: 600; outline: none;"
+                        placeholder="100" required>
+                    <span style="color: #666; font-weight: 700; padding-left: 10px;">GB</span>
+                </div>
+
+                <button type="submit" class="admin-btn-primary"
+                    style="height: 50px; padding: 0 32px; background: #3b82f6;">
+                    <i data-lucide="save" width="18" height="18"></i>
+                    {{ _("admin.apply_button") }}
+                </button>
+            </form>
+            <p style="margin: 16px 0 0 0; font-size: 0.8rem; color: var(--text-sub);">
+                <i data-lucide="info" width="12" height="12" style="display: inline; vertical-align: middle;"></i>
+                Note: Changing this limit does not affect files that were already downloaded, but it will block new
+                downloads if current usage is above the new limit.
+            </p>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Auto-refresh stats every 10 seconds
+    const statsInterval = setInterval(async () => {
+        // Check if page elements still exist (user may have navigated away)
+        const cpuValue = document.getElementById('cpu-value');
+        if (!cpuValue) {
+            clearInterval(statsInterval);
+            return;
+        }
+
+        try {
+            const res = await fetch('/admin/api/system-stats');
+            const data = await res.json();
+            if (data.error) return;
+
+            // Update CPU
+            cpuValue.innerHTML = data.cpu_usage + '<span style="font-size: 1.5rem; color: #555;">%</span>';
+            const cpuBar = document.getElementById('cpu-bar');
+            if (cpuBar) cpuBar.style.width = data.cpu_usage + '%';
+
+            // Update RAM
+            const ramValue = document.getElementById('ram-value');
+            const ramSub = document.getElementById('ram-sub');
+            const ramBar = document.getElementById('ram-bar');
+            if (ramValue) ramValue.innerHTML = data.ram.percent + '<span style="font-size: 1.5rem; color: #555;">%</span>';
+            if (ramSub) ramSub.textContent = data.ram.used_gb + 'GB / ' + data.ram.total_gb + 'GB';
+            if (ramBar) ramBar.style.width = data.ram.percent + '%';
+
+            // Update Pool
+            const poolValue = document.getElementById('pool-value');
+            const poolSub = document.getElementById('pool-sub');
+            const poolBar = document.getElementById('pool-bar');
+            if (poolValue) poolValue.innerHTML = data.pool.percent + '<span style="font-size: 1.5rem; color: #555;">%</span>';
+            if (poolSub) poolSub.textContent = data.pool.used + 'GB used of ' + data.pool.limit + 'GB (Pool)';
+            if (poolBar) {
+                poolBar.style.width = data.pool.percent + '%';
+                poolBar.style.background = data.pool.percent > 90 ? '#ef4444' : '#3b82f6';
+            }
+        } catch (e) {
+            // Silent fail - page likely navigated away
+        }
+    }, 10000);
+
+</script>
+
+{% endblock %}

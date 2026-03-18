@@ -1,0 +1,474 @@
+<div class="user-profile-container">
+    <!-- Header -->
+    <div class="profile-header-card">
+        <div class="profile-avatar-wrapper">
+            <form id="avatar-form" hx-post="/user/upload-avatar" hx-target="#view-container"
+                hx-encoding="multipart/form-data" hx-trigger="change from:#avatar-input" hx-indicator="#avatar-loading">
+                <input type="file" id="avatar-input" name="avatar_file"
+                    accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+                <div class="profile-avatar-large" onclick="document.getElementById('avatar-input').click()">
+                    <img src="/user/avatar/{{ user.username }}?t={{ range(100000) | random }}" alt="Avatar"
+                        class="avatar-img" onerror="this.style.display='none'">
+                    <div class="avatar-edit-overlay">
+                        <i data-lucide="pencil"></i>
+                    </div>
+                    <!-- Upload loading indicator -->
+                    <div id="avatar-loading" class="avatar-loading htmx-indicator">
+                        <div class="avatar-spinner"></div>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="profile-info">
+            <h1>{{ user.username }}</h1>
+            <span class="role-badge">
+                {% if user.is_admin %}Admin{% else %}User{% endif %}
+            </span>
+        </div>
+    </div>
+
+    <script>
+        // Fallback for htmx trigger
+        document.getElementById('avatar-input')?.addEventListener('change', function () {
+            if (this.files.length > 0) {
+                const form = document.getElementById('avatar-form');
+                if (form && typeof htmx !== 'undefined') {
+                    htmx.trigger(form, 'submit');
+                }
+            }
+        });
+
+        // Refresh sidebar avatar after successful upload
+        document.body.addEventListener('htmx:afterSwap', function (e) {
+            if (e.target.id === 'view-container') {
+                // Update sidebar avatar with cache busting
+                const sidebarAvatar = document.querySelector('.user-menu .avatar-circle img');
+                if (sidebarAvatar) {
+                    sidebarAvatar.src = '/user/avatar/{{ user.username }}?t=' + Date.now();
+                }
+            }
+        });
+    </script>
+
+    <!-- Feedback Alerts -->
+    {% if error %}
+    <div class="alert alert-error">
+        <i data-lucide="alert-circle"></i> {{ error }}
+    </div>
+    {% endif %}
+
+    {% if success %}
+    <div class="alert alert-success">
+        <i data-lucide="check-circle"></i> {{ success }}
+    </div>
+    {% endif %}
+
+    <div class="settings-grid">
+        <!-- 1. Security -->
+        <div class="settings-card">
+            <div class="card-header">
+                <h2><i data-lucide="lock"></i> Security</h2>
+            </div>
+
+            <form hx-post="/user/change-password" hx-target="#view-container" class="settings-form">
+                <div class="form-group">
+                    <label>Current Password</label>
+                    <input type="password" name="current_password" required class="form-input">
+                </div>
+
+                <div class="form-group">
+                    <label>New Password</label>
+                    <input type="password" name="new_password" required class="form-input">
+                </div>
+
+                <div class="form-group">
+                    <label>Confirm Password</label>
+                    <input type="password" name="confirm_password" required class="form-input">
+                </div>
+
+                <button type="submit" class="btn-primary">Update Password</button>
+            </form>
+        </div>
+
+        <!-- 2. Data Sources (BYOK) -->
+        <div class="settings-card">
+            <div class="card-header">
+                <h2><i data-lucide="database"></i> Data Sources</h2>
+            </div>
+            <p class="text-muted" style="margin-bottom: 20px;">Bring your own credentials. Metadata falls back by your preferred provider order.</p>
+
+            <form hx-post="/user/update-api-keys" hx-target="#view-container" class="settings-form">
+                <div class="form-group">
+                    <label>Spotify Client ID</label>
+                    <div class="secret-input-group">
+                        <input type="password" name="spotify_client_id" class="form-input secret-input"
+                            value="{{ dl_settings.spotify_client_id if dl_settings and dl_settings.spotify_client_id else '' }}">
+                        <button type="button" class="toggle-secret-btn" aria-label="Toggle Spotify Client ID visibility">
+                            <i data-lucide="eye"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Spotify Client Secret</label>
+                    <div class="secret-input-group">
+                        <input type="password" name="spotify_client_secret" class="form-input secret-input"
+                            value="{{ dl_settings.spotify_client_secret if dl_settings and dl_settings.spotify_client_secret else '' }}">
+                        <button type="button" class="toggle-secret-btn" aria-label="Toggle Spotify Client Secret visibility">
+                            <i data-lucide="eye"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Last.fm API Key</label>
+                    <div class="secret-input-group">
+                        <input type="password" name="lastfm_api_key" class="form-input secret-input"
+                            value="{{ dl_settings.lastfm_api_key if dl_settings and dl_settings.lastfm_api_key else '' }}">
+                        <button type="button" class="toggle-secret-btn" aria-label="Toggle Last.fm API Key visibility">
+                            <i data-lucide="eye"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Last.fm Shared Secret (optional)</label>
+                    <div class="secret-input-group">
+                        <input type="password" name="lastfm_shared_secret" class="form-input secret-input"
+                            value="{{ dl_settings.lastfm_shared_secret if dl_settings and dl_settings.lastfm_shared_secret else '' }}">
+                        <button type="button" class="toggle-secret-btn" aria-label="Toggle Last.fm Shared Secret visibility">
+                            <i data-lucide="eye"></i>
+                        </button>
+                    </div>
+                    <small class="text-muted">Only needed for signed methods (user auth / write actions).</small>
+                </div>
+
+                {% set __prefs_raw = (dl_settings.metadata_preferences if dl_settings and dl_settings.metadata_preferences else '["spotify","lastfm","musicbrainz"]') %}
+                {% set __prefs_clean = __prefs_raw | replace('[','') | replace(']','') | replace('"','') | replace(' ','') %}
+                {% set __prefs = __prefs_clean.split(',') %}
+                {% set __p1 = __prefs[0] if __prefs|length > 0 else 'spotify' %}
+                {% set __p2 = __prefs[1] if __prefs|length > 1 else 'lastfm' %}
+                {% set __p3 = __prefs[2] if __prefs|length > 2 else 'musicbrainz' %}
+
+                <div class="form-group">
+                    <label>Metadata Priority #1</label>
+                    <select name="metadata_priority_1" class="form-input">
+                        <option value="spotify" {% if __p1 == 'spotify' %}selected{% endif %}>Spotify</option>
+                        <option value="lastfm" {% if __p1 == 'lastfm' %}selected{% endif %}>Last.fm</option>
+                        <option value="musicbrainz" {% if __p1 == 'musicbrainz' %}selected{% endif %}>MusicBrainz</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Metadata Priority #2</label>
+                    <select name="metadata_priority_2" class="form-input">
+                        <option value="spotify" {% if __p2 == 'spotify' %}selected{% endif %}>Spotify</option>
+                        <option value="lastfm" {% if __p2 == 'lastfm' %}selected{% endif %}>Last.fm</option>
+                        <option value="musicbrainz" {% if __p2 == 'musicbrainz' %}selected{% endif %}>MusicBrainz</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Metadata Priority #3</label>
+                    <select name="metadata_priority_3" class="form-input">
+                        <option value="spotify" {% if __p3 == 'spotify' %}selected{% endif %}>Spotify</option>
+                        <option value="lastfm" {% if __p3 == 'lastfm' %}selected{% endif %}>Last.fm</option>
+                        <option value="musicbrainz" {% if __p3 == 'musicbrainz' %}selected{% endif %}>MusicBrainz</option>
+                    </select>
+                    <small class="text-muted">Choose provider order for metadata fallback.</small>
+                </div>
+
+                <button type="submit" class="btn-primary">Save Integrations</button>
+                <button type="button" class="btn-secondary btn-full" style="margin-top: 10px;"
+                    hx-post="/user/validate-api-keys" hx-target="#view-container" hx-include="closest form">
+                    Validate Keys
+                </button>
+            </form>
+        </div>
+
+        <!-- 3. YouTube Cookies -->
+        <div class="settings-card">
+            <div class="card-header">
+                <h2><i data-lucide="cookie"></i> YouTube Auth</h2>
+            </div>
+            <p class="text-muted">Upload <code>cookies.txt</code> to bypass age restrictions and CAPTCHAs.</p>
+
+            <form hx-post="/user/upload-cookies" hx-encoding="multipart/form-data" hx-target="#view-container"
+                class="settings-form" style="margin-top: 20px;">
+                <div class="form-group">
+                    <label>Cookies File (Netscape format)</label>
+                    <input type="file" name="cookies_file" required class="form-input">
+                </div>
+
+                {% if dl_settings and dl_settings.youtube_cookies_path %}
+                <div class="badge-success" style="margin: 10px 0; display: inline-flex; align-items: center; gap: 6px;">
+                    <i data-lucide="check"></i> Cookies Active
+                </div>
+                {% endif %}
+
+                <button type="submit" class="btn-primary">Upload Cookies</button>
+            </form>
+        </div>
+
+        <!-- 4. Session & Logout -->
+        <div class="settings-card">
+            <div class="card-header">
+                <h2><i data-lucide="log-out"></i> Session</h2>
+            </div>
+            <div class="card-body">
+                <p>Current Session ID: <span style="font-family: monospace; color: var(--accent);">{{
+                        request.cookies.get('access_token')[:10] }}...</span></p>
+
+                <div class="logout-section" style="margin-top: 20px;">
+                    <!-- Full page reload for logout to clear JS state too -->
+                    <form action="/logout" method="post">
+                        <button type="submit" class="btn-secondary btn-full"
+                            style="display: inline-flex; align-items: center; justify-content: center; width: 100%;">
+                        <i data-lucide="power"></i> Log Out
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .user-profile-container {
+        padding: 20px;
+        max-width: 1000px;
+        margin: 0 auto;
+        color: white;
+    }
+
+    .profile-header-card {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        margin-bottom: 40px;
+        padding-bottom: 24px;
+        border-bottom: 1px solid var(--glass-border);
+    }
+
+    .profile-avatar-large {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        color: white;
+        border: 1px solid var(--glass-border);
+    }
+
+    .profile-info h1 {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 4px;
+    }
+
+    .role-badge {
+        background: var(--accent);
+        color: white;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-weight: 700;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+    }
+
+    .settings-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 24px;
+    }
+
+    .settings-card {
+        background: var(--glass-bg);
+        backdrop-filter: var(--glass-blur);
+        -webkit-backdrop-filter: var(--glass-blur);
+        border-radius: 16px;
+        padding: 32px;
+        border: 1px solid var(--glass-border);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .card-header {
+        margin-bottom: 24px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border-bottom: 1px solid var(--glass-border);
+        padding-bottom: 16px;
+    }
+
+    .card-header h2 {
+        font-size: 1.1rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: white;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--text-sub);
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 12px;
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid var(--glass-border);
+        border-radius: 8px;
+        color: white;
+        font-size: 0.9rem;
+        transition: 0.2s;
+    }
+
+    .secret-input-group {
+        position: relative;
+    }
+
+    .secret-input-group .form-input {
+        padding-right: 44px;
+    }
+
+    .toggle-secret-btn {
+        position: absolute;
+        top: 50%;
+        right: 10px;
+        transform: translateY(-50%);
+        border: 0;
+        background: transparent;
+        color: var(--text-sub);
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4px;
+    }
+
+    .toggle-secret-btn:hover {
+        color: white;
+    }
+
+    .form-input:focus {
+        outline: none;
+        border-color: var(--accent);
+        background: rgba(0, 0, 0, 0.5);
+    }
+
+    .text-muted {
+        font-size: 0.85rem;
+        color: var(--text-sub);
+        line-height: 1.4;
+    }
+
+    .btn-primary {
+        background: var(--accent);
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-weight: 700;
+        cursor: pointer;
+        width: 100%;
+        font-size: 0.9rem;
+        transition: 0.2s;
+    }
+
+    .btn-primary:hover {
+        opacity: 0.9;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
+    }
+
+    .btn-secondary {
+        background: transparent;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: 0.2s;
+    }
+
+    .btn-secondary:hover {
+        border-color: #ef4444;
+        color: #ef4444;
+        background: rgba(239, 68, 68, 0.05);
+    }
+
+    .btn-full {
+        width: 100%;
+    }
+
+    .alert {
+        padding: 16px;
+        border-radius: 8px;
+        margin-bottom: 24px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+
+    .alert-error {
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+        color: #ef4444;
+    }
+
+    .alert-success {
+        background: rgba(74, 222, 128, 0.1);
+        border: 1px solid rgba(74, 222, 128, 0.2);
+        color: #4ade80;
+    }
+
+    .badge-success {
+        background: rgba(74, 222, 128, 0.1);
+        color: #4ade80;
+        padding: 4px 10px;
+        border-radius: 100px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        border: 1px solid rgba(74, 222, 128, 0.2);
+    }
+</style>
+
+<script>
+    document.querySelectorAll('.toggle-secret-btn').forEach((button) => {
+        button.addEventListener('click', () => {
+            const wrapper = button.closest('.secret-input-group');
+            const input = wrapper?.querySelector('.secret-input');
+            const icon = button.querySelector('i');
+            if (!input) return;
+            const reveal = input.type === 'password';
+            input.type = reveal ? 'text' : 'password';
+            if (icon) {
+                icon.setAttribute('data-lucide', reveal ? 'eye-off' : 'eye');
+                if (window.lucide && typeof window.lucide.createIcons === 'function') {
+                    window.lucide.createIcons();
+                }
+            }
+        });
+    });
+</script>

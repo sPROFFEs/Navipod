@@ -1,0 +1,10 @@
+/* Mobile Hover Simulation */
+.card.active-mobile .play-overlay {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.card.active-mobile {
+    transform: translateY(-4px);
+    background: rgba(255, 255, 255, 0.1);
+}

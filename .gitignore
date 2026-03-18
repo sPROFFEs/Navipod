@@ -1,0 +1,81 @@
+# Operating system
+.DS_Store
+Thumbs.db
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git internals and local worktrees
+*.orig
+*.rej
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Logs and runtime artifacts
+*.log
+*.pid
+*.out
+*.err
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+/Navipod/.env
+/Navipod/.env.*
+*.pem
+*.key
+cookies.txt
+*.cookies
+
+# Python / SQLite local databases and caches
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+*.nocover
+*.pyc
+*.pkl
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Frontend / package managers
+node_modules/
+
+# Project-specific generated data
+/opt/
+/saas-data/
+Navipod/concierge/__pycache__/
+Navipod/concierge/tests/__pycache__/
+Navipod/concierge/locales/*.mo
+Navipod/**/__pycache__/
+Navipod/**/*.pyc
+Navipod/**/*.pyo
+Navipod/**/*.pyd
+
+# Local docs / scratch files that should not ship
+spotifyapi.txt

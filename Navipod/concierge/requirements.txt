@@ -1,0 +1,22 @@
+fastapi
+uvicorn
+docker
+httpx[http2]
+sqlalchemy
+python-multipart
+python-jose[cryptography]
+passlib
+bcrypt==4.0.1
+jinja2
+# --- New Downloader Dependencies ---
+# FIX 2025: yt-dlp[default] incluye el paquete yt-dlp-ejs necesario para resolver firmas de YouTube
+yt-dlp[default]>=2025.1.15
+spotdl>=4.4.0
+Pillow
+spotipy
+ytmusicapi
+beautifulsoup4
+aiofiles
+psutil
+pydantic-settings
+slowapi

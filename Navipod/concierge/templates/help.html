@@ -1,0 +1,467 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("help.breadcrumb") }}{% endblock %}
+
+{% block content %}
+
+<div style="margin-bottom: 40px;">
+    <span
+        style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 2px; color: var(--accent-blue); font-weight: 700; opacity: 0.8;">
+        <a href="/portal" style="text-decoration:none; color:inherit;">Dashboard</a> / {{ _("help.breadcrumb") }}
+    </span>
+    <h1 style="margin-top: 10px; font-size: 2.5rem; letter-spacing: -1px;">{{ _("help.title") }}</h1>
+    <p style="color: var(--text-muted); font-size: 0.95rem; max-width: 600px;">
+        {{ _("help.subtitle") }}
+    </p>
+</div>
+
+<div class="docs-grid">
+
+    <div class="doc-card">
+        <div class="card-header">
+            <div class="icon-box red">
+                <i class="fa-brands fa-youtube"></i>
+            </div>
+            <div>
+                <h3>{{ _("help.youtube.title") }}</h3>
+                <p>{{ _("help.youtube.desc") }}</p>
+            </div>
+        </div>
+
+        <div class="step-list">
+            <div class="step-item">
+                <div class="step-num">01</div>
+                <div class="step-content">
+                    <strong>{{ _("help.youtube.step1") }}</strong>
+                    <p>{{ _("help.youtube.step1_desc") | safe }}</p>
+                </div>
+            </div>
+            <div class="step-item">
+                <div class="step-num">02</div>
+                <div class="step-content">
+                    <strong>{{ _("help.youtube.step2") }}</strong>
+                    <p>{{ _("help.youtube.step2_desc") | safe }}</p>
+                </div>
+            </div>
+            <div class="step-item">
+                <div class="step-num">03</div>
+                <div class="step-content">
+                    <strong>{{ _("help.youtube.step3") }}</strong>
+                    <p>{{ _("help.youtube.step3_desc") | safe }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="doc-card">
+        <div class="card-header">
+            <div class="icon-box green">
+                <i class="fa-brands fa-spotify"></i>
+            </div>
+            <div>
+                <h3>{{ _("help.spotify.title") }}</h3>
+                <p>{{ _("help.spotify.desc") }}</p>
+            </div>
+        </div>
+
+        <div class="step-list">
+            <div class="step-item">
+                <div class="step-num">01</div>
+                <div class="step-content">
+                    <strong>{{ _("help.spotify.step1") }}</strong>
+                    <p>{{ _("help.spotify.step1_desc") | safe }}</p>
+                </div>
+            </div>
+            <div class="step-item">
+                <div class="step-num">02</div>
+                <div class="step-content">
+                    <strong>{{ _("help.spotify.step2") }}</strong>
+                    <p>{{ _("help.spotify.step2_desc") | safe }}</p>
+                </div>
+            </div>
+            <div class="step-item">
+                <div class="step-num">03</div>
+                <div class="step-content">
+                    <strong>{{ _("help.spotify.step3") }}</strong>
+                    <p>{{ _("help.spotify.step3_desc") | safe }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="doc-card">
+        <div class="card-header">
+            <div class="icon-box wine">
+                <i class="fa-brands fa-lastfm"></i>
+            </div>
+            <div>
+                <h3>{{ _("help.lastfm.title") }}</h3>
+                <p>{{ _("help.lastfm.desc") }}</p>
+            </div>
+        </div>
+
+        <div class="step-list">
+            <div class="step-item">
+                <div class="step-num">01</div>
+                <div class="step-content">
+                    <strong>{{ _("help.lastfm.step1") }}</strong>
+                    <p>{{ _("help.lastfm.step1_desc") | safe }}</p>
+                </div>
+            </div>
+            <div class="step-item">
+                <div class="step-num">02</div>
+                <div class="step-content">
+                    <strong>{{ _("help.lastfm.step2") }}</strong>
+                    <p>{{ _("help.lastfm.step2_desc") | safe }}</p>
+                </div>
+            </div>
+            <div class="step-item">
+                <div class="step-num">03</div>
+                <div class="step-content">
+                    <strong>{{ _("help.lastfm.step3") }}</strong>
+                    <p>{{ _("help.lastfm.step3_desc") | safe }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="doc-card">
+        <div class="card-header">
+            <div class="icon-box rose">
+                <i class="fa-solid fa-database"></i>
+            </div>
+            <div>
+                <h3>{{ _("help.musicbrainz.title") }}</h3>
+                <p>{{ _("help.musicbrainz.desc") }}</p>
+            </div>
+        </div>
+
+        <div class="step-list">
+            <div class="step-item">
+                <div class="step-num">01</div>
+                <div class="step-content">
+                    <strong>{{ _("help.musicbrainz.step1") }}</strong>
+                    <p>{{ _("help.musicbrainz.step1_desc") | safe }}</p>
+                </div>
+            </div>
+            <div class="step-item">
+                <div class="step-num">02</div>
+                <div class="step-content">
+                    <strong>{{ _("help.musicbrainz.step2") }}</strong>
+                    <p>{{ _("help.musicbrainz.step2_desc") | safe }}</p>
+                </div>
+            </div>
+            <div class="step-item">
+                <div class="step-num">03</div>
+                <div class="step-content">
+                    <strong>{{ _("help.musicbrainz.step3") }}</strong>
+                    <p>{{ _("help.musicbrainz.step3_desc") | safe }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div style="margin-top: 40px;">
+    <h2 style="font-size: 1.5rem; margin-bottom: 20px;">{{ _("help.apps.title") }}</h2>
+
+    <div class="doc-card full-width">
+        <div class="split-layout">
+
+            <div class="info-side">
+                <p style="margin-bottom: 20px; line-height: 1.6; color: #ccc;">
+                    {{ _("help.apps.desc") | safe }}
+                </p>
+
+                <div class="app-recommendations">
+                    <div class="app-badge">
+                        <i class="fa-brands fa-apple"></i> <strong>Amperfy</strong> (iOS)
+                    </div>
+                    <div class="app-badge">
+                        <i class="fa-brands fa-android"></i> <strong>Tempo</strong> (Android)
+                    </div>
+                    <div class="app-badge">
+                        <i class="fa-solid fa-mobile-screen"></i> <strong>Navic</strong> (Both)
+                    </div>
+                </div>
+            </div>
+
+            <div class="config-side">
+                <label>{{ _("help.apps.server_url") }}</label>
+                <div class="copy-box">
+                    <input type="text" value="https://{{ request.url.hostname }}/{{ username }}" readonly
+                        id="server-url">
+                    <button onclick="copyToClip('server-url')"><i class="fa-regular fa-copy"></i></button>
+                </div>
+
+                <div class="grid-2">
+                    <div>
+                        <label>{{ _("help.apps.username") }}</label>
+                        <div class="static-input">{{ username }}</div>
+                    </div>
+                    <div>
+                        <label>{{ _("help.apps.password") }}</label>
+                        <div class="static-input">••••••</div>
+                    </div>
+                </div>
+
+                <div class="note-box">
+                    <i class="fa-solid fa-circle-info"></i>
+                    <span>{{ _("help.apps.note") }}</span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+    function copyToClip(id) {
+        var copyText = document.getElementById(id);
+        copyText.select();
+        copyText.setSelectionRange(0, 99999);
+        navigator.clipboard.writeText(copyText.value);
+
+        const btn = copyText.nextElementSibling;
+        const originalIcon = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-check" style="color:#4ade80"></i>';
+        setTimeout(() => { btn.innerHTML = originalIcon; }, 2000);
+    }
+</script>
+
+<style>
+    /* GRID LAYOUT */
+    .docs-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 25px;
+    }
+
+    /* CARDS */
+    .doc-card {
+        background: #181818;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 16px;
+        padding: 30px;
+        transition: 0.2s;
+    }
+
+    .doc-card:hover {
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    /* HEADERS */
+    .card-header {
+        display: flex;
+        gap: 15px;
+        align-items: flex-start;
+        margin-bottom: 25px;
+    }
+
+    .card-header h3 {
+        margin: 0 0 5px 0;
+        font-size: 1.1rem;
+    }
+
+    .card-header p {
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 0.85rem;
+        line-height: 1.4;
+    }
+
+    .icon-box {
+        width: 45px;
+        height: 45px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        flex-shrink: 0;
+    }
+
+    .icon-box.red {
+        background: rgba(255, 0, 0, 0.1);
+        color: #ff4444;
+    }
+
+    .icon-box.green {
+        background: rgba(29, 185, 84, 0.1);
+        color: #1DB954;
+    }
+
+    .icon-box.wine {
+        background: rgba(186, 71, 143, 0.12);
+        color: #d51007;
+    }
+
+    .icon-box.rose {
+        background: rgba(186, 71, 143, 0.12);
+        color: #ba478f;
+    }
+
+    /* STEPS */
+    .step-list {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .step-item {
+        display: flex;
+        gap: 15px;
+    }
+
+    .step-num {
+        font-family: monospace;
+        color: #444;
+        font-weight: 700;
+        font-size: 0.9rem;
+        padding-top: 2px;
+    }
+
+    .step-content strong {
+        display: block;
+        color: white;
+        font-size: 0.9rem;
+        margin-bottom: 4px;
+    }
+
+    .step-content p {
+        margin: 0;
+        color: #888;
+        font-size: 0.85rem;
+        line-height: 1.4;
+    }
+
+    .step-content span {
+        color: var(--text-muted);
+        border-bottom: 1px dotted #666;
+    }
+
+    /* LINK STYLE */
+    .text-link {
+        color: var(--accent-blue);
+        text-decoration: none;
+        font-weight: 600;
+        transition: 0.2s;
+    }
+
+    .text-link:hover {
+        color: white;
+        text-decoration: underline;
+    }
+
+    /* SECTION 3: APPS LAYOUT */
+    .split-layout {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 40px;
+    }
+
+    .app-recommendations {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .app-badge {
+        background: rgba(255, 255, 255, 0.05);
+        padding: 8px 16px;
+        border-radius: 50px;
+        font-size: 0.85rem;
+        color: #ddd;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    /* CONFIG BOX */
+    .config-side {
+        background: rgba(0, 0, 0, 0.3);
+        padding: 25px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .config-side label {
+        display: block;
+        font-size: 0.7rem;
+        font-weight: 800;
+        color: #666;
+        margin-bottom: 8px;
+        letter-spacing: 1px;
+    }
+
+    .copy-box {
+        display: flex;
+        background: #000;
+        border: 1px solid #333;
+        border-radius: 6px;
+        padding: 4px;
+        margin-bottom: 15px;
+    }
+
+    .copy-box input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        color: var(--accent-blue);
+        font-family: monospace;
+        font-size: 0.9rem;
+        padding: 8px 12px;
+        outline: none;
+    }
+
+    .copy-box button {
+        background: #222;
+        border: none;
+        color: white;
+        width: 35px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: 0.2s;
+    }
+
+    .copy-box button:hover {
+        background: #333;
+    }
+
+    .grid-2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+
+    .static-input {
+        background: #000;
+        border: 1px solid #333;
+        padding: 12px;
+        border-radius: 6px;
+        color: #aaa;
+        font-family: monospace;
+        font-size: 0.9rem;
+    }
+
+    .note-box {
+        display: flex;
+        gap: 10px;
+        font-size: 0.8rem;
+        color: #666;
+        background: rgba(255, 255, 255, 0.02);
+        padding: 10px;
+        border-radius: 6px;
+        align-items: flex-start;
+    }
+
+    @media (max-width: 768px) {
+        .split-layout {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+{% endblock %}

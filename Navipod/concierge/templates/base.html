@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ _('app.title') }} - {% block title %}Home{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/assets/css/style.css?v={{ range(1, 9999) | random }}">
+    <link rel="stylesheet" href="/assets/css/mobile_fixes.css?v={{ range(1, 9999) | random }}">
+
+    <!-- PWA & Mobile Meta -->
+    <link rel="manifest" href="/assets/site.webmanifest">
+    <meta name="theme-color" content="#121212">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Navipod">
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+
+    <link rel="icon" type="image/png" href="/assets/icon.png">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    {% block head %}{% endblock %}
+</head>
+
+<body>
+    <!-- Noise Overlay -->
+    <div class="noise-overlay"></div>
+
+    <!-- Fluid Orbs Background -->
+    <div class="smoke-container">
+        <div class="gradient-orb orb-1"></div>
+        <div class="gradient-orb orb-2"></div>
+        <div class="gradient-orb orb-3"></div>
+    </div>
+    <div class="app-layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="brand">
+                <a href="/" class="brand-group">
+                    <img src="/assets/icon.png" alt="Navipod">
+                    <span>Navipod</span>
+                </a>
+                <button class="sidebar-close" id="sidebar-close" onclick="toggleSidebar()">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+
+            <nav class="nav-menu">
+                <div class="nav-link active" onclick="loadView('home')">
+                    <i data-lucide="home"></i> {{ _('menu.home') }}
+                </div>
+                <div class="nav-link" onclick="loadView('search')">
+                    <i data-lucide="search"></i> {{ _('menu.search') }}
+                </div>
+                <div class="nav-link" onclick="loadView('radio')">
+                    <i data-lucide="radio"></i> {{ _('menu.radio') }}
+                </div>
+                <div class="nav-link" onclick="loadView('favorites')">
+                    <i data-lucide="heart"></i> {{ _('menu.liked') }}
+                </div>
+            </nav>
+
+            <div class="nav-divider"></div>
+
+            <nav class="nav-menu">
+                <div class="nav-section-header">
+                    <span class="nav-section-title">{{ _('menu.library') }}</span>
+                    <button class="icon-btn-sm" onclick="showCreatePlaylistModal()" title="Create Playlist">
+                        <i data-lucide="plus"></i>
+                    </button>
+                </div>
+                <div id="sidebar-playlists">
+                    <!-- Playlists injected by JS -->
+                </div>
+            </nav>
+
+            <div class="nav-divider"></div>
+
+            <nav class="nav-menu">
+                <div class="nav-section-header">
+                    <span class="nav-section-title">{{ _('menu.saved_radios') }}</span>
+                </div>
+                <div id="sidebar-radios">
+                    <!-- Radios injected by JS -->
+                </div>
+            </nav>
+
+            <div class="nav-divider"></div>
+
+            <nav class="nav-menu">
+                <div class="nav-section-title">System</div>
+                <!-- Using direct hrefs for system pages to ensure full page load if needed -->
+                {% if is_admin %}
+                <div class="nav-link" onclick="loadView('settings_admin')">
+                    <i data-lucide="settings"></i> {{ _('menu.settings') }}
+                </div>
+                {% endif %}
+                <div class="nav-link" onclick="loadView('help')">
+                    <i data-lucide="help-circle"></i> {{ _('menu.help') }}
+                </div>
+            </nav>
+
+            <div class="quota-widget">
+                <div class="quota-label">
+                    <span>Global Pool</span>
+                    <span>{{ pool.percent }}%</span>
+                </div>
+                <div class="quota-bar-bg">
+                    <div class="quota-bar-fill"
+                        style="width: {{ pool.percent }}%; background: {% if pool.percent > 90 %}#ef4444{% else %}var(--accent){% endif %};">
+                    </div>
+                </div>
+                <div class="quota-stats">
+                    {{ pool.used }}GB / {{ pool.limit }}GB
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-view" id="main-view">
+            <header class="top-bar">
+                <div class="top-bar-left">
+                    <button class="menu-toggle" id="menu-toggle" onclick="toggleSidebar()">
+                        <i data-lucide="menu"></i>
+                    </button>
+                    <div class="nav-history-btns">
+                        <button class="circle-btn" onclick="history.back()"><i data-lucide="chevron-left"></i></button>
+                        <button class="circle-btn" onclick="history.forward()"><i
+                                data-lucide="chevron-right"></i></button>
+                    </div>
+                </div>
+
+                <div class="header-actions">
+                    <button class="btn-icon-circle" onclick="openDownloadsModal()" style="position: relative;">
+                        <i data-lucide="download-cloud"></i>
+                        <span id="download-badge" class="badge-count" style="display: none;">0</span>
+                    </button>
+
+                    {% if is_admin %}
+                    <button class="btn-icon-circle" onclick="loadView('settings_admin')" title="Admin Settings">
+                        <i data-lucide="settings"></i>
+                    </button>
+                    {% endif %}
+
+                    <a href="https://navipod.{{ domain }}/{{ username }}" target="_blank"
+                        class="btn-icon-circle brand-btn" title="Open Navidrome Player">
+                        <img src="/assets/img/navidrome.png" alt="ND"
+                            style="width: 20px; height: 20px; object-fit: contain;">
+                    </a>
+
+                    <div class="user-menu" onclick="loadView('settings_user')" style="cursor: pointer;">
+                        <div class="avatar-circle">
+                            <img src="/user/avatar/{{ username }}" alt="Avatar"
+                                style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"
+                                onerror="this.outerHTML='<i data-lucide=\'user\' style=\'width: 16px; height: 16px;\'></i>'">
+                        </div>
+                        <span class="user-name">{{ username }}</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="view-content" id="view-container">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+
+        <footer class="player-footer player-hidden">
+            <div class="player-left">
+                <img id="player-cover" src="/static/img/default_cover.png" alt="Cover"
+                    onclick="toggleFullscreenPlayer()" style="cursor: pointer;">
+                <div class="track-info">
+                    <div id="player-title" class="track-title">Not Playing</div>
+                    <div id="player-artist" class="track-artist">Select a track</div>
+                </div>
+                <button class="icon-btn-sm" id="player-like-btn" onclick="toggleFavoriteCurrent()"><i
+                        data-lucide="heart"></i></button>
+                <button class="icon-btn-sm" id="player-add-btn" onclick="addToPlaylistCurrent()"
+                    title="Add to Playlist"><i data-lucide="plus-circle"></i></button>
+            </div>
+
+            <div class="player-center">
+                <div class="player-controls">
+                    <button class="control-btn" onclick="toggleShuffle()" id="btn-shuffle"><i
+                            data-lucide="shuffle"></i></button>
+                    <button class="control-btn" onclick="playPrev()"><i data-lucide="skip-back"></i></button>
+                    <button class="control-btn play-main" id="play-pause-btn">
+                        <i data-lucide="play" style="fill:black;"></i>
+                    </button>
+                    <button class="control-btn" onclick="playNext()"><i data-lucide="skip-forward"></i></button>
+                    <button class="control-btn" onclick="toggleRepeat()" id="btn-repeat"><i
+                            data-lucide="repeat"></i></button>
+                </div>
+                <div class="playback-bar-container">
+                    <span id="time-current">0:00</span>
+                    <div class="progress-bar-bg" id="progress-bar">
+                        <div class="progress-bar-fill" id="progress-fill" style="width: 0%;"></div>
+                        <div class="progress-knob"></div>
+                    </div>
+                    <span id="time-total">0:00</span>
+                </div>
+            </div>
+
+            <div class="player-right">
+                <button class="icon-btn-sm" onclick="toggleQueue()" id="btn-queue" title="Queue"><i
+                        data-lucide="list-music"></i></button>
+                <button class="icon-btn-sm" onclick="toggleMute()" id="btn-volume-icon"><i
+                        data-lucide="volume-2"></i></button>
+                <div class="volume-bar-bg" id="volume-bar">
+                    <div class="volume-bar-fill" id="volume-fill" style="width: 70%;"></div>
+                    <div class="volume-knob"></div>
+                </div>
+            </div>
+        </footer>
+
+        <!-- FULLSCREEN PLAYER OVERLAY -->
+        <div id="fullscreen-player" class="fullscreen-player">
+            <div class="fs-background"></div>
+            <div class="fs-content">
+                <button class="fs-minimize" onclick="toggleFullscreenPlayer()" title="Minimize">
+                    <i data-lucide="chevron-down"></i>
+                </button>
+                <img id="fs-cover" class="fs-cover" src="/static/img/default_cover.png" alt="Cover">
+                <div class="fs-info">
+                    <div id="fs-title" class="fs-title">Not Playing</div>
+                    <div id="fs-artist" class="fs-artist">Select a track</div>
+                </div>
+                <div class="fs-controls">
+                    <button class="control-btn" onclick="toggleShuffle()" id="fs-btn-shuffle"><i
+                            data-lucide="shuffle"></i></button>
+                    <button class="control-btn" onclick="playPrev()"><i data-lucide="skip-back"></i></button>
+                    <button class="control-btn fs-play-main" id="fs-play-pause-btn"
+                        onclick="document.getElementById('play-pause-btn').click()">
+                        <i data-lucide="play"></i>
+                    </button>
+                    <button class="control-btn" onclick="playNext()"><i data-lucide="skip-forward"></i></button>
+                    <button class="control-btn" onclick="toggleRepeat()" id="fs-btn-repeat"><i
+                            data-lucide="repeat"></i></button>
+                </div>
+                <div class="fs-progress-container">
+                    <span id="fs-time-current">0:00</span>
+                    <div class="fs-progress-bar" id="fs-progress-bar">
+                        <div class="fs-progress-fill" id="fs-progress-fill" style="width: 0%;"></div>
+                        <div class="fs-progress-knob"></div>
+                    </div>
+                    <span id="fs-time-total">0:00</span>
+                </div>
+                <!-- Action buttons for mobile -->
+                <div class="fs-actions">
+                    <button class="fs-action-btn" id="fs-btn-favorite" onclick="toggleFavoriteFromPlayer()"
+                        title="Favorite">
+                        <i data-lucide="heart"></i>
+                    </button>
+                    <button class="fs-action-btn" onclick="showAddToPlaylistFromPlayer()" title="Add to Playlist">
+                        <i data-lucide="list-plus"></i>
+                    </button>
+                    <button class="fs-action-btn" onclick="toggleQueue()" title="Queue">
+                        <i data-lucide="list-music"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
+    </div>
+
+    <!-- QUEUE SIDE PANEL -->
+    <div id="queue-panel" class="queue-panel">
+        <div class="queue-header">
+            <h3>Play Queue</h3>
+            <div style="flex:1;"></div>
+            <button class="icon-btn-sm" onclick="addToQueueCurrent()" title="Add Current to Queue"
+                style="margin-right:8px;"><i data-lucide="list-plus"></i></button>
+            <button class="icon-btn-sm" onclick="toggleQueue()"><i data-lucide="x"></i></button>
+        </div>
+        <div class="queue-content" id="queue-list">
+            <!-- Queue Items -->
+        </div>
+    </div>
+
+    <!-- GLOBAL MODALS -->
+    <div id="modal-container"></div>
+
+    <!-- DOWNLOAD MANAGER MODAL -->
+    <div id="downloads-modal" class="modal-overlay hidden">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 class="modal-title">Downloads Manager</h2>
+                <button onclick="closeDownloadsModal()" class="modal-close"><i data-lucide="x"></i></button>
+            </div>
+
+            <div style="display:flex; gap:12px; margin-bottom:24px; align-items: flex-start;">
+                <input type="text" id="dl-modal-url" class="modal-input" placeholder="Paste YouTube/Spotify URL..."
+                    style="margin-bottom:0;">
+                <button onclick="handleModalDownload()" class="modal-btn-primary">Download</button>
+            </div>
+
+            <div id="jobs-list" class="downloads-container">
+                <!-- Jobs -->
+            </div>
+        </div>
+    </div>
+
+    <!-- HIDDEN AUDIO ELEMENTS -->
+    <audio id="audio-player" preload="auto" crossorigin="anonymous"></audio>
+    <div id="youtube-player-hidden" style="position:absolute; top:-9999px; left:-9999px;"></div>
+
+    <script>
+        window.USER_DATA = {
+            username: "{{ username }}"
+        };
+    </script>
+    <script type="module" src="/assets/js/main.js?v={{ range(1, 99999) | random }}"></script>
+    <script>
+        // Global persistence check for icons
+        document.addEventListener('DOMContentLoaded', () => {
+            if (window.lucide) {
+                lucide.createIcons();
+            }
+        });
+        // Extra check for late rendering
+        window.addEventListener('load', () => {
+            if (window.lucide) {
+                lucide.createIcons();
+            }
+        });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+
+</html>

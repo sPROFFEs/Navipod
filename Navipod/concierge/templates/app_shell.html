@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- This container will be populated by app.js loadView('home') -->
+<div class="empty-state">
+    <i data-lucide="loader-2" style="animation: spin 1s linear infinite;"></i>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // Trigger the specific view for this page (SPA root)
+        loadView('home');
+    });
+</script>
+{% endblock %}
