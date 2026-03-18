@@ -93,7 +93,7 @@ This is the easiest path for a first deployment.
 ### 1. Clone the repository
 
 ```bash
-git clone <your-repository-url>
+git clone https://github.com/sPROFFEs/Navipod
 cd Navipod
 cd Navipod
 ```
