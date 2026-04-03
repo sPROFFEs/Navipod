@@ -8,3 +8,57 @@
     transform: translateY(-4px);
     background: rgba(255, 255, 255, 0.1);
 }
+
+@media (max-width: 768px) {
+    .playlist-actions {
+        display: flex;
+        flex-wrap: nowrap;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .playlist-actions::-webkit-scrollbar {
+        display: none;
+    }
+
+    .playlist-action-btn {
+        width: 48px;
+        height: 48px;
+        min-width: 48px;
+        padding: 0 !important;
+        border-radius: 14px !important;
+        justify-content: center;
+        flex: 0 0 48px;
+        gap: 0 !important;
+        font-size: 0 !important;
+        line-height: 0 !important;
+    }
+
+    .playlist-action-btn i,
+    .playlist-action-btn svg {
+        width: 20px;
+        height: 20px;
+    }
+
+    .playlist-btn-label {
+        display: none !important;
+    }
+}
+
+@media (max-width: 420px) {
+    .playlist-actions {
+        gap: 6px;
+    }
+
+    .playlist-action-btn {
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        flex-basis: 44px;
+        border-radius: 12px !important;
+    }
+}

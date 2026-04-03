@@ -14,6 +14,10 @@ export async function renderPlaylist(container, playlistId) {
     let data = {};
     try {
         data = await (await fetch(`${state.API}/playlists/${playlistId}`)).json();
+        if (data?.error) {
+            container.innerHTML = `<div class="empty-state glass-panel"><p>${ui.escHtml(data.error)}</p></div>`;
+            return;
+        }
         const tracks = (data.tracks || []).map(t => ({
             ...t,
             db_id: t.track_id || t.id,
@@ -25,6 +29,43 @@ export async function renderPlaylist(container, playlistId) {
     const thumb = data.thumbnail || '/static/img/default_cover.png';
     const hasThumb = data.thumbnail && !data.thumbnail.includes('default');
     const trackCount = data.tracks?.length || 0;
+    const isPublic = Boolean(data.is_public);
+    const isOwner = Boolean(data.is_owner);
+    const isEditable = Boolean(data.is_editable);
+    const isSyncedCopy = Boolean(data.source_playlist_id);
+    const sourcePlaylistAvailable = Boolean(data.source_playlist_exists && data.source_playlist_public);
+    const ownerLabel = data.owner_username ? `By ${ui.escHtml(data.owner_username)}` : '';
+    const sourceBadge = isSyncedCopy ? '<span class="source-badge musicbrainz" style="margin-left:8px;">Synced copy</span>' : '';
+    const visibilityBadge = isPublic ? '<span class="source-badge spotify" style="margin-left:8px;">Public</span>' : '<span class="source-badge local" style="margin-left:8px;">Private</span>';
+    const ownerControls = isOwner && isEditable ? `
+        <button class="icon-btn-sm" onclick="showEditPlaylistModal(${playlistId}, '${ui.escHtml(data.name || 'Playlist')}')" title="Edit Name">
+            <i data-lucide="pencil" width="16"></i>
+        </button>` : '';
+    const publishButton = isOwner && !isSyncedCopy ? `
+        <button onclick="togglePlaylistPublic(${playlistId}, ${isPublic ? 'false' : 'true'})" class="btn-secondary-lg playlist-action-btn" title="${isPublic ? 'Make Private' : 'Make Public'}" aria-label="${isPublic ? 'Make Private' : 'Make Public'}">
+            <i data-lucide="${isPublic ? 'lock' : 'globe'}" width="20" height="20"></i>
+            <span class="playlist-btn-label">${isPublic ? 'Make Private' : 'Make Public'}</span>
+        </button>` : '';
+    const copyButton = !isOwner && isPublic ? `
+        <button onclick="copyPublicPlaylist(${playlistId})" class="btn-secondary-lg playlist-action-btn" title="Create / Sync Copy" aria-label="Create / Sync Copy">
+            <i data-lucide="copy-plus" width="20" height="20"></i>
+            <span class="playlist-btn-label">Create / Sync Copy</span>
+        </button>` : '';
+    const syncButton = isOwner && isSyncedCopy ? `
+        ${sourcePlaylistAvailable ? `
+        <button onclick="copyPublicPlaylist(${data.source_playlist_id})" class="btn-secondary-lg playlist-action-btn" title="Sync from Source" aria-label="Sync from Source">
+            <i data-lucide="refresh-cw" width="20" height="20"></i>
+            <span class="playlist-btn-label">Sync from Source</span>
+        </button>` : `
+        <button class="btn-secondary-lg playlist-action-btn" disabled style="opacity:0.55; cursor:not-allowed;" title="Source is private" aria-label="Source is private">
+            <i data-lucide="lock" width="20" height="20"></i>
+            <span class="playlist-btn-label">Source is private</span>
+        </button>`}` : '';
+    const deleteButton = isOwner ? `
+        <button onclick="event.stopPropagation(); showDeletePlaylistModal(${playlistId}, '${ui.escHtml(data.name || 'Playlist')}')" class="btn-danger-outline playlist-action-btn" title="Delete" aria-label="Delete">
+            <i data-lucide="trash-2" width="16"></i>
+            <span class="playlist-btn-label">Delete</span>
+        </button>` : '';
 
     container.innerHTML = `
         <div class="playlist-header-section">
@@ -35,29 +76,53 @@ export async function renderPlaylist(container, playlistId) {
                 <p class="playlist-type">Playlist</p>
                 <div class="playlist-title-row">
                     <h1 class="playlist-title" id="playlist-title-${playlistId}">${ui.escHtml(data.name || 'Playlist')}</h1>
-                    <button class="icon-btn-sm" onclick="showEditPlaylistModal(${playlistId}, '${ui.escHtml(data.name || 'Playlist')}')" title="Edit Name">
-                        <i data-lucide="pencil" width="16"></i>
-                    </button>
+                    ${ownerControls}
                 </div>
-                <p class="playlist-stats">${trackCount} songs</p>
+                <p class="playlist-stats">${trackCount} songs ${ownerLabel}${visibilityBadge}${sourceBadge}</p>
                 <div class="playlist-actions">
                     ${trackCount > 0 ? `
-                    <button onclick="playPlaylistInOrder()" class="btn-primary-lg">
-                        <i data-lucide="play" width="20" height="20"></i> Play
+                    <button onclick="playPlaylistInOrder()" class="btn-primary-lg playlist-action-btn" title="Play" aria-label="Play">
+                        <i data-lucide="play" width="20" height="20"></i>
+                        <span class="playlist-btn-label">Play</span>
                     </button>
-                    <button onclick="playPlaylistShuffle()" class="btn-secondary-lg">
-                        <i data-lucide="shuffle" width="20" height="20"></i> Shuffle
+                    <button onclick="playPlaylistShuffle()" class="btn-secondary-lg playlist-action-btn" title="Shuffle" aria-label="Shuffle">
+                        <i data-lucide="shuffle" width="20" height="20"></i>
+                        <span class="playlist-btn-label">Shuffle</span>
                     </button>
                     ` : ''}
-                    <button onclick="event.stopPropagation(); showDeletePlaylistModal(${playlistId}, '${ui.escHtml(data.name || 'Playlist')}')" class="btn-danger-outline">
-                        <i data-lucide="trash-2" width="16"></i> Delete
-                    </button>
+                    ${publishButton}
+                    ${copyButton}
+                    ${syncButton}
+                    ${deleteButton}
                 </div>
             </div>
         </div>
         ${trackCount > 0
-            ? `<div class="track-list">${state.currentViewList.map((t, i) => window.createTrackRow ? window.createTrackRow({ ...t, is_local: true, source: 'local' }, i, playlistId) : '').join('')}</div>`
+            ? `<div class="track-list">${state.currentViewList.map((t, i) => window.createTrackRow ? window.createTrackRow({ ...t, is_local: true, source: 'local' }, i, isEditable ? playlistId : null) : '').join('')}</div>`
             : '<div class="empty-state glass-panel"><p>This playlist is empty.</p></div>'}`;
+    lucide.createIcons();
+}
+
+
+export async function renderPublicPlaylists(container) {
+    let publicPlaylists = [];
+    try {
+        const res = await fetch(`${state.API}/public/playlists`);
+        publicPlaylists = await res.json();
+        if (!res.ok) throw new Error(publicPlaylists.error || `HTTP ${res.status}`);
+    } catch (e) {
+        container.innerHTML = `<div class="empty-state glass-panel"><p>Failed to load public playlists.</p></div>`;
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="hero-section">
+            <h1 class="hero-greeting">Public Playlists</h1>
+            <p class="playlist-stats">Browse read-only playlists shared by other users and create your own synced copy.</p>
+        </div>
+        ${publicPlaylists.length > 0
+            ? `<div class="grid-shelf">${publicPlaylists.map(window.createPlaylistCard).join('')}</div>`
+            : '<div class="empty-state glass-panel"><p>No public playlists yet.</p></div>'}`;
     lucide.createIcons();
 }
 
@@ -94,8 +159,9 @@ export function playPlaylistShuffle() {
 // === MODALS ===
 
 export function showAddToPlaylistModal(trackId) {
-    const playlistItems = state.userPlaylists.length > 0
-        ? state.userPlaylists.map(p => {
+    const editablePlaylists = state.userPlaylists.filter(p => p.is_editable !== false);
+    const playlistItems = editablePlaylists.length > 0
+        ? editablePlaylists.map(p => {
             const thumb = p.thumbnail || '/static/img/default_cover.png';
             const trackCount = p.track_count || 0;
             return `
@@ -110,7 +176,7 @@ export function showAddToPlaylistModal(trackId) {
                     <i data-lucide="plus-circle" class="modal-playlist-add-icon"></i>
                 </div>`;
         }).join('')
-        : '<p class="modal-empty">No playlists yet. Create one below!</p>';
+        : '<p class="modal-empty">No editable playlists available. Create one below!</p>';
 
     const html = `<div class="modal-overlay" onclick="closeModal()">
         <div class="modal modal-playlist" onclick="event.stopPropagation()">
@@ -301,6 +367,46 @@ export async function editPlaylistName(id, newName) {
     } catch (e) {
         console.error(e);
         ui.showToast("Error renaming playlist", "error");
+    }
+}
+
+export async function togglePlaylistPublic(playlistId, shouldBePublic) {
+    try {
+        const res = await fetch(`${state.API}/playlists/${playlistId}/public`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_public: Boolean(shouldBePublic) })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            ui.showToast(data.error || "Failed to update playlist visibility", "error");
+            return;
+        }
+
+        await loadUserData();
+        if (window.loadView) window.loadView('playlist', playlistId);
+        ui.showToast(data.is_public ? "Playlist is now public" : "Playlist is now private", "success");
+    } catch (e) {
+        ui.showToast("Failed to update playlist visibility", "error");
+    }
+}
+
+export async function copyPublicPlaylist(sourcePlaylistId) {
+    try {
+        const res = await fetch(`${state.API}/playlists/${sourcePlaylistId}/copy`, {
+            method: 'POST'
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            ui.showToast(data.error || "Failed to sync playlist copy", "error");
+            return;
+        }
+
+        await loadUserData();
+        if (window.loadView) window.loadView('playlist', data.id);
+        ui.showToast(data.status === 'copied' ? "Playlist copied to your library" : "Playlist copy synced", "success");
+    } catch (e) {
+        ui.showToast("Failed to sync playlist copy", "error");
     }
 }
 

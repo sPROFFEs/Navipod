@@ -82,10 +82,22 @@ def migrate():
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
                 owner_id INTEGER NOT NULL,
+                is_public INTEGER NOT NULL DEFAULT 0,
+                source_playlist_id INTEGER,
                 m3u_path TEXT,
                 FOREIGN KEY (owner_id) REFERENCES users(id)
             )
         """)
+
+        cursor.execute("PRAGMA table_info(playlists)")
+        playlist_columns = [column[1] for column in cursor.fetchall()]
+        if "is_public" not in playlist_columns:
+            cursor.execute("ALTER TABLE playlists ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0")
+            print("Successfully added 'is_public' to playlists.")
+        if "source_playlist_id" not in playlist_columns:
+            cursor.execute("ALTER TABLE playlists ADD COLUMN source_playlist_id INTEGER")
+            print("Successfully added 'source_playlist_id' to playlists.")
+
         print("playlists table ready.")
     except sqlite3.OperationalError as e:
         print(f"Error creating playlists table: {e}")

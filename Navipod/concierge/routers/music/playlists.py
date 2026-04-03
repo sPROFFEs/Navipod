@@ -35,6 +35,93 @@ class AddToPlaylistRequest(PydanticBaseModel):
     track_id: int
 
 
+class PublishPlaylistRequest(PydanticBaseModel):
+    is_public: bool
+
+
+SYSTEM_PLAYLIST_NAMES = {"music", "pool", "users", "podcasts", "downloads"}
+
+
+# --- PLAYLIST ACCESS HELPERS ---
+
+def get_playlist_or_404(db: Session, playlist_id: int, user):
+    playlist = db.query(database.Playlist).filter(database.Playlist.id == playlist_id).first()
+    if not playlist:
+        return None
+
+    is_owner = playlist.owner_id == user.id
+    if not is_owner and not playlist.is_public:
+        return None
+    return playlist
+
+
+def playlist_is_editable_by_user(playlist, user) -> bool:
+    return playlist.owner_id == user.id and playlist.source_playlist_id is None
+
+
+def get_playlist_thumbnail(db: Session, playlist_id: int) -> str:
+    first_item = db.query(database.PlaylistItem).filter(
+        database.PlaylistItem.playlist_id == playlist_id
+    ).order_by(database.PlaylistItem.position).first()
+    if first_item and first_item.track:
+        return f"/api/cover/{first_item.track.id}"
+    return "/static/img/default_cover.png"
+
+
+def serialize_playlist_summary(db: Session, playlist, viewer_id: int | None = None):
+    owner_name = playlist.owner.username if playlist.owner else "Unknown"
+    source_owner_name = owner_name
+    if playlist.source_playlist_id:
+        source_playlist = db.query(database.Playlist).filter(
+            database.Playlist.id == playlist.source_playlist_id
+        ).first()
+        if source_playlist and source_playlist.owner:
+            source_owner_name = source_playlist.owner.username
+
+    return {
+        "id": playlist.id,
+        "name": playlist.name,
+        "track_count": len(playlist.items),
+        "thumbnail": get_playlist_thumbnail(db, playlist.id),
+        "is_public": bool(playlist.is_public),
+        "source_playlist_id": playlist.source_playlist_id,
+        "owner_username": owner_name,
+        "source_owner_username": source_owner_name,
+        "is_owner": viewer_id == playlist.owner_id if viewer_id is not None else False,
+        "is_editable": playlist.source_playlist_id is None and viewer_id == playlist.owner_id if viewer_id is not None else False,
+    }
+
+
+def sync_playlist_copy_contents(db: Session, source_playlist, target_playlist):
+    db.query(database.PlaylistItem).filter(
+        database.PlaylistItem.playlist_id == target_playlist.id
+    ).delete(synchronize_session=False)
+
+    for source_item in sorted(source_playlist.items, key=lambda x: x.position):
+        db.add(database.PlaylistItem(
+            playlist_id=target_playlist.id,
+            track_id=source_item.track_id,
+            position=source_item.position
+        ))
+    db.commit()
+    db.refresh(target_playlist)
+
+
+def build_unique_copy_name(db: Session, user_id: int, base_name: str, exclude_playlist_id: int | None = None) -> str:
+    candidate = base_name.strip() or "Public Playlist"
+    query = db.query(database.Playlist.name).filter(database.Playlist.owner_id == user_id)
+    if exclude_playlist_id is not None:
+        query = query.filter(database.Playlist.id != exclude_playlist_id)
+    existing_names = {row[0] for row in query.all() if row[0]}
+    if candidate not in existing_names:
+        return candidate
+
+    suffix = 2
+    while f"{candidate} ({suffix})" in existing_names:
+        suffix += 1
+    return f"{candidate} ({suffix})"
+
+
 # --- M3U GENERATION ---
 
 def generate_m3u_for_playlist(db: Session, playlist, username: str):
@@ -171,26 +258,32 @@ async def list_playlists(request: Request, db: Session = Depends(get_db)):
     
     playlists = db.query(database.Playlist).filter(database.Playlist.owner_id == user.id).all()
     
-    # Filter out system folders
-    filtered = []
-    system_names = ["music", "pool", "users", "podcasts", "downloads"]
-    for p in playlists:
-        if p.name.lower() not in system_names:
-            thumbnail = "/static/img/default_cover.png"
-            first_item = db.query(database.PlaylistItem).filter(
-                database.PlaylistItem.playlist_id == p.id
-            ).order_by(database.PlaylistItem.position).first()
-            if first_item and first_item.track:
-                thumbnail = f"/api/cover/{first_item.track.id}"
+    filtered = [
+        serialize_playlist_summary(db, p, viewer_id=user.id)
+        for p in playlists
+        if p.name.lower() not in SYSTEM_PLAYLIST_NAMES
+    ]
 
-            filtered.append({
-                "id": p.id,
-                "name": p.name,
-                "track_count": len(p.items),
-                "thumbnail": thumbnail
-            })
-            
     return JSONResponse(filtered)
+
+
+@router.get("/api/public/playlists")
+async def list_public_playlists(request: Request, db: Session = Depends(get_db)):
+    """List all public playlists from all users."""
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    playlists = db.query(database.Playlist).filter(
+        database.Playlist.is_public == True
+    ).order_by(database.Playlist.id.desc()).all()
+
+    response = [
+        serialize_playlist_summary(db, p, viewer_id=user.id)
+        for p in playlists
+        if p.name.lower() not in SYSTEM_PLAYLIST_NAMES
+    ]
+    return JSONResponse(response)
 
 
 @router.post("/api/playlists")
@@ -214,6 +307,103 @@ async def create_playlist(req: CreatePlaylistRequest, request: Request, db: Sess
     return JSONResponse({"id": playlist.id, "name": playlist.name})
 
 
+@router.post("/api/playlists/{playlist_id}/public")
+async def set_playlist_public(playlist_id: int, payload: PublishPlaylistRequest, request: Request, db: Session = Depends(get_db)):
+    """Publish or unpublish a playlist owned by the current user."""
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    playlist = db.query(database.Playlist).filter(
+        database.Playlist.id == playlist_id,
+        database.Playlist.owner_id == user.id
+    ).first()
+    if not playlist:
+        return JSONResponse({"error": "Playlist not found"}, status_code=404)
+
+    if playlist.source_playlist_id is not None:
+        return JSONResponse({"error": "Synced copies cannot be published directly."}, status_code=403)
+
+    playlist.is_public = bool(payload.is_public)
+    db.commit()
+    return JSONResponse({
+        "id": playlist.id,
+        "is_public": bool(playlist.is_public)
+    })
+
+
+@router.post("/api/playlists/{playlist_id}/copy")
+async def copy_public_playlist(playlist_id: int, request: Request, db: Session = Depends(get_db)):
+    """Create or refresh a local synced copy of a public playlist."""
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    source_playlist = db.query(database.Playlist).filter(
+        database.Playlist.id == playlist_id,
+        database.Playlist.is_public == True
+    ).first()
+    if not source_playlist:
+        return JSONResponse({"error": "Public playlist not found"}, status_code=404)
+
+    if source_playlist.owner_id == user.id and source_playlist.source_playlist_id is None:
+        return JSONResponse({"error": "This is already your own playlist."}, status_code=400)
+
+    local_copy = db.query(database.Playlist).filter(
+        database.Playlist.owner_id == user.id,
+        database.Playlist.source_playlist_id == source_playlist.id
+    ).first()
+    source_owner = source_playlist.owner.username if source_playlist.owner else "Unknown"
+    canonical_name = f"{source_playlist.name} - {source_owner}"
+
+    action = "synced"
+    if not local_copy:
+        copy_name = build_unique_copy_name(
+            db,
+            user.id,
+            canonical_name
+        )
+        local_copy = database.Playlist(
+            name=copy_name,
+            owner_id=user.id,
+            source_playlist_id=source_playlist.id,
+            is_public=False
+        )
+        db.add(local_copy)
+        db.commit()
+        db.refresh(local_copy)
+        action = "copied"
+    else:
+        next_name = build_unique_copy_name(
+            db,
+            user.id,
+            canonical_name,
+            exclude_playlist_id=local_copy.id
+        )
+        if local_copy.name != next_name:
+            old_name = local_copy.name
+            if local_copy.m3u_path and os.path.exists(local_copy.m3u_path):
+                try:
+                    os.remove(local_copy.m3u_path)
+                except Exception as e:
+                    print(f"[PLAYLIST-SYNC] Error removing old copy file: {e}")
+            await clean_remote_playlist(user.username, old_name)
+            local_copy.name = next_name
+            db.commit()
+            db.refresh(local_copy)
+
+    sync_playlist_copy_contents(db, source_playlist, local_copy)
+    generate_m3u_for_playlist(db, local_copy, user.username)
+    schedule_playlist_sync(db, user, force_now=True)
+
+    return JSONResponse({
+        "status": action,
+        "id": local_copy.id,
+        "name": local_copy.name,
+        "track_count": len(local_copy.items)
+    })
+
+
 @router.get("/api/playlists/{playlist_id}")
 async def get_playlist(playlist_id: int, request: Request, db: Session = Depends(get_db)):
     """Get playlist with tracks"""
@@ -221,14 +411,20 @@ async def get_playlist(playlist_id: int, request: Request, db: Session = Depends
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
     
-    playlist = db.query(database.Playlist).filter(
-        database.Playlist.id == playlist_id,
-        database.Playlist.owner_id == user.id
-    ).first()
-    
+    playlist = get_playlist_or_404(db, playlist_id, user)
+
     if not playlist:
         return JSONResponse({"error": "Playlist not found"}, status_code=404)
-    
+
+    source_playlist_exists = False
+    source_playlist_public = False
+    if playlist.source_playlist_id:
+        source_playlist = db.query(database.Playlist).filter(
+            database.Playlist.id == playlist.source_playlist_id
+        ).first()
+        source_playlist_exists = source_playlist is not None
+        source_playlist_public = bool(source_playlist and source_playlist.is_public)
+
     thumbnail = "/static/img/default_cover.png"
     tracks = []
     for item in sorted(playlist.items, key=lambda x: x.position):
@@ -249,7 +445,15 @@ async def get_playlist(playlist_id: int, request: Request, db: Session = Depends
         "id": playlist.id,
         "name": playlist.name,
         "tracks": tracks,
-        "thumbnail": thumbnail
+        "thumbnail": thumbnail,
+        "owner_username": playlist.owner.username if playlist.owner else "Unknown",
+        "is_public": bool(playlist.is_public),
+        "source_playlist_id": playlist.source_playlist_id,
+        "source_playlist_exists": source_playlist_exists,
+        "source_playlist_public": source_playlist_public,
+        "is_owner": playlist.owner_id == user.id,
+        "is_editable": playlist_is_editable_by_user(playlist, user),
+        "is_read_only": not playlist_is_editable_by_user(playlist, user),
     })
 
 
@@ -267,6 +471,9 @@ async def add_to_playlist(playlist_id: int, req: AddToPlaylistRequest, request: 
     
     if not playlist:
         return JSONResponse({"error": "Playlist not found"}, status_code=404)
+
+    if not playlist_is_editable_by_user(playlist, user):
+        return JSONResponse({"error": "This playlist is read-only. Sync it from the public source instead."}, status_code=403)
     
     # Check if track exists
     track = db.query(database.Track).filter(database.Track.id == req.track_id).first()
@@ -316,6 +523,9 @@ async def remove_from_playlist(playlist_id: int, track_id: int, request: Request
     
     if not playlist:
         return JSONResponse({"error": "Playlist not found"}, status_code=404)
+
+    if not playlist_is_editable_by_user(playlist, user):
+        return JSONResponse({"error": "This playlist is read-only. Sync it from the public source instead."}, status_code=403)
     
     item = db.query(database.PlaylistItem).filter(
         database.PlaylistItem.playlist_id == playlist_id,
@@ -383,6 +593,9 @@ async def update_playlist(playlist_id: int, payload: PlaylistUpdateRequest, requ
     
     if not playlist:
         return JSONResponse({"error": "Playlist not found"}, status_code=404)
+
+    if not playlist_is_editable_by_user(playlist, user):
+        return JSONResponse({"error": "Synced copies cannot be renamed manually."}, status_code=403)
     
     old_name = playlist.name
     

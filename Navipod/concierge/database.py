@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, Boolean, DateTime, Text
+from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, Boolean, DateTime, Text, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.sql import func
@@ -136,6 +136,8 @@ class Playlist(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String)
     owner_id = Column(Integer, ForeignKey("users.id"))
+    is_public = Column(Boolean, default=False, nullable=False)
+    source_playlist_id = Column(Integer, nullable=True, index=True)
     # Ruta física donde guardaremos el .m3u para que Navidrome lo lea (calculado dinámicamente o persistido)
     m3u_path = Column(String, nullable=True) 
     
@@ -216,3 +218,18 @@ class UserFavorite(Base):
 
 # Crea las tablas si no existen
 Base.metadata.create_all(bind=engine)
+
+
+def _ensure_playlist_schema():
+    with engine.begin() as conn:
+        columns = {
+            row[1]
+            for row in conn.execute(text("PRAGMA table_info(playlists)")).fetchall()
+        }
+        if "is_public" not in columns:
+            conn.execute(text("ALTER TABLE playlists ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0"))
+        if "source_playlist_id" not in columns:
+            conn.execute(text("ALTER TABLE playlists ADD COLUMN source_playlist_id INTEGER"))
+
+
+_ensure_playlist_schema()

@@ -40,6 +40,7 @@ export async function loadView(view, param = null) {
 
         if (view === 'home') await renderHome(container);
         else if (view === 'search') renderSearch(container);
+        else if (view === 'public') await playlists.renderPublicPlaylists(container);
         else if (view === 'radio') await radio.renderRadio(container);
         else if (view === 'favorites') await favorites.renderFavorites(container);
         else if (view === 'playlist') await playlists.renderPlaylist(container, param);
@@ -207,13 +208,15 @@ export function createCard(item) {
 export function createPlaylistCard(pl) {
     const thumb = pl.thumbnail || '/static/img/default_cover.png';
     const hasThumb = pl.thumbnail && !pl.thumbnail.includes('default');
+    const ownerLine = pl.owner_username && !pl.is_owner ? `By ${ui.escHtml(pl.owner_username)} - ` : '';
+    const visibilityLabel = pl.source_playlist_id ? 'Synced copy' : (pl.is_public ? 'Public' : 'Private');
 
     return `<div class="card glass-hover" onclick="loadView('playlist', ${pl.id})">
         <div class="card-img-container playlist-card-bg">
             ${hasThumb ? `<img src="${thumb}" class="card-img" onerror="this.src='/static/img/default_cover.png'">` : `<i data-lucide="list-music" class="playlist-icon-large"></i>`}
         </div>
         <div class="card-title">${ui.escHtml(pl.name)}</div>
-        <div class="card-subtitle">${pl.track_count} tracks</div>
+        <div class="card-subtitle">${ownerLine}${pl.track_count} tracks - ${visibilityLabel}</div>
     </div>`;
 }
 
@@ -399,12 +402,13 @@ export function renderSidebarPlaylists() {
         container.innerHTML = state.userPlaylists.map(pl => {
             const thumb = pl.thumbnail || '/static/img/default_cover.png';
             const hasThumb = pl.thumbnail && !pl.thumbnail.includes('default');
+            const playlistIcon = pl.source_playlist_id ? 'refresh-cw' : (pl.is_public ? 'globe' : 'list-music');
             return `
             <div class="playlist-item" onclick="loadView('playlist', ${pl.id})">
                 <div class="sidebar-playlist-thumb">
                     ${hasThumb
                     ? `<img src="${thumb}" onerror="this.src='/static/img/default_cover.png'">`
-                    : '<i data-lucide="list-music"></i>'}
+                    : `<i data-lucide="${playlistIcon}"></i>`}
                 </div>
                 <span>${ui.escHtml(pl.name)}</span>
             </div>
