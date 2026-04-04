@@ -976,6 +976,32 @@ body {
         right: 0;
     }
 
+    .player-left {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+    }
+
+    .player-left .track-info {
+        flex: 1 1 auto;
+        min-width: 0;
+        margin-right: 0;
+    }
+
+    #player-like-btn,
+    #player-add-btn {
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 36px;
+        padding: 0;
+    }
+
     .player-right {
         display: none;
     }
