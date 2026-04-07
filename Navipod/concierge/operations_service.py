@@ -133,12 +133,16 @@ def get_build_info():
     commit = os.getenv("APP_COMMIT") or _run_git(["rev-parse", "--short", "HEAD"], fallback="unknown")
     branch = os.getenv("APP_CHANNEL") or _run_git(["branch", "--show-current"], fallback=settings.UPDATE_SOURCE_BRANCH)
     build_date = os.getenv("APP_BUILD_DATE") or _run_git(["log", "-1", "--format=%cI"], fallback="unknown")
+    revision = os.getenv("APP_REVISION") or _run_git(["rev-list", "--count", "HEAD"], fallback="unknown")
+    version = f"{branch}.r{revision}" if revision != "unknown" else branch
     return {
         "channel": branch,
         "commit": commit,
+        "revision": revision,
+        "version": version,
         "build_date": build_date,
         "repo_url": settings.UPDATE_SOURCE_REPO_URL,
-        "display_version": f"{branch}@{commit}" if commit != "unknown" else branch,
+        "display_version": f"{version} ({commit})" if commit != "unknown" else version,
     }
 
 

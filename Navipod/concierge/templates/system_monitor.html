@@ -1,450 +1,712 @@
 {% extends "base.html" %}
 {% block title %}{{ _("monitor.title") }}{% endblock %}
 {% block content %}
+<style>
+.system-monitor {
+    --monitor-bg: #111216;
+    --monitor-surface: #17191f;
+    --monitor-surface-2: #1d2027;
+    --monitor-border: #2a2e38;
+    --monitor-text: #f3f4f6;
+    --monitor-muted: #9aa3b2;
+    --monitor-green: #2fbf71;
+    --monitor-amber: #d97706;
+    --monitor-red: #dc2626;
+    --monitor-blue: #3b82f6;
+    display: grid;
+    gap: 24px;
+}
+.monitor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.monitor-header h1 {
+    margin: 0;
+    font-size: 2rem;
+    line-height: 1.1;
+    color: var(--monitor-text);
+}
+.monitor-header p {
+    margin: 8px 0 0;
+    color: var(--monitor-muted);
+    max-width: 820px;
+}
+.monitor-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.monitor-button,
+.monitor-button:visited,
+.monitor-button button {
+    font: inherit;
+}
+.monitor-button,
+.monitor-form button,
+.monitor-primary,
+.monitor-secondary,
+.monitor-danger,
+.monitor-warning {
+    border: 1px solid var(--monitor-border);
+    background: var(--monitor-surface);
+    color: var(--monitor-text);
+    border-radius: 10px;
+    min-height: 42px;
+    padding: 0 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-decoration: none;
+    cursor: pointer;
+    transition: border-color .15s ease, background-color .15s ease;
+}
+.monitor-primary { background: #1e293b; border-color: #334155; }
+.monitor-warning { background: #3b2413; border-color: #7c3d12; }
+.monitor-danger { background: #341717; border-color: #7f1d1d; }
+.monitor-button:hover,
+.monitor-form button:hover,
+.monitor-primary:hover,
+.monitor-secondary:hover,
+.monitor-danger:hover,
+.monitor-warning:hover { border-color: #4b5563; }
+.monitor-toast {
+    border: 1px solid var(--monitor-border);
+    background: var(--monitor-surface);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.monitor-toast.success { border-color: rgba(47, 191, 113, 0.45); }
+.monitor-toast.error { border-color: rgba(220, 38, 38, 0.45); }
+.monitor-grid {
+    display: grid;
+    gap: 16px;
+}
+.monitor-grid.stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.monitor-grid.columns-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.monitor-grid.columns-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.monitor-card,
+.monitor-panel {
+    background: var(--monitor-surface);
+    border: 1px solid var(--monitor-border);
+    border-radius: 12px;
+}
+.monitor-card {
+    padding: 18px;
+    display: grid;
+    gap: 14px;
+}
+.monitor-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+.monitor-card-label {
+    color: var(--monitor-muted);
+    font-size: .88rem;
+}
+.monitor-card-value {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    color: var(--monitor-text);
+}
+.monitor-card-value strong {
+    font-size: 2.5rem;
+    line-height: 1;
+    font-weight: 800;
+}
+.monitor-card-value span {
+    color: var(--monitor-muted);
+    font-size: 1rem;
+}
+.monitor-progress {
+    height: 8px;
+    border-radius: 999px;
+    background: #0f1115;
+    overflow: hidden;
+}
+.monitor-progress > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--monitor-blue);
+    transition: width .2s ease;
+}
+.monitor-panel-header {
+    padding: 18px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    border-bottom: 1px solid var(--monitor-border);
+    flex-wrap: wrap;
+}
+.monitor-panel-header h2 {
+    margin: 0;
+    font-size: 1.15rem;
+    color: var(--monitor-text);
+}
+.monitor-panel-header p {
+    margin: 6px 0 0;
+    color: var(--monitor-muted);
+    max-width: 760px;
+}
+.monitor-panel-body {
+    padding: 20px;
+    display: grid;
+    gap: 18px;
+}
+.monitor-kv-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 14px;
+}
+.monitor-kv {
+    background: var(--monitor-surface-2);
+    border: 1px solid var(--monitor-border);
+    border-radius: 10px;
+    padding: 14px;
+    display: grid;
+    gap: 6px;
+}
+.monitor-kv-label {
+    color: var(--monitor-muted);
+    font-size: .82rem;
+}
+.monitor-kv-value {
+    color: var(--monitor-text);
+    word-break: break-word;
+}
+.monitor-kv-value code,
+.monitor-commit-list code,
+.monitor-jobs code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .92rem;
+}
+.monitor-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    align-items: end;
+}
+.monitor-field {
+    display: grid;
+    gap: 8px;
+}
+.monitor-field label {
+    color: var(--monitor-muted);
+    font-size: .82rem;
+}
+.monitor-input,
+.monitor-select {
+    width: 100%;
+    min-height: 42px;
+    padding: 0 12px;
+    border-radius: 10px;
+    border: 1px solid var(--monitor-border);
+    background: #0f1115;
+    color: var(--monitor-text);
+    outline: none;
+}
+.monitor-select option,
+.monitor-select optgroup {
+    background: #0f1115;
+    color: var(--monitor-text);
+}
+.monitor-inline-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 42px;
+    color: var(--monitor-text);
+}
+.monitor-backup-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+.monitor-slot-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+}
+.monitor-slot-name {
+    color: var(--monitor-muted);
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+}
+.monitor-commit-list,
+.monitor-jobs {
+    display: grid;
+    gap: 10px;
+}
+.monitor-commit-list {
+    max-height: 220px;
+    overflow: auto;
+}
+.monitor-jobs {
+    max-height: 420px;
+    overflow: auto;
+}
+.monitor-job {
+    background: var(--monitor-surface-2);
+    border: 1px solid var(--monitor-border);
+    border-radius: 10px;
+    padding: 14px;
+    display: grid;
+    gap: 8px;
+}
+.monitor-job-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+}
+.monitor-job-meta {
+    color: var(--monitor-muted);
+    font-size: .82rem;
+}
+.monitor-status {
+    font-size: .8rem;
+    text-transform: uppercase;
+    color: var(--monitor-muted);
+}
+.monitor-status.ok { color: var(--monitor-green); }
+.monitor-status.warn { color: var(--monitor-amber); }
+.monitor-status.error { color: var(--monitor-red); }
+.monitor-empty {
+    color: var(--monitor-muted);
+}
+.monitor-link {
+    color: #9ec3ff;
+    text-decoration: none;
+}
+.monitor-link:hover { text-decoration: underline; }
+.monitor-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 2000;
+}
+.monitor-modal-backdrop.show { display: flex; }
+.monitor-modal {
+    width: min(100%, 460px);
+    background: #12141a;
+    border: 1px solid #2b313d;
+    border-radius: 12px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.35);
+}
+.monitor-modal-body {
+    padding: 20px;
+    display: grid;
+    gap: 10px;
+}
+.monitor-modal-body h3 {
+    margin: 0;
+    color: var(--monitor-text);
+    font-size: 1.1rem;
+}
+.monitor-modal-body p {
+    margin: 0;
+    color: var(--monitor-muted);
+    line-height: 1.45;
+}
+.monitor-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 0 20px 20px;
+}
+@media (max-width: 980px) {
+    .monitor-grid.stats,
+    .monitor-grid.columns-2,
+    .monitor-grid.columns-3,
+    .monitor-backup-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+    .system-monitor { gap: 18px; }
+    .monitor-header h1 { font-size: 1.55rem; }
+    .monitor-panel-header,
+    .monitor-panel-body,
+    .monitor-card { padding: 16px; }
+    .monitor-actions,
+    .monitor-panel-header > div:last-child { width: 100%; }
+    .monitor-actions > *,
+    .monitor-panel-header > div:last-child > * { flex: 1 1 calc(50% - 8px); }
+    .monitor-form-grid { grid-template-columns: 1fr; }
+    .monitor-card-value strong { font-size: 2rem; }
+}
+</style>
 
-<div class="admin-container">
-    <div class="admin-header">
-        <div class="header-text">
-            <span class="admin-subtitle">{{ _("monitor.badge") }}</span>
-            <h1 class="admin-title">{{ _("monitor.header") }}</h1>
+<div class="admin-container system-monitor">
+    <section class="monitor-header">
+        <div>
+            <h1>{{ _("monitor.header") }}</h1>
+            <p>Operational status, backup control, and update management for the running instance.</p>
         </div>
-
-        <div class="action-group" style="display: flex; gap: 12px;">
-            <form action="/admin/system/purge-storage" method="post"
-                onsubmit="return confirm('{{ _('monitor.purge_confirm') }}')">
-                <button type="submit" class="btn-admin-action btn-admin-warning">
-                    <i data-lucide="trash-2"></i> <span>{{ _("monitor.purge_trash") }}</span>
+        <div class="monitor-actions">
+            <form action="/admin/system/purge-storage" method="post" class="monitor-form" data-confirm="{{ _('monitor.purge_confirm') }}" data-title="Purge storage residue">
+                <button type="submit" class="monitor-warning">
+                    <i data-lucide="trash-2"></i><span>{{ _("monitor.purge_trash") }}</span>
                 </button>
             </form>
-
-            <form action="/admin/system/flush-ram" method="post">
-                <button type="submit" class="btn-admin-action btn-admin-danger">
-                    <i data-lucide="zap"></i> <span>{{ _("monitor.flush_ram") }}</span>
+            <form action="/admin/system/flush-ram" method="post" class="monitor-form" data-confirm="Clear Linux page cache for the host? This may have little effect inside Docker depending on privileges." data-title="Flush RAM cache">
+                <button type="submit" class="monitor-danger">
+                    <i data-lucide="zap"></i><span>{{ _("monitor.flush_ram") }}</span>
                 </button>
             </form>
-
-            <a href="/admin" class="btn-admin-action btn-admin-glass">
-                <i data-lucide="users"></i> <span>{{ _("monitor.admin_link") }}</span>
+            <a href="/admin" class="monitor-button">
+                <i data-lucide="users"></i><span>{{ _("monitor.admin_link") }}</span>
             </a>
         </div>
-    </div>
+    </section>
 
     {% if request.query_params.msg %}
-    <div class="toast show success" style="position: static; transform: none; margin-bottom: 24px;">
-        <i data-lucide="check-circle" width="18" height="18"></i> {{ request.query_params.msg }}
+    <div class="monitor-toast success">
+        <i data-lucide="check-circle" width="18" height="18"></i>
+        <span>{{ request.query_params.msg }}</span>
     </div>
     {% endif %}
     {% if request.query_params.error %}
-    <div class="toast show error" style="position: static; transform: none; margin-bottom: 24px;">
-        <i data-lucide="alert-circle" width="18" height="18"></i> {{ request.query_params.error }}
+    <div class="monitor-toast error">
+        <i data-lucide="alert-circle" width="18" height="18"></i>
+        <span>{{ request.query_params.error }}</span>
     </div>
     {% endif %}
 
-    <!-- Resource Stats Grid -->
-    <div class="grid-shelf" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); margin-bottom: 32px;">
-        <!-- CPU Card -->
-        <div class="admin-section admin-section-padding"
-            style="display: flex; flex-direction: column; justify-content: space-between; min-height: 200px; position: relative; overflow: hidden; margin-bottom: 0;">
-            <div class="card-bg-glow"
-                style="position: absolute; top: -50px; right: -50px; width: 100px; height: 100px; background: var(--accent); opacity: 0.1; filter: blur(50px); border-radius: 50%;">
+    <section class="monitor-grid stats">
+        <article class="monitor-card">
+            <div class="monitor-card-header">
+                <div class="monitor-card-label">CPU load</div>
+                <i data-lucide="cpu"></i>
             </div>
+            <div class="monitor-card-value" id="cpu-value-wrap"><strong id="cpu-value">{{ stats.cpu_usage }}</strong><span>%</span></div>
+            <div class="monitor-card-label">Current host usage</div>
+            <div class="monitor-progress"><span id="cpu-bar" style="width: {{ stats.cpu_usage }}%; background: var(--monitor-green);"></span></div>
+        </article>
 
-            <div class="card-label"
-                style="font-size: 0.75rem; font-weight: 700; color: var(--text-sub); text-transform: uppercase; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
-                <div style="padding: 6px; background: rgba(29, 185, 84, 0.1); border-radius: 6px; display: flex;">
-                    <i data-lucide="cpu" style="color: var(--accent); width: 16px; height: 16px;"></i>
-                </div>
-                {{ _("monitor.cpu_load") }}
+        <article class="monitor-card">
+            <div class="monitor-card-header">
+                <div class="monitor-card-label">RAM usage</div>
+                <i data-lucide="layers"></i>
             </div>
+            <div class="monitor-card-value"><strong id="ram-value">{{ stats.ram.percent }}</strong><span>%</span></div>
+            <div class="monitor-card-label" id="ram-sub">{{ (stats.ram.used / 1024**3)|round(2) }}GB / {{ (stats.ram.total / 1024**3)|round(2) }}GB</div>
+            <div class="monitor-progress"><span id="ram-bar" style="width: {{ stats.ram.percent }}%; background: #8b5cf6;"></span></div>
+        </article>
 
-            <div>
-                <div class="value" id="cpu-value"
-                    style="font-size: 3.5rem; font-weight: 800; color: white; line-height: 1;">{{ stats.cpu_usage
-                    }}<span style="font-size: 1.5rem; color: #555;">%</span></div>
-                <div class="sub-value" style="font-size: 0.85rem; color: var(--text-sub); margin-top: 8px;">{{
-                    _("monitor.system_load") }}
-                </div>
+        <article class="monitor-card">
+            <div class="monitor-card-header">
+                <div class="monitor-card-label">Storage pool</div>
+                <i data-lucide="hard-drive"></i>
             </div>
+            <div class="monitor-card-value"><strong id="pool-value">{{ pool.percent }}</strong><span>%</span></div>
+            <div class="monitor-card-label" id="pool-sub">{{ pool.used }}GB used of {{ pool.limit }}GB</div>
+            <div class="monitor-progress"><span id="pool-bar" style="width: {{ pool.percent }}%; background: {% if pool.percent > 90 %}var(--monitor-red){% else %}var(--monitor-blue){% endif %};"></span></div>
+        </article>
+    </section>
 
-            <div class="progress-bg"
-                style="height: 4px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden; margin-top: 24px;">
-                <div class="progress-fill" id="cpu-bar"
-                    style="width: {{ stats.cpu_usage }}%; height: 100%; background: var(--accent); transition: width 1s ease-in-out;">
-                </div>
-            </div>
-        </div>
-
-        <!-- RAM Card -->
-        <div class="admin-section admin-section-padding"
-            style="display: flex; flex-direction: column; justify-content: space-between; min-height: 200px; position: relative; overflow: hidden; margin-bottom: 0;">
-            <div class="card-bg-glow"
-                style="position: absolute; top: -50px; right: -50px; width: 100px; height: 100px; background: #a855f7; opacity: 0.1; filter: blur(50px); border-radius: 50%;">
-            </div>
-
-            <div class="card-label"
-                style="font-size: 0.75rem; font-weight: 700; color: var(--text-sub); text-transform: uppercase; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
-                <div style="padding: 6px; background: rgba(168, 85, 247, 0.1); border-radius: 6px; display: flex;">
-                    <i data-lucide="layers" style="color: #a855f7; width: 16px; height: 16px;"></i>
-                </div>
-                {{ _("monitor.ram_usage") }}
-            </div>
-
-            <div>
-                <div class="value" id="ram-value"
-                    style="font-size: 3.5rem; font-weight: 800; color: white; line-height: 1;">{{ stats.ram.percent
-                    }}<span style="font-size: 1.5rem; color: #555;">%</span></div>
-                <div class="sub-value" id="ram-sub"
-                    style="font-size: 0.85rem; color: var(--text-sub); margin-top: 8px;">{{ (stats.ram.used /
-                    1024**3)|round(2) }}GB / {{ (stats.ram.total / 1024**3)|round(2) }}GB</div>
-            </div>
-
-            <div class="progress-bg"
-                style="height: 4px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden; margin-top: 24px;">
-                <div class="progress-fill" id="ram-bar"
-                    style="width: {{ stats.ram.percent }}%; height: 100%; background: #a855f7; transition: width 1s ease-in-out;">
-                </div>
-            </div>
-        </div>
-
-        <!-- Storage Card (Global Pool) -->
-        <div class="admin-section admin-section-padding"
-            style="display: flex; flex-direction: column; justify-content: space-between; min-height: 200px; position: relative; overflow: hidden; margin-bottom: 0;">
-            <div class="card-bg-glow"
-                style="position: absolute; top: -50px; right: -50px; width: 100px; height: 100px; background: #3b82f6; opacity: 0.1; filter: blur(50px); border-radius: 50%;">
-            </div>
-
-            <div class="card-label"
-                style="font-size: 0.75rem; font-weight: 700; color: var(--text-sub); text-transform: uppercase; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
-                <div style="padding: 6px; background: rgba(59, 130, 246, 0.1); border-radius: 6px; display: flex;">
-                    <i data-lucide="hard-drive" style="color: #3b82f6; width: 16px; height: 16px;"></i>
-                </div>
-                {{ _("monitor.storage_usage") }}
-            </div>
-
-            <div>
-                <div class="value" id="pool-value"
-                    style="font-size: 3.5rem; font-weight: 800; color: white; line-height: 1;">{{ pool.percent }}<span
-                        style="font-size: 1.5rem; color: #555;">%</span></div>
-                <div class="sub-value" id="pool-sub"
-                    style="font-size: 0.85rem; color: var(--text-sub); margin-top: 8px;">{{ pool.used }}GB {{
-                    _("monitor.used_of") }} {{ pool.limit }}GB (Pool)</div>
-            </div>
-
-            <div class="progress-bg"
-                style="height: 4px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden; margin-top: 24px;">
-                <div class="progress-fill" id="pool-bar"
-                    style="width: {{ pool.percent }}%; height: 100%; background: {% if pool.percent > 90 %}#ef4444{% else %}#3b82f6{% endif %}; transition: width 1s ease-in-out;">
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Pool Configuration Section -->
-    <div class="admin-section" style="border-radius: 16px; padding: 0; overflow: hidden;">
-        <div
-            style="padding: 24px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: space-between;">
-            <div style="display: flex; align-items: center; gap: 16px;">
-                <div style="background: rgba(59, 130, 246, 0.1); padding: 10px; border-radius: 12px; color: #3b82f6;">
-                    <i data-lucide="database" width="24" height="24"></i>
-                </div>
+    <section class="monitor-grid columns-2">
+        <article class="monitor-panel">
+            <div class="monitor-panel-header">
                 <div>
-                    <h3 style="margin: 0; font-size: 1.1rem; color: white;">{{ _("monitor.pool_limit_title") }}</h3>
-                    <p style="margin: 4px 0 0 0; font-size: 0.9rem; color: var(--text-sub);">{{
-                        _("monitor.pool_limit_desc") }}</p>
+                    <h2>Build</h2>
+                    <p>Every deployed commit is treated as a distinct revision.</p>
                 </div>
             </div>
-        </div>
-
-        <div style="padding: 24px; background: rgba(0,0,0,0.2);">
-            <form action="/admin/system/pool-limit" method="post"
-                style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
-                <div class="admin-input-wrapper" style="flex: 1; min-width: 200px; padding: 4px 16px;">
-                    <input type="number" name="limit_gb" value="{{ pool.limit }}"
-                        style="width: 100%; background: transparent; border: none; padding: 12px 0; color: white; font-size: 1.1rem; font-weight: 600; outline: none;"
-                        placeholder="100" required>
-                    <span style="color: #666; font-weight: 700; padding-left: 10px;">GB</span>
-                </div>
-
-                <button type="submit" class="admin-btn-primary"
-                    style="height: 50px; padding: 0 32px; background: #3b82f6;">
-                    <i data-lucide="save" width="18" height="18"></i>
-                    {{ _("admin.apply_button") }}
-                </button>
-            </form>
-            <p style="margin: 16px 0 0 0; font-size: 0.8rem; color: var(--text-sub);">
-                <i data-lucide="info" width="12" height="12" style="display: inline; vertical-align: middle;"></i>
-                Note: Changing this limit does not affect files that were already downloaded, but it will block new
-                downloads if current usage is above the new limit.
-            </p>
-        </div>
-    </div>
-
-    <div class="grid-shelf" style="grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); margin: 32px 0;">
-        <div class="admin-section admin-section-padding" style="margin-bottom: 0;">
-            <h3 style="margin-bottom: 16px; color: white;">Build</h3>
-            <div style="display: grid; gap: 12px;">
-                <div>
-                    <div style="font-size: 0.8rem; color: var(--text-sub);">Version</div>
-                    <div style="font-weight: 700;">{{ build.display_version }}</div>
-                </div>
-                <div>
-                    <div style="font-size: 0.8rem; color: var(--text-sub);">Channel</div>
-                    <div>{{ build.channel }}</div>
-                </div>
-                <div>
-                    <div style="font-size: 0.8rem; color: var(--text-sub);">Commit</div>
-                    <div style="font-family: monospace;">{{ build.commit }}</div>
-                </div>
-                <div>
-                    <div style="font-size: 0.8rem; color: var(--text-sub);">Build date</div>
-                    <div>{{ build.build_date }}</div>
-                </div>
-                <div>
-                    <div style="font-size: 0.8rem; color: var(--text-sub);">Update source</div>
-                    <div><a href="{{ build.repo_url }}" target="_blank" style="color: var(--accent);">{{ build.repo_url }}</a></div>
+            <div class="monitor-panel-body">
+                <div class="monitor-kv-grid">
+                    <div class="monitor-kv"><div class="monitor-kv-label">Version</div><div class="monitor-kv-value"><strong>{{ build.version }}</strong></div></div>
+                    <div class="monitor-kv"><div class="monitor-kv-label">Revision</div><div class="monitor-kv-value"><code>{{ build.revision }}</code></div></div>
+                    <div class="monitor-kv"><div class="monitor-kv-label">Commit</div><div class="monitor-kv-value"><code>{{ build.commit }}</code></div></div>
+                    <div class="monitor-kv"><div class="monitor-kv-label">Channel</div><div class="monitor-kv-value">{{ build.channel }}</div></div>
+                    <div class="monitor-kv"><div class="monitor-kv-label">Build date</div><div class="monitor-kv-value">{{ build.build_date }}</div></div>
+                    <div class="monitor-kv"><div class="monitor-kv-label">Update source</div><div class="monitor-kv-value"><a class="monitor-link" href="{{ build.repo_url }}" target="_blank" rel="noopener noreferrer">{{ build.repo_url }}</a></div></div>
                 </div>
             </div>
-        </div>
+        </article>
 
-        <div class="admin-section admin-section-padding" style="margin-bottom: 0;">
-            <h3 style="margin-bottom: 16px; color: white;">Schema</h3>
-            <div style="display: grid; gap: 12px;">
+        <article class="monitor-panel">
+            <div class="monitor-panel-header">
                 <div>
-                    <div style="font-size: 0.8rem; color: var(--text-sub);">Applied migrations</div>
-                    <div style="font-weight: 700;">{{ schema.count }}</div>
+                    <h2>Schema</h2>
+                    <p>Migration state and administrative lock status.</p>
                 </div>
-                <div>
-                    <div style="font-size: 0.8rem; color: var(--text-sub);">Latest migration</div>
-                    <div style="font-family: monospace;">{{ schema.latest }}</div>
+            </div>
+            <div class="monitor-panel-body">
+                <div class="monitor-kv-grid">
+                    <div class="monitor-kv"><div class="monitor-kv-label">Applied migrations</div><div class="monitor-kv-value">{{ schema.count }}</div></div>
+                    <div class="monitor-kv"><div class="monitor-kv-label">Latest migration</div><div class="monitor-kv-value"><code>{{ schema.latest }}</code></div></div>
+                    <div class="monitor-kv"><div class="monitor-kv-label">Applied at</div><div class="monitor-kv-value">{{ schema.latest_applied_at or 'Not available' }}</div></div>
+                    <div class="monitor-kv"><div class="monitor-kv-label">Admin lock</div><div class="monitor-kv-value">{% if active_lock %}Job #{{ active_lock.job_id }} since {{ active_lock.acquired_at }}{% else %}No active lock{% endif %}</div></div>
                 </div>
-                <div>
-                    <div style="font-size: 0.8rem; color: var(--text-sub);">Applied at</div>
-                    <div>{{ schema.latest_applied_at or 'Not available' }}</div>
-                </div>
-                <div>
-                    <div style="font-size: 0.8rem; color: var(--text-sub);">Active admin lock</div>
-                    <div>
-                        {% if active_lock %}
-                        Job #{{ active_lock.job_id }} since {{ active_lock.acquired_at }}
-                        {% else %}
-                        No active lock
-                        {% endif %}
+                <form action="/admin/system/pool-limit" method="post" class="monitor-form-grid">
+                    <div class="monitor-field">
+                        <label for="pool-limit-input">Pool limit (GB)</label>
+                        <input id="pool-limit-input" class="monitor-input" type="number" name="limit_gb" value="{{ pool.limit }}" required>
                     </div>
-                </div>
+                    <div class="monitor-field">
+                        <label>&nbsp;</label>
+                        <button type="submit" class="monitor-primary"><i data-lucide="save"></i><span>{{ _("admin.apply_button") }}</span></button>
+                    </div>
+                </form>
             </div>
-        </div>
-    </div>
+        </article>
+    </section>
 
-    <div class="admin-section" style="border-radius: 16px; padding: 0; overflow: hidden; margin-bottom: 32px;">
-        <div style="padding: 24px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+    <section class="monitor-panel">
+        <div class="monitor-panel-header">
             <div>
-                <h3 style="margin: 0; font-size: 1.1rem; color: white;">Updates</h3>
-                <p style="margin: 4px 0 0 0; font-size: 0.9rem; color: var(--text-sub);">Tracks the official GitHub main branch and can apply workspace updates after creating a backup.</p>
+                <h2>Updates</h2>
+                <p>Checks GitHub main and compares the running revision without depending on the local checkout for read-only status.</p>
             </div>
-            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                <form action="/admin/system/updates/check" method="post">
-                    <button type="submit" class="btn-admin-action btn-admin-glass">
-                        <i data-lucide="refresh-cw"></i><span>Check for Updates</span>
-                    </button>
+            <div class="monitor-actions">
+                <form action="/admin/system/updates/check" method="post" class="monitor-form">
+                    <button type="submit" class="monitor-secondary"><i data-lucide="refresh-cw"></i><span>Check for Updates</span></button>
                 </form>
-                <form action="/admin/system/updates/apply" method="post" onsubmit="return confirm('Apply update from GitHub main? A backup will be created first.')">
-                    <button type="submit" class="btn-admin-action btn-admin-warning">
-                        <i data-lucide="download-cloud"></i><span>Apply Update</span>
-                    </button>
+                <form action="/admin/system/updates/apply" method="post" class="monitor-form" data-confirm="Apply the update from GitHub main? A backup will be created first and the managed services will be recreated." data-title="Apply update">
+                    <button type="submit" class="monitor-warning"><i data-lucide="download-cloud"></i><span>Apply Update</span></button>
                 </form>
             </div>
         </div>
-        <div style="padding: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px;">
-            <div class="glass-panel" style="padding: 18px; border-radius: 14px; display: grid; gap: 10px;">
-                <div><span style="color: var(--text-sub);">Source:</span> {{ updates.source_repo_url }} @ {{ updates.source_branch }}</div>
-                <div><span style="color: var(--text-sub);">Last checked:</span> {{ updates.checked_at or 'Never' }}</div>
-                <div><span style="color: var(--text-sub);">Status:</span> {{ updates.message or 'No update check performed yet' }}</div>
+        <div class="monitor-panel-body">
+            <div class="monitor-kv-grid">
+                <div class="monitor-kv"><div class="monitor-kv-label">Source</div><div class="monitor-kv-value">{{ updates.source_repo_url }} @ {{ updates.source_branch }}</div></div>
+                <div class="monitor-kv"><div class="monitor-kv-label">Last checked</div><div class="monitor-kv-value">{{ updates.checked_at or 'Never' }}</div></div>
+                <div class="monitor-kv"><div class="monitor-kv-label">Status</div><div class="monitor-kv-value">{{ updates.message or 'No update check performed yet' }}</div></div>
+                <div class="monitor-kv"><div class="monitor-kv-label">Working tree</div><div class="monitor-kv-value">{% if updates.current.dirty %}Dirty{% else %}Clean{% endif %}</div></div>
+                <div class="monitor-kv"><div class="monitor-kv-label">Local revision</div><div class="monitor-kv-value"><code>{{ updates.current.channel }} / {{ updates.current.commit }}</code></div></div>
+                <div class="monitor-kv"><div class="monitor-kv-label">Remote commit</div><div class="monitor-kv-value"><code>{{ updates.remote.commit if updates.remote else 'Unknown' }}</code></div></div>
+                <div class="monitor-kv"><div class="monitor-kv-label">Behind</div><div class="monitor-kv-value">{{ updates.behind_count or 0 }}</div></div>
+                <div class="monitor-kv"><div class="monitor-kv-label">Ahead</div><div class="monitor-kv-value">{{ updates.ahead_count or 0 }}</div></div>
+                <div class="monitor-kv"><div class="monitor-kv-label">Update available</div><div class="monitor-kv-value">{% if updates.update_available %}Yes{% else %}No{% endif %}</div></div>
             </div>
-            <div class="glass-panel" style="padding: 18px; border-radius: 14px; display: grid; gap: 10px;">
-                <div><span style="color: var(--text-sub);">Local branch:</span> {{ updates.current.channel }}</div>
-                <div><span style="color: var(--text-sub);">Local commit:</span> <span style="font-family: monospace;">{{ updates.current.commit }}</span></div>
-                <div><span style="color: var(--text-sub);">Remote commit:</span> <span style="font-family: monospace;">{{ updates.remote.commit if updates.remote else 'Unknown' }}</span></div>
-                <div><span style="color: var(--text-sub);">Working tree:</span> {% if updates.current.dirty %}Dirty{% else %}Clean{% endif %}</div>
-            </div>
-            <div class="glass-panel" style="padding: 18px; border-radius: 14px; display: grid; gap: 10px;">
-                <div><span style="color: var(--text-sub);">Update available:</span> {% if updates.update_available %}Yes{% else %}No{% endif %}</div>
-                <div><span style="color: var(--text-sub);">Behind:</span> {{ updates.behind_count or 0 }}</div>
-                <div><span style="color: var(--text-sub);">Ahead:</span> {{ updates.ahead_count or 0 }}</div>
-            </div>
-        </div>
-        {% if updates.pending_commits %}
-        <div style="padding: 0 24px 24px 24px;">
-            <div class="glass-panel" style="padding: 18px; border-radius: 14px;">
-                <div style="font-size: 0.9rem; color: var(--text-sub); margin-bottom: 10px;">Pending commits from remote</div>
-                <div style="display: grid; gap: 6px; max-height: 180px; overflow-y: auto; font-family: monospace; font-size: 0.9rem;">
+            {% if updates.pending_commits %}
+            <div>
+                <div class="monitor-kv-label" style="margin-bottom: 10px;">Pending commits from remote</div>
+                <div class="monitor-commit-list">
                     {% for commit in updates.pending_commits %}
-                    <div>{{ commit }}</div>
+                    <div class="monitor-job"><code>{{ commit }}</code></div>
                     {% endfor %}
                 </div>
             </div>
+            {% endif %}
         </div>
-        {% endif %}
-    </div>
+    </section>
 
-    <div class="admin-section" style="border-radius: 16px; padding: 0; overflow: hidden; margin-bottom: 32px;">
-        <div style="padding: 24px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+    <section class="monitor-panel">
+        <div class="monitor-panel-header">
             <div>
-                <h3 style="margin: 0; font-size: 1.1rem; color: white;">Backups</h3>
-                <p style="margin: 4px 0 0 0; font-size: 0.9rem; color: var(--text-sub);">Current and previous snapshot of the database and deployment configuration.</p>
+                <h2>Backups</h2>
+                <p>Rotating current and previous snapshots of the database and deployment configuration.</p>
             </div>
-            <form action="/admin/system/backups/create" method="post">
-                <button type="submit" class="btn-admin-action btn-admin-glass">
-                    <i data-lucide="archive"></i><span>Create Backup</span>
-                </button>
-            </form>
+            <div class="monitor-actions">
+                <form action="/admin/system/backups/create" method="post" class="monitor-form">
+                    <button type="submit" class="monitor-secondary"><i data-lucide="archive"></i><span>Create Backup</span></button>
+                </form>
+            </div>
         </div>
-
-        <div style="padding: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
-            {% for slot_name in ['current', 'previous'] %}
-            {% set backup = backups[slot_name] %}
-            <div class="glass-panel" style="padding: 20px; border-radius: 14px;">
-                <div style="display: flex; justify-content: space-between; align-items: start; gap: 12px; margin-bottom: 16px;">
-                    <div>
-                        <div style="font-size: 0.8rem; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.08em;">{{ slot_name }}</div>
-                        <div style="font-size: 1.05rem; font-weight: 700; color: white;">{{ backup.filename if backup else 'Empty slot' }}</div>
+        <div class="monitor-panel-body">
+            <div class="monitor-backup-grid">
+                {% for slot_name in ['current', 'previous'] %}
+                {% set backup = backups[slot_name] %}
+                <article class="monitor-kv" style="gap: 12px;">
+                    <div class="monitor-slot-head">
+                        <div>
+                            <div class="monitor-slot-name">{{ slot_name }}</div>
+                            <div class="monitor-kv-value">{{ backup.filename if backup else 'Empty slot' }}</div>
+                        </div>
+                        {% if backup and backup.exists %}
+                        <form action="/admin/system/backups/restore" method="post" class="monitor-form" data-confirm="Restore the {{ slot_name }} backup? This overwrites the current database and configuration files." data-title="Restore backup">
+                            <input type="hidden" name="slot" value="{{ slot_name }}">
+                            <button type="submit" class="monitor-warning"><i data-lucide="rotate-ccw"></i><span>Restore</span></button>
+                        </form>
+                        {% endif %}
                     </div>
-                    {% if backup and backup.exists %}
-                    <form action="/admin/system/backups/restore" method="post" onsubmit="return confirm('Restore {{ slot_name }} backup? This overwrites the current database and configuration files.')">
-                        <input type="hidden" name="slot" value="{{ slot_name }}">
-                        <button type="submit" class="btn-admin-action btn-admin-warning">
-                            <i data-lucide="rotate-ccw"></i><span>Restore</span>
-                        </button>
-                    </form>
+                    {% if backup %}
+                    <div class="monitor-kv-label">Size</div><div class="monitor-kv-value">{{ backup.size_label }}</div>
+                    <div class="monitor-kv-label">Created</div><div class="monitor-kv-value">{{ backup.created_at }}</div>
+                    <div class="monitor-kv-label">Source</div><div class="monitor-kv-value"><code>{{ backup.source_branch }}@{{ backup.source_commit }}</code></div>
+                    <div class="monitor-kv-label">Status</div><div class="monitor-kv-value">{{ 'Available' if backup.exists else 'Missing file' }}</div>
+                    {% else %}
+                    <div class="monitor-empty">No backup created for this slot yet.</div>
                     {% endif %}
-                </div>
-                {% if backup %}
-                <div style="display: grid; gap: 10px; font-size: 0.92rem;">
-                    <div><span style="color: var(--text-sub);">Size:</span> {{ backup.size_label }}</div>
-                    <div><span style="color: var(--text-sub);">Created:</span> {{ backup.created_at }}</div>
-                    <div><span style="color: var(--text-sub);">Source:</span> {{ backup.source_branch }}@{{ backup.source_commit }}</div>
-                    <div><span style="color: var(--text-sub);">Status:</span> {{ 'Available' if backup.exists else 'Missing file' }}</div>
-                </div>
-                {% else %}
-                <div style="color: var(--text-sub);">No backup created for this slot yet.</div>
-                {% endif %}
+                </article>
+                {% endfor %}
             </div>
-            {% endfor %}
-        </div>
 
-        <div style="padding: 24px; border-top: 1px solid var(--glass-border); background: rgba(0,0,0,0.18);">
-            <form action="/admin/system/backups/settings" method="post" style="display: flex; flex-wrap: wrap; gap: 16px; align-items: end;">
-                <label style="display: flex; align-items: center; gap: 10px; min-height: 50px;">
+            <form action="/admin/system/backups/settings" method="post" class="monitor-form-grid">
+                <label class="monitor-inline-toggle">
                     <input type="checkbox" name="autobackup_enabled" {% if backups.autobackup_enabled %}checked{% endif %}>
                     <span>Enable daily autobackup</span>
                 </label>
-                <div class="admin-input-wrapper" style="padding: 4px 16px; width: 120px;">
-                    <input type="number" name="autobackup_hour" min="0" max="23" value="{{ backups.autobackup_hour }}" style="width: 100%; background: transparent; border: none; padding: 12px 0; color: white; outline: none;">
+                <div class="monitor-field">
+                    <label for="autobackup-hour">Hour</label>
+                    <input id="autobackup-hour" class="monitor-input" type="number" name="autobackup_hour" min="0" max="23" value="{{ backups.autobackup_hour }}">
                 </div>
-                <div class="admin-input-wrapper" style="padding: 4px 16px; width: 120px;">
-                    <input type="number" name="autobackup_minute" min="0" max="59" value="{{ backups.autobackup_minute }}" style="width: 100%; background: transparent; border: none; padding: 12px 0; color: white; outline: none;">
+                <div class="monitor-field">
+                    <label for="autobackup-minute">Minute</label>
+                    <input id="autobackup-minute" class="monitor-input" type="number" name="autobackup_minute" min="0" max="59" value="{{ backups.autobackup_minute }}">
                 </div>
-                <div class="admin-input-wrapper" style="padding: 4px 16px; min-width: 260px;">
-                    <select
-                        name="autobackup_timezone"
-                        style="width: 100%; background: #0b0b10; border: none; padding: 12px 0; color: white; outline: none;"
-                    >
+                <div class="monitor-field" style="grid-column: span 2;">
+                    <label for="autobackup-timezone">Timezone</label>
+                    <select id="autobackup-timezone" name="autobackup_timezone" class="monitor-select">
                         {% for tz_group in timezone_options %}
                         <optgroup label="{{ tz_group.group }}">
                             {% for tz in tz_group.zones %}
-                            <option value="{{ tz.value }}" {% if (backups.autobackup_timezone or 'UTC') == tz.value %}selected{% endif %}>
-                                {{ tz.label }} ({{ tz.value }})
-                            </option>
+                            <option value="{{ tz.value }}" {% if (backups.autobackup_timezone or 'UTC') == tz.value %}selected{% endif %}>{{ tz.label }} ({{ tz.value }})</option>
                             {% endfor %}
                         </optgroup>
                         {% endfor %}
                     </select>
-                    <style>
-                        select[name="autobackup_timezone"] option,
-                        select[name="autobackup_timezone"] optgroup {
-                            background: #0b0b10;
-                            color: #ffffff;
-                        }
-                    </style>
                 </div>
-                <button type="submit" class="admin-btn-primary" style="height: 50px; padding: 0 24px;">
-                    <i data-lucide="save" width="18" height="18"></i> Save backup settings
-                </button>
+                <div class="monitor-field">
+                    <label>&nbsp;</label>
+                    <button type="submit" class="monitor-primary"><i data-lucide="save"></i><span>Save backup settings</span></button>
+                </div>
             </form>
-            <div style="margin-top: 14px; display: grid; gap: 6px; font-size: 0.9rem; color: var(--text-sub);">
-                <div>Scheduler timezone: {{ backups.autobackup_timezone or 'UTC' }}</div>
-                <div>Next run: {{ backups.next_run or 'Disabled' }}</div>
-                <div>Last successful backup: {{ backups.latest_success_at or 'Never' }}</div>
-            </div>
-        </div>
-    </div>
 
-    <div class="admin-section admin-section-padding" style="margin-bottom: 0;">
-        <h3 style="margin-bottom: 16px; color: white;">Recent Admin Jobs</h3>
-        {% if admin_jobs %}
-        <div style="display: grid; gap: 10px; max-height: 420px; overflow-y: auto; padding-right: 6px;">
-            {% for job in admin_jobs %}
-            <div class="glass-panel" style="padding: 14px 16px; border-radius: 12px; display: grid; gap: 6px;">
-                <div style="display: flex; justify-content: space-between; gap: 12px; align-items: center;">
-                    <div style="font-weight: 700; color: white;">#{{ job.id }} {{ job.job_type }}</div>
-                    <div style="font-size: 0.8rem; color: var(--text-sub); text-transform: uppercase;">{{ job.status }}</div>
-                </div>
-                <div style="font-size: 0.92rem;">{{ job.message or 'No message' }}</div>
-                <div style="font-size: 0.82rem; color: var(--text-sub);">
-                    Triggered by {{ job.triggered_by or 'system' }} â€¢ {{ job.started_at }}
-                    {% if job.finished_at %}â€¢ finished {{ job.finished_at }}{% endif %}
-                </div>
+            <div class="monitor-kv-grid">
+                <div class="monitor-kv"><div class="monitor-kv-label">Scheduler timezone</div><div class="monitor-kv-value">{{ backups.autobackup_timezone or 'UTC' }}</div></div>
+                <div class="monitor-kv"><div class="monitor-kv-label">Next run</div><div class="monitor-kv-value">{{ backups.next_run or 'Disabled' }}</div></div>
+                <div class="monitor-kv"><div class="monitor-kv-label">Last successful backup</div><div class="monitor-kv-value">{{ backups.latest_success_at or 'Never' }}</div></div>
             </div>
-            {% endfor %}
         </div>
-        {% else %}
-        <div style="color: var(--text-sub);">No admin jobs recorded yet.</div>
-        {% endif %}
+    </section>
+
+    <section class="monitor-panel">
+        <div class="monitor-panel-header">
+            <div>
+                <h2>Recent Admin Jobs</h2>
+                <p>Latest background operations. The list is scrollable by design to avoid growing without bounds.</p>
+            </div>
+        </div>
+        <div class="monitor-panel-body">
+            {% if admin_jobs %}
+            <div class="monitor-jobs">
+                {% for job in admin_jobs %}
+                <article class="monitor-job">
+                    <div class="monitor-job-head">
+                        <div><strong>#{{ job.id }}</strong> <code>{{ job.job_type }}</code></div>
+                        <div class="monitor-status {% if job.status == 'completed' %}ok{% elif job.status == 'failed' %}error{% else %}warn{% endif %}">{{ job.status }}</div>
+                    </div>
+                    <div>{{ job.message or 'No message' }}</div>
+                    <div class="monitor-job-meta">Triggered by {{ job.triggered_by or 'system' }} • {{ job.started_at }}{% if job.finished_at %} • finished {{ job.finished_at }}{% endif %}</div>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="monitor-empty">No admin jobs recorded yet.</div>
+            {% endif %}
+        </div>
+    </section>
+</div>
+
+<div class="monitor-modal-backdrop" id="monitor-confirm-backdrop" aria-hidden="true">
+    <div class="monitor-modal" role="dialog" aria-modal="true" aria-labelledby="monitor-confirm-title">
+        <div class="monitor-modal-body">
+            <h3 id="monitor-confirm-title">Confirm action</h3>
+            <p id="monitor-confirm-message">This action requires confirmation.</p>
+        </div>
+        <div class="monitor-modal-actions">
+            <button type="button" class="monitor-button" id="monitor-confirm-cancel">Cancel</button>
+            <button type="button" class="monitor-warning" id="monitor-confirm-submit">Continue</button>
+        </div>
     </div>
 </div>
 
 <script>
-    // Auto-refresh stats every 10 seconds
-    const statsInterval = setInterval(async () => {
-        // Check if page elements still exist (user may have navigated away)
-        const cpuValue = document.getElementById('cpu-value');
-        if (!cpuValue) {
-            clearInterval(statsInterval);
-            return;
+const statsInterval = setInterval(async () => {
+    const cpuValue = document.getElementById('cpu-value');
+    if (!cpuValue) {
+        clearInterval(statsInterval);
+        return;
+    }
+
+    try {
+        const res = await fetch('/admin/api/system-stats');
+        const data = await res.json();
+        if (data.error) return;
+
+        cpuValue.textContent = data.cpu_usage;
+        const cpuBar = document.getElementById('cpu-bar');
+        if (cpuBar) cpuBar.style.width = data.cpu_usage + '%';
+
+        const ramValue = document.getElementById('ram-value');
+        const ramSub = document.getElementById('ram-sub');
+        const ramBar = document.getElementById('ram-bar');
+        if (ramValue) ramValue.textContent = data.ram.percent;
+        if (ramSub) ramSub.textContent = data.ram.used_gb + 'GB / ' + data.ram.total_gb + 'GB';
+        if (ramBar) ramBar.style.width = data.ram.percent + '%';
+
+        const poolValue = document.getElementById('pool-value');
+        const poolSub = document.getElementById('pool-sub');
+        const poolBar = document.getElementById('pool-bar');
+        if (poolValue) poolValue.textContent = data.pool.percent;
+        if (poolSub) poolSub.textContent = data.pool.used + 'GB used of ' + data.pool.limit + 'GB';
+        if (poolBar) {
+            poolBar.style.width = data.pool.percent + '%';
+            poolBar.style.background = data.pool.percent > 90 ? 'var(--monitor-red)' : 'var(--monitor-blue)';
         }
+    } catch (e) {}
+}, 10000);
 
-        try {
-            const res = await fetch('/admin/api/system-stats');
-            const data = await res.json();
-            if (data.error) return;
+const confirmBackdrop = document.getElementById('monitor-confirm-backdrop');
+const confirmTitle = document.getElementById('monitor-confirm-title');
+const confirmMessage = document.getElementById('monitor-confirm-message');
+const confirmCancel = document.getElementById('monitor-confirm-cancel');
+const confirmSubmit = document.getElementById('monitor-confirm-submit');
+let pendingForm = null;
 
-            // Update CPU
-            cpuValue.innerHTML = data.cpu_usage + '<span style="font-size: 1.5rem; color: #555;">%</span>';
-            const cpuBar = document.getElementById('cpu-bar');
-            if (cpuBar) cpuBar.style.width = data.cpu_usage + '%';
+function closeConfirmModal() {
+    confirmBackdrop.classList.remove('show');
+    confirmBackdrop.setAttribute('aria-hidden', 'true');
+    pendingForm = null;
+}
 
-            // Update RAM
-            const ramValue = document.getElementById('ram-value');
-            const ramSub = document.getElementById('ram-sub');
-            const ramBar = document.getElementById('ram-bar');
-            if (ramValue) ramValue.innerHTML = data.ram.percent + '<span style="font-size: 1.5rem; color: #555;">%</span>';
-            if (ramSub) ramSub.textContent = data.ram.used_gb + 'GB / ' + data.ram.total_gb + 'GB';
-            if (ramBar) ramBar.style.width = data.ram.percent + '%';
+function openConfirmModal(form) {
+    pendingForm = form;
+    confirmTitle.textContent = form.dataset.title || 'Confirm action';
+    confirmMessage.textContent = form.dataset.confirm || 'This action requires confirmation.';
+    confirmBackdrop.classList.add('show');
+    confirmBackdrop.setAttribute('aria-hidden', 'false');
+}
 
-            // Update Pool
-            const poolValue = document.getElementById('pool-value');
-            const poolSub = document.getElementById('pool-sub');
-            const poolBar = document.getElementById('pool-bar');
-            if (poolValue) poolValue.innerHTML = data.pool.percent + '<span style="font-size: 1.5rem; color: #555;">%</span>';
-            if (poolSub) poolSub.textContent = data.pool.used + 'GB used of ' + data.pool.limit + 'GB (Pool)';
-            if (poolBar) {
-                poolBar.style.width = data.pool.percent + '%';
-                poolBar.style.background = data.pool.percent > 90 ? '#ef4444' : '#3b82f6';
-            }
-        } catch (e) {
-            // Silent fail - page likely navigated away
-        }
-    }, 10000);
+for (const form of document.querySelectorAll('.monitor-form[data-confirm]')) {
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        openConfirmModal(form);
+    });
+}
 
+confirmCancel.addEventListener('click', closeConfirmModal);
+confirmBackdrop.addEventListener('click', (event) => {
+    if (event.target === confirmBackdrop) closeConfirmModal();
+});
+confirmSubmit.addEventListener('click', () => {
+    if (!pendingForm) return;
+    const form = pendingForm;
+    closeConfirmModal();
+    form.submit();
+});
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && confirmBackdrop.classList.contains('show')) {
+        closeConfirmModal();
+    }
+});
 </script>
-
 {% endblock %}
