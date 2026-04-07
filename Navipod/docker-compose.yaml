@@ -52,6 +52,7 @@ services:
       - UPDATE_SOURCE_REPO_URL=${UPDATE_SOURCE_REPO_URL:-https://github.com/sPROFFEs/Navipod}
       - UPDATE_SOURCE_BRANCH=${UPDATE_SOURCE_BRANCH:-main}
       - UPDATE_MANAGED_SERVICES=${UPDATE_MANAGED_SERVICES:-concierge nginx tunnel}
+      - SELF_CONTAINER_NAME=concierge
     networks:
       navidrome-net:
         ipv4_address: 172.20.0.5
@@ -87,6 +88,7 @@ services:
       - UPDATE_SOURCE_REPO_URL=${UPDATE_SOURCE_REPO_URL:-https://github.com/sPROFFEs/Navipod}
       - UPDATE_SOURCE_BRANCH=${UPDATE_SOURCE_BRANCH:-main}
       - UPDATE_MANAGED_SERVICES=${UPDATE_MANAGED_SERVICES:-concierge nginx tunnel}
+      - SELF_CONTAINER_NAME=navipod_updater
       - KEEP_ROOT=true
     command: ["uvicorn", "updater_api:app", "--host", "0.0.0.0", "--port", "8090"]
     networks:

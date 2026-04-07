@@ -105,7 +105,50 @@ def _run_git(args, *, check=True, fallback=None, include_details=False):
         return fallback
 
 
+def _get_container_mount_source(destination_path: Path):
+    container_name = os.getenv("SELF_CONTAINER_NAME")
+    if not container_name:
+        return None
+    try:
+        completed = subprocess.run(
+            ["docker", "inspect", "--format", "{{json .Mounts}}", container_name],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if completed.returncode != 0:
+            return None
+        mounts = json.loads((completed.stdout or "").strip() or "[]")
+        for mount in mounts:
+            if mount.get("Destination") == str(destination_path):
+                source = mount.get("Source")
+                if source:
+                    return Path(source)
+    except Exception:
+        return None
+    return None
+
+
+def _get_host_visible_compose_project_root():
+    host_repo_root = _get_container_mount_source(REPO_ROOT)
+    if not host_repo_root:
+        return COMPOSE_PROJECT_ROOT
+    if str(host_repo_root) == str(REPO_ROOT):
+        return host_repo_root / "Navipod"
+
+    try:
+        if not host_repo_root.exists():
+            host_repo_root.parent.mkdir(parents=True, exist_ok=True)
+            host_repo_root.symlink_to(REPO_ROOT, target_is_directory=True)
+        elif host_repo_root.is_symlink() and host_repo_root.resolve() == REPO_ROOT.resolve():
+            pass
+    except Exception:
+        return COMPOSE_PROJECT_ROOT
+    return host_repo_root / "Navipod"
+
+
 def _run_compose_command(args, *, check=True):
+    compose_project_root = _get_host_visible_compose_project_root()
     commands_to_try = [
         ["docker", "compose", "--env-file", COMPOSE_ENV_FILE, *args],
         ["docker-compose", "--env-file", COMPOSE_ENV_FILE, *args],
@@ -118,7 +161,7 @@ def _run_compose_command(args, *, check=True):
                 check=check,
                 capture_output=True,
                 text=True,
-                cwd=str(COMPOSE_PROJECT_ROOT),
+                cwd=str(compose_project_root),
             )
             return completed
         except FileNotFoundError as e:
