@@ -1136,7 +1136,7 @@ def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
             return
 
         update_admin_job_progress(job_id, message="Checking GitHub main for updates", status="running", phase="check", progress=10)
-        payload = _get_update_check_payload()
+        payload = asyncio.run(_get_update_check_payload())
         save_update_state(db, payload)
         if payload.get("status") != "ok":
             update_admin_job_progress(job_id, message=payload.get("message") or "Update check failed", status="failed", phase="check", progress=100, extra=payload, finished=True)
