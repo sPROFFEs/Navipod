@@ -553,6 +553,30 @@ def _fetch_update_tracking_ref():
     )
 
 
+def _get_remote_branch_sha_via_ls_remote():
+    result = _run_git(
+        [
+            "ls-remote",
+            settings.UPDATE_SOURCE_REPO_URL,
+            f"refs/heads/{settings.UPDATE_SOURCE_BRANCH}",
+        ],
+        fallback="",
+        include_details=True,
+    )
+    if not isinstance(result, dict) or not result.get("ok"):
+        return None, result
+
+    stdout = result.get("stdout") or ""
+    first_line = stdout.splitlines()[0].strip() if stdout else ""
+    if not first_line:
+        return None, result
+
+    remote_sha = first_line.split()[0].strip()
+    if not remote_sha:
+        return None, result
+    return remote_sha, result
+
+
 def _parse_github_repo_slug(repo_url: str):
     parsed = urlparse(repo_url)
     if parsed.netloc.lower() != "github.com":
@@ -654,6 +678,35 @@ async def _get_update_check_payload():
             "fetch_result": compare_result,
         }
 
+    remote_sha, ls_remote_result = _get_remote_branch_sha_via_ls_remote()
+    if remote_sha:
+        remote_short = remote_sha[:7]
+        update_available = remote_sha != local_full_commit
+        message = "Update check completed via git ls-remote"
+        if update_available:
+            message = "Remote branch differs from local commit"
+        return {
+            "checked_at": utcnow().isoformat(),
+            "status": "ok",
+            "message": message,
+            "source_repo_url": settings.UPDATE_SOURCE_REPO_URL,
+            "source_branch": settings.UPDATE_SOURCE_BRANCH,
+            "current": {
+                **current,
+                "full_commit": local_full_commit,
+                "dirty": _get_worktree_dirty(),
+            },
+            "remote": {
+                "commit": remote_short,
+                "full_commit": remote_sha,
+            },
+            "ahead_count": 0,
+            "behind_count": 1 if update_available else 0,
+            "update_available": update_available,
+            "pending_commits": [],
+            "fetch_result": ls_remote_result,
+        }
+
     fetch_result = _fetch_update_tracking_ref()
     if not _run_git(["rev-parse", "--verify", UPDATE_TRACKING_REMOTE], fallback=None):
         fetch_error = ""
@@ -662,6 +715,9 @@ async def _get_update_check_payload():
         if compare_result and not compare_result.get("ok"):
             fetch_error = compare_result.get("error") or ""
             fetch_returncode = compare_result.get("status_code")
+        elif isinstance(ls_remote_result, dict) and not ls_remote_result.get("ok"):
+            fetch_error = ls_remote_result.get("stderr") or ls_remote_result.get("stdout") or ""
+            fetch_returncode = ls_remote_result.get("returncode")
         elif isinstance(fetch_result, dict):
             fetch_error = fetch_result.get("stderr") or ""
             fetch_stdout = fetch_result.get("stdout") or ""
