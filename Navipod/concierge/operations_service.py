@@ -639,16 +639,31 @@ async def _get_github_compare_payload(local_full_commit: str):
 
         payload = response.json()
         commits = payload.get("commits") or []
+        remote_head_sha = payload.get("merge_base_commit", {}).get("sha") or ""
+        if payload.get("status") in {"ahead", "behind", "diverged", "identical"}:
+            remote_head_sha = payload.get("html_url", "")
+        head_commit = payload.get("commits", [])[-1].get("sha") if commits else None
+        compare_status = payload.get("status")
+        if compare_status == "ahead":
+            # local...remote means remote HEAD is ahead of local BASE
+            local_ahead = int(payload.get("behind_by", 0) or 0)
+            local_behind = int(payload.get("ahead_by", 0) or 0)
+        elif compare_status == "behind":
+            local_ahead = int(payload.get("ahead_by", 0) or 0)
+            local_behind = int(payload.get("behind_by", 0) or 0)
+        else:
+            local_ahead = int(payload.get("behind_by", 0) or 0)
+            local_behind = int(payload.get("ahead_by", 0) or 0)
         return {
             "ok": True,
             "status_code": response.status_code,
             "compare_url": compare_url,
-            "status": payload.get("status"),
-            "ahead_by": payload.get("ahead_by", 0),
-            "behind_by": payload.get("behind_by", 0),
+            "status": compare_status,
+            "ahead_by": local_ahead,
+            "behind_by": local_behind,
             "html_url": payload.get("html_url"),
-            "remote_full_commit": (payload.get("base_commit") or {}).get("sha", "unknown"),
-            "remote_commit": ((payload.get("base_commit") or {}).get("sha", "")[:7] or "unknown"),
+            "remote_full_commit": head_commit or "unknown",
+            "remote_commit": (head_commit or "")[:7] or "unknown",
             "pending_commits": [
                 f"{(commit.get('sha') or '')[:7]} {commit.get('commit', {}).get('message', '').splitlines()[0]}".strip()
                 for commit in commits[:10]
