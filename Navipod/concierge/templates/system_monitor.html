@@ -193,7 +193,7 @@
 }
 .monitor-form-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    grid-template-columns: minmax(200px, 320px) auto;
     gap: 12px;
     align-items: end;
 }
@@ -209,6 +209,13 @@
     color: var(--monitor-muted);
     font-size: .82rem;
     line-height: 1.4;
+}
+.monitor-field-action {
+    display: flex;
+    align-items: end;
+}
+.monitor-field-action .monitor-primary {
+    width: 100%;
 }
 .monitor-input,
 .monitor-select {
@@ -451,21 +458,17 @@
             <div class="monitor-panel-header">
                 <div>
                     <h2>Operations</h2>
-                    <p>Current admin activity and storage pool settings.</p>
+                    <p>Shared storage settings for the central media pool.</p>
                 </div>
             </div>
             <div class="monitor-panel-body">
-                <div class="monitor-kv-grid">
-                    <div class="monitor-kv"><div class="monitor-kv-label">Admin lock</div><div class="monitor-kv-value">{% if active_lock %}Job #{{ active_lock.job_id }} since {{ active_lock.acquired_at }}{% else %}No active lock{% endif %}</div></div>
-                </div>
                 <form action="/admin/system/pool-limit" method="post" class="monitor-form-grid">
                     <div class="monitor-field">
                         <label for="pool-limit-input">Pool limit (GB)</label>
                         <input id="pool-limit-input" class="monitor-input" type="number" name="limit_gb" value="{{ pool.limit }}" required>
                         <div class="monitor-field-help">Sets the shared disk cap for the central media pool.</div>
                     </div>
-                    <div class="monitor-field">
-                        <label>&nbsp;</label>
+                    <div class="monitor-field-action">
                         <button type="submit" class="monitor-primary"><i data-lucide="save"></i><span>{{ _("admin.apply_button") }}</span></button>
                     </div>
                 </form>
