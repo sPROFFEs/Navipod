@@ -378,6 +378,26 @@ async def get_admin_job_status(job_id: int, db: Session = Depends(get_db), admin
     return JSONResponse(job)
 
 
+@router.get("/api/update-notification")
+async def get_update_notification(db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
+    state = operations_service.get_update_state(db)
+    remote = state.get("remote") or {}
+    current = state.get("current") or {}
+    payload = {
+        "update_available": bool(state.get("update_available")),
+        "local_version": current.get("version"),
+        "local_commit": current.get("commit"),
+        "remote_version": remote.get("version"),
+        "remote_release_version": remote.get("release_version"),
+        "remote_commit": remote.get("commit"),
+        "remote_full_commit": remote.get("full_commit"),
+        "behind_count": state.get("behind_count", 0),
+        "ahead_count": state.get("ahead_count", 0),
+        "checked_at": state.get("checked_at"),
+    }
+    return JSONResponse(payload)
+
+
 # --- ADMIN LIBRARY MANAGEMENT ---
 
 @router.get("/api/library/search")

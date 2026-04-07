@@ -246,6 +246,11 @@ async def login(request: Request, username: str = Form(...), password: str = For
         samesite='lax',
         max_age=86400
     )
+    if user.is_admin:
+        try:
+            operations_service.queue_silent_update_refresh_if_stale(max_age_hours=24)
+        except Exception:
+            pass
     return response
 
 @app.get("/portal")

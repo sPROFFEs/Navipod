@@ -555,11 +555,34 @@ def get_update_state(db):
     state.setdefault("source_branch", settings.UPDATE_SOURCE_BRANCH)
     state.setdefault("current", {**get_build_info(), "dirty": _get_worktree_dirty()})
     state.setdefault("remote", {"commit": "unknown", "full_commit": "unknown"})
+    state["remote"].setdefault("release_version", None)
+    state["remote"].setdefault("version", state["remote"].get("commit", "unknown"))
     state.setdefault("behind_count", 0)
     state.setdefault("ahead_count", 0)
     state.setdefault("update_available", False)
     state.setdefault("pending_commits", [])
     return state
+
+
+def _parse_state_checked_at(payload: dict):
+    checked_at = (payload or {}).get("checked_at")
+    if not checked_at:
+        return None
+    try:
+        parsed = datetime.fromisoformat(checked_at.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed
+    except Exception:
+        return None
+
+
+def is_update_state_stale(db, max_age_hours: int = 24):
+    state = get_update_state(db)
+    checked_at = _parse_state_checked_at(state)
+    if not checked_at:
+        return True
+    return (utcnow() - checked_at).total_seconds() >= (max_age_hours * 3600)
 
 
 def _fetch_update_tracking_ref():
@@ -612,6 +635,31 @@ def _parse_github_repo_slug(repo_url: str):
     if len(parts) < 2:
         return None
     return f"{parts[0]}/{parts[1]}"
+
+
+async def _get_remote_release_version():
+    repo_slug = _parse_github_repo_slug(settings.UPDATE_SOURCE_REPO_URL)
+    if not repo_slug:
+        return None
+    version_url = f"https://raw.githubusercontent.com/{repo_slug}/{settings.UPDATE_SOURCE_BRANCH}/VERSION"
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            response = await client.get(version_url)
+        if response.status_code != 200:
+            return None
+        return _normalize_version_label(response.text.strip())
+    except Exception:
+        return None
+
+
+def _build_remote_version_display(current: dict, remote_release_version: str | None, behind_count: int, remote_commit: str):
+    if remote_release_version:
+        try:
+            current_revision = int(current.get("revision") or 0)
+            return f"{remote_release_version}+r{current_revision + max(behind_count, 0)}"
+        except Exception:
+            return remote_release_version
+    return remote_commit or "unknown"
 
 
 async def _get_github_compare_payload(local_full_commit: str):
@@ -672,6 +720,7 @@ async def _get_github_compare_payload(local_full_commit: str):
 
 
 def _get_update_details_via_fetch(local_full_commit: str, current: dict):
+    remote_release_version = None
     fetch_result = _fetch_update_tracking_ref()
     if not _run_git(["rev-parse", "--verify", UPDATE_TRACKING_REMOTE], fallback=None):
         return None, fetch_result
@@ -706,6 +755,8 @@ def _get_update_details_via_fetch(local_full_commit: str, current: dict):
         "remote": {
             "commit": remote_commit,
             "full_commit": remote_full_commit,
+            "release_version": remote_release_version,
+            "version": _build_remote_version_display(current, remote_release_version, behind_count, remote_commit),
         },
         "ahead_count": ahead_count,
         "behind_count": behind_count,
@@ -735,10 +786,12 @@ def _get_worktree_dirty():
 async def _get_update_check_payload():
     current = get_build_info()
     local_full_commit = _run_git(["rev-parse", "HEAD"], fallback="unknown")
+    remote_release_version = await _get_remote_release_version()
     remote_sha, ls_remote_result = _get_remote_branch_sha_via_ls_remote()
     if remote_sha:
         remote_short = remote_sha[:7]
         update_available = remote_sha != local_full_commit
+        behind_count = 1 if update_available else 0
         payload = {
             "checked_at": utcnow().isoformat(),
             "status": "ok",
@@ -753,9 +806,11 @@ async def _get_update_check_payload():
             "remote": {
                 "commit": remote_short,
                 "full_commit": remote_sha,
+                "release_version": remote_release_version,
+                "version": _build_remote_version_display(current, remote_release_version, behind_count, remote_short),
             },
             "ahead_count": 0,
-            "behind_count": 1 if update_available else 0,
+            "behind_count": behind_count,
             "update_available": update_available,
             "pending_commits": [],
             "fetch_result": ls_remote_result,
@@ -775,6 +830,8 @@ async def _get_update_check_payload():
                     "remote": {
                         "commit": compare_result.get("remote_commit", remote_short),
                         "full_commit": compare_result.get("remote_full_commit", remote_sha),
+                        "release_version": remote_release_version,
+                        "version": _build_remote_version_display(current, remote_release_version, behind_count, compare_result.get("remote_commit", remote_short)),
                     },
                     "ahead_count": ahead_count,
                     "behind_count": behind_count,
@@ -802,6 +859,8 @@ async def _get_update_check_payload():
             "remote": {
                 "commit": compare_result.get("remote_commit", "unknown"),
                 "full_commit": compare_result.get("remote_full_commit", "unknown"),
+                "release_version": remote_release_version,
+                "version": _build_remote_version_display(current, remote_release_version, behind_count, compare_result.get("remote_commit", "unknown")),
             },
             "ahead_count": ahead_count,
             "behind_count": behind_count,
@@ -1319,6 +1378,37 @@ def queue_apply_update(triggered_by: str | None):
     except Exception as e:
         update_admin_job_progress(job_id, message=f"Failed to contact internal updater: {e}", status="failed", phase="error", progress=100, finished=True)
     return job_id
+
+
+def run_silent_update_refresh():
+    db = database.SessionLocal()
+    try:
+        if not _acquire_lock(db, None):
+            return False
+        payload = asyncio.run(_get_update_check_payload())
+        save_update_state(db, payload)
+        return True
+    except Exception:
+        return False
+    finally:
+        try:
+            _release_lock(db)
+        except Exception:
+            pass
+        db.close()
+
+
+def queue_silent_update_refresh_if_stale(max_age_hours: int = 24):
+    db = database.SessionLocal()
+    try:
+        if not is_update_state_stale(db, max_age_hours=max_age_hours):
+            return False
+        if get_active_operation_lock(db):
+            return False
+    finally:
+        db.close()
+    asyncio.create_task(asyncio.to_thread(run_silent_update_refresh))
+    return True
 
 
 def get_active_operation_lock(db):
