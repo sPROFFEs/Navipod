@@ -267,7 +267,11 @@ function renderReconnectState() {
 async function pollJob() {
     try {
         const res = await fetch(`/admin/api/system/jobs/${jobId}`, { credentials: "same-origin" });
-        if (!res.ok) return;
+        if (!res.ok) {
+            renderReconnectState();
+            setTimeout(pollJob, 3000);
+            return;
+        }
         const data = await res.json();
         renderJob(data);
         if (!terminalStates.has(data.status)) {
