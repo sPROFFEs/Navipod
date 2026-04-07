@@ -217,6 +217,16 @@
 .monitor-field-action .monitor-primary {
     width: 100%;
 }
+.monitor-pool-form {
+    display: grid;
+    gap: 10px;
+}
+.monitor-pool-form-row {
+    display: grid;
+    grid-template-columns: minmax(200px, 320px) auto;
+    gap: 12px;
+    align-items: end;
+}
 .monitor-input,
 .monitor-select {
     width: 100%;
@@ -360,6 +370,7 @@
     .monitor-actions > *,
     .monitor-panel-header > div:last-child > * { flex: 1 1 calc(50% - 8px); }
     .monitor-form-grid { grid-template-columns: 1fr; }
+    .monitor-pool-form-row { grid-template-columns: 1fr; }
     .monitor-card-value strong { font-size: 2rem; }
 }
 </style>
@@ -462,15 +473,17 @@
                 </div>
             </div>
             <div class="monitor-panel-body">
-                <form action="/admin/system/pool-limit" method="post" class="monitor-form-grid">
-                    <div class="monitor-field">
-                        <label for="pool-limit-input">Pool limit (GB)</label>
-                        <input id="pool-limit-input" class="monitor-input" type="number" name="limit_gb" value="{{ pool.limit }}" required>
-                        <div class="monitor-field-help">Sets the shared disk cap for the central media pool.</div>
+                <form action="/admin/system/pool-limit" method="post" class="monitor-pool-form">
+                    <div class="monitor-pool-form-row">
+                        <div class="monitor-field">
+                            <label for="pool-limit-input">Pool limit (GB)</label>
+                            <input id="pool-limit-input" class="monitor-input" type="number" name="limit_gb" value="{{ pool.limit }}" required>
+                        </div>
+                        <div class="monitor-field-action">
+                            <button type="submit" class="monitor-primary"><i data-lucide="save"></i><span>{{ _("admin.apply_button") }}</span></button>
+                        </div>
                     </div>
-                    <div class="monitor-field-action">
-                        <button type="submit" class="monitor-primary"><i data-lucide="save"></i><span>{{ _("admin.apply_button") }}</span></button>
-                    </div>
+                    <div class="monitor-field-help">Sets the shared disk cap for the central media pool.</div>
                 </form>
             </div>
         </article>
