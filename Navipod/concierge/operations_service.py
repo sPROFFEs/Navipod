@@ -129,50 +129,74 @@ def _get_container_mount_source(destination_path: Path):
     return None
 
 
-def _get_host_visible_compose_project_root():
+def _get_host_visible_compose_roots():
     host_repo_root = _get_container_mount_source(REPO_ROOT)
     if not host_repo_root:
-        return COMPOSE_PROJECT_ROOT
-    if str(host_repo_root) == str(REPO_ROOT):
-        return host_repo_root / "Navipod"
+        return None, None
+    return host_repo_root, host_repo_root / "Navipod"
 
-    try:
-        if not host_repo_root.exists():
-            host_repo_root.parent.mkdir(parents=True, exist_ok=True)
-            host_repo_root.symlink_to(REPO_ROOT, target_is_directory=True)
-        elif host_repo_root.is_symlink() and host_repo_root.resolve() == REPO_ROOT.resolve():
-            pass
-    except Exception:
-        return COMPOSE_PROJECT_ROOT
-    return host_repo_root / "Navipod"
+
+def _build_host_bind_compose_file():
+    host_repo_root, host_app_root = _get_host_visible_compose_roots()
+    compose_file = COMPOSE_PROJECT_ROOT / "docker-compose.yaml"
+    if not host_repo_root or not host_app_root or not compose_file.exists():
+        return None
+
+    compose_text = compose_file.read_text(encoding="utf-8")
+    replacements = {
+        "- ..:/workspace": f"- {host_repo_root.as_posix()}:/workspace",
+        "- ./concierge/templates:/app/templates": f"- {host_app_root.as_posix()}/concierge/templates:/app/templates",
+        "- ./concierge:/app": f"- {host_app_root.as_posix()}/concierge:/app",
+        "- ./assets:/app/assets": f"- {host_app_root.as_posix()}/assets:/app/assets",
+        "- ./assets:/app/assets:ro": f"- {host_app_root.as_posix()}/assets:/app/assets:ro",
+        "- ./nginx.conf:/etc/nginx/nginx.conf:ro": f"- {host_app_root.as_posix()}/nginx.conf:/etc/nginx/nginx.conf:ro",
+    }
+    for old, new in replacements.items():
+        compose_text = compose_text.replace(old, new)
+
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        suffix=".host-bind.yml",
+        prefix="navipod-compose-",
+        dir=str(COMPOSE_PROJECT_ROOT),
+        delete=False,
+    ) as tmp:
+        tmp.write(compose_text)
+        return Path(tmp.name)
 
 
 def _run_compose_command(args, *, check=True):
-    compose_project_root = _get_host_visible_compose_project_root()
+    temp_compose_file = _build_host_bind_compose_file()
+    compose_file_arg = str(temp_compose_file) if temp_compose_file else "docker-compose.yaml"
     commands_to_try = [
-        ["docker", "compose", "--env-file", COMPOSE_ENV_FILE, *args],
-        ["docker-compose", "--env-file", COMPOSE_ENV_FILE, *args],
+        ["docker", "compose", "-f", compose_file_arg, "--env-file", COMPOSE_ENV_FILE, *args],
+        ["docker-compose", "-f", compose_file_arg, "--env-file", COMPOSE_ENV_FILE, *args],
     ]
     last_error = None
-    for cmd in commands_to_try:
-        try:
-            completed = subprocess.run(
-                cmd,
-                check=check,
-                capture_output=True,
-                text=True,
-                cwd=str(compose_project_root),
-            )
-            return completed
-        except FileNotFoundError as e:
-            last_error = e
-        except subprocess.CalledProcessError as e:
-            if check:
-                raise
-            return e
-    if last_error:
-        raise last_error
-    raise RuntimeError("No compose command available")
+    try:
+        for cmd in commands_to_try:
+            try:
+                completed = subprocess.run(
+                    cmd,
+                    check=check,
+                    capture_output=True,
+                    text=True,
+                    cwd=str(COMPOSE_PROJECT_ROOT),
+                )
+                return completed
+            except FileNotFoundError as e:
+                last_error = e
+            except subprocess.CalledProcessError as e:
+                if check:
+                    raise
+                return e
+        if last_error:
+            raise last_error
+        raise RuntimeError("No compose command available")
+    finally:
+        if temp_compose_file and temp_compose_file.exists():
+            temp_compose_file.unlink(missing_ok=True)
 
 
 def _normalize_version_label(raw_version: str | None):
