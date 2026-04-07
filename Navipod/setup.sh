@@ -8,6 +8,8 @@ echo "🚀 Starting Navipod Setup..."
 # --- CONFIGURATION ---
 DATA_ROOT="/opt/saas-data"
 IMPORT_STAGE="$DATA_ROOT/import_stage"
+CONFIG_ROOT="$DATA_ROOT/config"
+CONFIG_ENV="$CONFIG_ROOT/navipod.env"
 
 # 0. Check Dependencies
 echo "🔍 Checking dependencies..."
@@ -43,6 +45,7 @@ fi
 echo "📂 Creating data directories in $DATA_ROOT..."
 sudo mkdir -p "$DATA_ROOT/pool"
 sudo mkdir -p "$DATA_ROOT/backups"
+sudo mkdir -p "$CONFIG_ROOT"
 sudo mkdir -p "$IMPORT_STAGE"
 sudo chown -R $USER:$USER "$DATA_ROOT"
 # Use 777 to avoid permission issues with bind mounts and container users
@@ -51,26 +54,31 @@ sudo chmod -R 777 "$DATA_ROOT"
 sudo chmod -R 777 "$IMPORT_STAGE"
 
 # 2. Setup Environment Variables
-if [ ! -f .env ]; then
-    echo "📝 Creating .env file from .env.example..."
-    cp .env.example .env
+if [ ! -f "$CONFIG_ENV" ]; then
+    echo "📝 Creating runtime config file at $CONFIG_ENV from .env.example..."
+    sudo cp .env.example "$CONFIG_ENV"
+    sudo chown $USER:$USER "$CONFIG_ENV"
     
     # Generate a random SECRET_KEY
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         RANDOM_KEY=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
-        sed -i "s/generate_a_very_long_random_string_here/$RANDOM_KEY/g" .env
+        sed -i "s/generate_a_very_long_random_string_here/$RANDOM_KEY/g" "$CONFIG_ENV"
     fi
     
-    echo "⚠️  Action Required: Open .env and set your DOMAIN/TUNNEL_TOKEN if needed."
+    echo "⚠️  Action Required: Open $CONFIG_ENV and set your DOMAIN/TUNNEL_TOKEN if needed."
     echo "   (Press Enter to continue setup once you're ready, or Ctrl+C to stop)"
     read
 else
-    echo "✅ .env file already exists."
+    echo "✅ Runtime config already exists at $CONFIG_ENV."
+fi
+
+if [ ! -e .env ]; then
+    ln -s "$CONFIG_ENV" .env
 fi
 
 # 3. Pull & Start Containers
 echo "🐳 Pulling and starting Docker containers..."
-docker compose up -d --build
+docker compose --env-file "$CONFIG_ENV" up -d --build
 
 echo "⏳ Waiting 10s for database to initialize..."
 sleep 10
@@ -88,7 +96,7 @@ if [[ "$CREATE_ADMIN" == "y" || "$CREATE_ADMIN" == "Y" ]]; then
     echo "🛠️  Creating admin user in database..."
     
     # Execute python snippet inside the container
-    docker compose exec -T concierge python -c "
+    docker compose --env-file "$CONFIG_ENV" exec -T concierge python -c "
 import database, auth
 try:
     db = database.SessionLocal()
@@ -143,7 +151,7 @@ if [[ "$IMPORT_MUSIC" == "y" || "$IMPORT_MUSIC" == "Y" ]]; then
             
             echo "🔄 Running Importer Engine..."
             # Trigger importer.py inside container on the mapped volume /saas-data/import_stage
-            docker compose exec -T concierge python importer.py /saas-data/import_stage
+            docker compose --env-file "$CONFIG_ENV" exec -T concierge python importer.py /saas-data/import_stage
             
             echo "✅ Import process finished. Check logs for details."
         else

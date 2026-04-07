@@ -22,7 +22,8 @@ from navipod_config import settings
 DB_FILE_PATH = "/saas-data/concierge.db"
 REPO_ROOT = Path(settings.APP_SOURCE_ROOT)
 COMPOSE_PROJECT_ROOT = REPO_ROOT / "Navipod"
-ENV_FILE_PATH = "/run/navipod/.env"
+ENV_FILE_PATH = settings.RUNTIME_ENV_FILE
+COMPOSE_ENV_FILE = settings.COMPOSE_ENV_FILE
 BACKUP_ROOT = Path(settings.BACKUP_ROOT)
 CURRENT_BACKUP_NAME = "navipod-backup-current.zip"
 PREVIOUS_BACKUP_NAME = "navipod-backup-previous.zip"
@@ -104,8 +105,8 @@ def _run_git(args, *, check=True, fallback=None, include_details=False):
 
 def _run_compose_command(args, *, check=True):
     commands_to_try = [
-        ["docker", "compose", *args],
-        ["docker-compose", *args],
+        ["docker", "compose", "--env-file", COMPOSE_ENV_FILE, *args],
+        ["docker-compose", "--env-file", COMPOSE_ENV_FILE, *args],
     ]
     last_error = None
     for cmd in commands_to_try:
@@ -608,7 +609,18 @@ async def _get_github_compare_payload(local_full_commit: str):
 
 
 def _get_worktree_dirty():
-    status = _run_git(["status", "--porcelain", "--untracked-files=no"], fallback="")
+    status = _run_git(
+        [
+            "status",
+            "--porcelain",
+            "--untracked-files=no",
+            "--",
+            ".",
+            ":(exclude).env",
+            ":(exclude)Navipod/.env",
+        ],
+        fallback="",
+    )
     return bool(status and status.strip())
 
 

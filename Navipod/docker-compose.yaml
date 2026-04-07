@@ -28,7 +28,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock # Para controlar Docker
       - /opt/saas-data:/saas-data # Donde se guardan las DBs y configs de usuarios
       - ..:/workspace
-      - ./.env:/run/navipod/.env
+      - /opt/saas-data/config/navipod.env:/run/navipod/.env
       - ./concierge/templates:/app/templates
       - ./concierge:/app
       - ./assets:/app/assets
@@ -42,6 +42,8 @@ services:
       - IDLE_THRESHOLD_MINUTES=${IDLE_THRESHOLD_MINUTES:-30}
       - HOST_DATA_ROOT=${HOST_DATA_ROOT:-/opt/saas-data}
       - APP_SOURCE_ROOT=${APP_SOURCE_ROOT:-/workspace}
+      - COMPOSE_ENV_FILE=${COMPOSE_ENV_FILE:-/saas-data/config/navipod.env}
+      - RUNTIME_ENV_FILE=${RUNTIME_ENV_FILE:-/run/navipod/.env}
       - NAVIDROME_IMAGE=${NAVIDROME_IMAGE:-deluan/navidrome:latest}
       - CONCURRENT_DOWNLOADS=${CONCURRENT_DOWNLOADS:-3}
       - COOKIE_SECURE=${COOKIE_SECURE:-true}
@@ -63,7 +65,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - /opt/saas-data:/saas-data
       - ..:/workspace
-      - ./.env:/run/navipod/.env
+      - /opt/saas-data/config/navipod.env:/run/navipod/.env
       - ./concierge:/app
     environment:
       - SECRET_KEY=${SECRET_KEY}
@@ -75,6 +77,8 @@ services:
       - IDLE_THRESHOLD_MINUTES=${IDLE_THRESHOLD_MINUTES:-30}
       - HOST_DATA_ROOT=${HOST_DATA_ROOT:-/opt/saas-data}
       - APP_SOURCE_ROOT=${APP_SOURCE_ROOT:-/workspace}
+      - COMPOSE_ENV_FILE=${COMPOSE_ENV_FILE:-/saas-data/config/navipod.env}
+      - RUNTIME_ENV_FILE=${RUNTIME_ENV_FILE:-/run/navipod/.env}
       - NAVIDROME_IMAGE=${NAVIDROME_IMAGE:-deluan/navidrome:latest}
       - CONCURRENT_DOWNLOADS=${CONCURRENT_DOWNLOADS:-3}
       - COOKIE_SECURE=${COOKIE_SECURE:-true}

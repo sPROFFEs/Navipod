@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     HOST_DATA_ROOT: str = "/opt/saas-data"
     BACKUP_ROOT: str = "/saas-data/backups"
     APP_SOURCE_ROOT: str = "/workspace"
+    COMPOSE_ENV_FILE: str = "/saas-data/config/navipod.env"
+    RUNTIME_ENV_FILE: str = "/run/navipod/.env"
     CONCURRENT_DOWNLOADS: int = 3
     COOKIE_SECURE: bool = True
     BACKUP_SCHEDULER_POLL_SECONDS: int = 60
