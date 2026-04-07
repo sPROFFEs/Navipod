@@ -605,7 +605,7 @@
                         <div class="monitor-status {% if job.status == 'completed' %}ok{% elif job.status == 'failed' %}error{% else %}warn{% endif %}">{{ job.status }}</div>
                     </div>
                     <div>{{ job.message or 'No message' }}</div>
-                    <div class="monitor-job-meta">Triggered by {{ job.triggered_by or 'system' }} • {{ job.started_at }}{% if job.finished_at %} • finished {{ job.finished_at }}{% endif %}</div>
+                    <div class="monitor-job-meta">Triggered by {{ job.triggered_by or 'system' }} â€¢ {{ job.started_at }}{% if job.finished_at %} â€¢ finished {{ job.finished_at }}{% endif %}</div>
                 </article>
                 {% endfor %}
             </div>
@@ -660,7 +660,7 @@ const statsInterval = setInterval(async () => {
         if (poolSub) poolSub.textContent = data.pool.used + 'GB used of ' + data.pool.limit + 'GB';
         if (poolBar) {
             poolBar.style.width = data.pool.percent + '%';
-            poolBar.style.background = data.pool.percent > 90 ? 'var(--monitor-red)' : 'var(--monitor-blue)';
+            poolBar.style.background = data.pool.percent > 90 - 'var(--monitor-red)' : 'var(--monitor-blue)';
         }
     } catch (e) {}
 }, 10000);
