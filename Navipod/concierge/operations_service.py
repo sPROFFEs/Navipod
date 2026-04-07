@@ -463,6 +463,22 @@ def format_bytes(size_bytes):
     return f"{size_bytes} B"
 
 
+def format_datetime_for_display(dt_value, tzinfo=None):
+    if not dt_value:
+        return None
+    target_tz = tzinfo or ZoneInfo("UTC")
+    dt_local = dt_value
+    if dt_local.tzinfo is None:
+        dt_local = dt_local.replace(tzinfo=timezone.utc)
+    try:
+        dt_local = dt_local.astimezone(target_tz)
+    except Exception:
+        dt_local = dt_local.astimezone(ZoneInfo("UTC"))
+        target_tz = ZoneInfo("UTC")
+    tz_name = getattr(target_tz, "key", None) or str(target_tz)
+    return f"{dt_local.strftime('%Y-%m-%d %H:%M:%S')} {tz_name}"
+
+
 def _upsert_backup_artifact(db, slot, *, filename=None, file_path=None, size_bytes=0, created_at=None, manifest=None):
     artifact = db.query(database.BackupArtifact).filter(database.BackupArtifact.slot == slot).first()
     if not artifact:
@@ -485,6 +501,7 @@ def get_backup_state(db):
     current = db.query(database.BackupArtifact).filter(database.BackupArtifact.slot == "current").first()
     previous = db.query(database.BackupArtifact).filter(database.BackupArtifact.slot == "previous").first()
     system_settings = ensure_system_settings_record(db)
+    scheduler_timezone = get_scheduler_timezone(system_settings)
 
     def serialize(artifact):
         if not artifact:
@@ -497,6 +514,7 @@ def get_backup_state(db):
             "size_bytes": artifact.size_bytes or 0,
             "size_label": format_bytes(artifact.size_bytes or 0),
             "created_at": artifact.created_at.isoformat() if artifact.created_at else None,
+            "created_at_display": format_datetime_for_display(artifact.created_at, scheduler_timezone),
             "exists": exists,
             "source_commit": artifact.source_commit,
             "source_branch": artifact.source_branch,
@@ -507,7 +525,6 @@ def get_backup_state(db):
         latest_success = previous.created_at
 
     next_run = None
-    scheduler_timezone = get_scheduler_timezone(system_settings)
     if system_settings.autobackup_enabled:
         now = datetime.now(scheduler_timezone)
         next_candidate = now.replace(

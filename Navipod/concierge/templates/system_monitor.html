@@ -540,7 +540,7 @@
                     </div>
                     {% if backup %}
                     <div class="monitor-kv-label">Size</div><div class="monitor-kv-value">{{ backup.size_label }}</div>
-                    <div class="monitor-kv-label">Created</div><div class="monitor-kv-value">{{ backup.created_at }}</div>
+                    <div class="monitor-kv-label">Created</div><div class="monitor-kv-value">{{ backup.created_at_display or backup.created_at }}</div>
                     <div class="monitor-kv-label">Source</div><div class="monitor-kv-value"><code>{{ backup.source_branch }}@{{ backup.source_commit }}</code></div>
                     <div class="monitor-kv-label">Status</div><div class="monitor-kv-value">{{ 'Available' if backup.exists else 'Missing file' }}</div>
                     {% else %}
