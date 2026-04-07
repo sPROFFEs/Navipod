@@ -43,6 +43,7 @@ ENV/
 !.env.example
 /Navipod/.env
 /Navipod/.env.*
+!/Navipod/.env.example
 *.pem
 *.key
 cookies.txt

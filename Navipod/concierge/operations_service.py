@@ -9,6 +9,7 @@ import tempfile
 import zipfile
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, available_timezones
 
 import httpx
@@ -547,19 +548,105 @@ def _fetch_update_tracking_ref():
     )
 
 
+def _parse_github_repo_slug(repo_url: str):
+    parsed = urlparse(repo_url)
+    if parsed.netloc.lower() != "github.com":
+        return None
+    path = parsed.path.strip("/")
+    if path.endswith(".git"):
+        path = path[:-4]
+    parts = [part for part in path.split("/") if part]
+    if len(parts) < 2:
+        return None
+    return f"{parts[0]}/{parts[1]}"
+
+
+async def _get_github_compare_payload(local_full_commit: str):
+    repo_slug = _parse_github_repo_slug(settings.UPDATE_SOURCE_REPO_URL)
+    if not repo_slug or not local_full_commit or local_full_commit == "unknown":
+        return None
+
+    compare_url = (
+        f"https://api.github.com/repos/{repo_slug}/compare/"
+        f"{local_full_commit}...{settings.UPDATE_SOURCE_BRANCH}"
+    )
+
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        response = await client.get(
+            compare_url,
+            headers={"Accept": "application/vnd.github+json"},
+        )
+        if response.status_code != 200:
+            return {
+                "ok": False,
+                "status_code": response.status_code,
+                "error": response.text.strip(),
+                "compare_url": compare_url,
+            }
+
+        payload = response.json()
+        commits = payload.get("commits") or []
+        return {
+            "ok": True,
+            "status_code": response.status_code,
+            "compare_url": compare_url,
+            "status": payload.get("status"),
+            "ahead_by": payload.get("ahead_by", 0),
+            "behind_by": payload.get("behind_by", 0),
+            "html_url": payload.get("html_url"),
+            "remote_full_commit": (payload.get("base_commit") or {}).get("sha", "unknown"),
+            "remote_commit": ((payload.get("base_commit") or {}).get("sha", "")[:7] or "unknown"),
+            "pending_commits": [
+                f"{(commit.get('sha') or '')[:7]} {commit.get('commit', {}).get('message', '').splitlines()[0]}".strip()
+                for commit in commits[:10]
+            ],
+        }
+
+
 def _get_worktree_dirty():
     status = _run_git(["status", "--porcelain", "--untracked-files=no"], fallback="")
     return bool(status and status.strip())
 
 
-def _get_update_check_payload():
-    fetch_result = _fetch_update_tracking_ref()
+async def _get_update_check_payload():
     current = get_build_info()
+    local_full_commit = _run_git(["rev-parse", "HEAD"], fallback="unknown")
+    compare_result = await _get_github_compare_payload(local_full_commit)
+
+    if compare_result and compare_result.get("ok"):
+        ahead_count = int(compare_result.get("ahead_by") or 0)
+        behind_count = int(compare_result.get("behind_by") or 0)
+        return {
+            "checked_at": utcnow().isoformat(),
+            "status": "ok",
+            "message": "Update check completed",
+            "source_repo_url": settings.UPDATE_SOURCE_REPO_URL,
+            "source_branch": settings.UPDATE_SOURCE_BRANCH,
+            "current": {
+                **current,
+                "full_commit": local_full_commit,
+                "dirty": _get_worktree_dirty(),
+            },
+            "remote": {
+                "commit": compare_result.get("remote_commit", "unknown"),
+                "full_commit": compare_result.get("remote_full_commit", "unknown"),
+            },
+            "ahead_count": ahead_count,
+            "behind_count": behind_count,
+            "update_available": behind_count > 0,
+            "pending_commits": compare_result.get("pending_commits", []),
+            "fetch_result": compare_result,
+        }
+
+    fetch_result = _fetch_update_tracking_ref()
     if not _run_git(["rev-parse", "--verify", UPDATE_TRACKING_REMOTE], fallback=None):
         fetch_error = ""
         fetch_stdout = ""
         fetch_returncode = None
-        if isinstance(fetch_result, dict):
+        if compare_result and not compare_result.get("ok"):
+            fetch_error = compare_result.get("error") or ""
+            fetch_returncode = compare_result.get("status_code")
+        elif isinstance(fetch_result, dict):
             fetch_error = fetch_result.get("stderr") or ""
             fetch_stdout = fetch_result.get("stdout") or ""
             fetch_returncode = fetch_result.get("returncode")
@@ -574,7 +661,7 @@ def _get_update_check_payload():
             "source_branch": settings.UPDATE_SOURCE_BRANCH,
             "current": {
                 **current,
-                "full_commit": _run_git(["rev-parse", "HEAD"], fallback="unknown"),
+                "full_commit": local_full_commit,
                 "dirty": _get_worktree_dirty(),
             },
             "remote": {
@@ -592,7 +679,6 @@ def _get_update_check_payload():
         }
     remote_commit = _run_git(["rev-parse", "--short", UPDATE_TRACKING_REMOTE], fallback="unknown")
     remote_full_commit = _run_git(["rev-parse", UPDATE_TRACKING_REMOTE], fallback="unknown")
-    local_full_commit = _run_git(["rev-parse", "HEAD"], fallback="unknown")
     counts = _run_git(["rev-list", "--left-right", "--count", f"HEAD...{UPDATE_TRACKING_REMOTE}"], fallback="0\t0")
     ahead_count = 0
     behind_count = 0
@@ -730,7 +816,7 @@ def _run_check_update_job(job_id: int, triggered_by: str | None):
             update_admin_job_progress(job_id, message="Another admin operation is already running", status="failed", phase="error", progress=100, finished=True)
             return
         update_admin_job_progress(job_id, message="Checking GitHub main for updates", status="running", phase="check", progress=25)
-        payload = _get_update_check_payload()
+        payload = asyncio.run(_get_update_check_payload())
         save_update_state(db, payload)
         if payload.get("status") != "ok":
             message = payload.get("message") or "Update check failed"
