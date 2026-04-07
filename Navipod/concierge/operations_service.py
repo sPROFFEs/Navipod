@@ -64,17 +64,40 @@ def ensure_runtime_dirs():
     BACKUP_ROOT.mkdir(parents=True, exist_ok=True)
 
 
-def _run_git(args, *, check=True, fallback=None):
+def _run_git(args, *, check=True, fallback=None, include_details=False):
     try:
         completed = subprocess.run(
             ["git", "-c", f"safe.directory={REPO_ROOT}", *args],
-            check=check,
+            check=False,
             capture_output=True,
             text=True,
             cwd=str(REPO_ROOT),
         )
-        return (completed.stdout or "").strip()
-    except Exception:
+        stdout = (completed.stdout or "").strip()
+        stderr = (completed.stderr or "").strip()
+        result = {
+            "ok": completed.returncode == 0,
+            "stdout": stdout,
+            "stderr": stderr,
+            "returncode": completed.returncode,
+            "command": "git " + " ".join(args),
+        }
+        if check and not result["ok"]:
+            if include_details:
+                return result
+            return fallback
+        if include_details:
+            return result
+        return stdout
+    except Exception as e:
+        if include_details:
+            return {
+                "ok": False,
+                "stdout": "",
+                "stderr": str(e),
+                "returncode": None,
+                "command": "git " + " ".join(args),
+            }
         return fallback
 
 
@@ -520,6 +543,7 @@ def _fetch_update_tracking_ref():
             f"+refs/heads/{settings.UPDATE_SOURCE_BRANCH}:{UPDATE_TRACKING_REMOTE}",
         ],
         fallback="",
+        include_details=True,
     )
 
 
@@ -532,10 +556,20 @@ def _get_update_check_payload():
     fetch_result = _fetch_update_tracking_ref()
     current = get_build_info()
     if not _run_git(["rev-parse", "--verify", UPDATE_TRACKING_REMOTE], fallback=None):
+        fetch_error = ""
+        fetch_stdout = ""
+        fetch_returncode = None
+        if isinstance(fetch_result, dict):
+            fetch_error = fetch_result.get("stderr") or ""
+            fetch_stdout = fetch_result.get("stdout") or ""
+            fetch_returncode = fetch_result.get("returncode")
+        error_message = "Failed to fetch update reference from GitHub main"
+        if fetch_error:
+            error_message = f"{error_message}: {fetch_error}"
         return {
             "checked_at": utcnow().isoformat(),
             "status": "error",
-            "message": "Failed to fetch update reference from GitHub main",
+            "message": error_message,
             "source_repo_url": settings.UPDATE_SOURCE_REPO_URL,
             "source_branch": settings.UPDATE_SOURCE_BRANCH,
             "current": {
@@ -552,6 +586,9 @@ def _get_update_check_payload():
             "update_available": False,
             "pending_commits": [],
             "fetch_result": fetch_result,
+            "fetch_error": fetch_error,
+            "fetch_stdout": fetch_stdout,
+            "fetch_returncode": fetch_returncode,
         }
     remote_commit = _run_git(["rev-parse", "--short", UPDATE_TRACKING_REMOTE], fallback="unknown")
     remote_full_commit = _run_git(["rev-parse", UPDATE_TRACKING_REMOTE], fallback="unknown")
