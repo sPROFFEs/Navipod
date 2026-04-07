@@ -205,6 +205,11 @@
     color: var(--monitor-muted);
     font-size: .82rem;
 }
+.monitor-field-help {
+    color: var(--monitor-muted);
+    font-size: .82rem;
+    line-height: 1.4;
+}
 .monitor-input,
 .monitor-select {
     width: 100%;
@@ -416,6 +421,7 @@
             </div>
             <div class="monitor-card-value"><strong id="pool-value">{{ pool.percent }}</strong><span>%</span></div>
             <div class="monitor-card-label" id="pool-sub">{{ pool.used }}GB used of {{ pool.limit }}GB</div>
+            <div class="monitor-card-label">Pool limit is the maximum shared storage available for all users and downloads.</div>
             <div class="monitor-progress"><span id="pool-bar" style="width: {{ pool.percent }}%; background: {% if pool.percent > 90 %}var(--monitor-red){% else %}var(--monitor-blue){% endif %};"></span></div>
         </article>
     </section>
@@ -444,21 +450,19 @@
         <article class="monitor-panel">
             <div class="monitor-panel-header">
                 <div>
-                    <h2>Schema</h2>
-                    <p>Migration state and administrative lock status.</p>
+                    <h2>Operations</h2>
+                    <p>Current admin activity and storage pool settings.</p>
                 </div>
             </div>
             <div class="monitor-panel-body">
                 <div class="monitor-kv-grid">
-                    <div class="monitor-kv"><div class="monitor-kv-label">Applied migrations</div><div class="monitor-kv-value">{{ schema.count }}</div></div>
-                    <div class="monitor-kv"><div class="monitor-kv-label">Latest migration</div><div class="monitor-kv-value"><code>{{ schema.latest }}</code></div></div>
-                    <div class="monitor-kv"><div class="monitor-kv-label">Applied at</div><div class="monitor-kv-value">{{ schema.latest_applied_at or 'Not available' }}</div></div>
                     <div class="monitor-kv"><div class="monitor-kv-label">Admin lock</div><div class="monitor-kv-value">{% if active_lock %}Job #{{ active_lock.job_id }} since {{ active_lock.acquired_at }}{% else %}No active lock{% endif %}</div></div>
                 </div>
                 <form action="/admin/system/pool-limit" method="post" class="monitor-form-grid">
                     <div class="monitor-field">
                         <label for="pool-limit-input">Pool limit (GB)</label>
                         <input id="pool-limit-input" class="monitor-input" type="number" name="limit_gb" value="{{ pool.limit }}" required>
+                        <div class="monitor-field-help">Sets the shared disk cap for the central media pool.</div>
                     </div>
                     <div class="monitor-field">
                         <label>&nbsp;</label>

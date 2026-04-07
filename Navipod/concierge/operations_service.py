@@ -828,7 +828,7 @@ def _get_update_details_via_fetch(local_full_commit: str, current: dict):
     payload = {
         "checked_at": utcnow().isoformat(),
         "status": "ok",
-        "message": "Update check completed via git fetch",
+        "message": "Update check completed",
         "source_repo_url": settings.UPDATE_SOURCE_REPO_URL,
         "source_branch": settings.UPDATE_SOURCE_BRANCH,
         "current": {
@@ -879,7 +879,7 @@ async def _get_update_check_payload():
         payload = {
             "checked_at": utcnow().isoformat(),
             "status": "ok",
-            "message": "Update check completed via git ls-remote",
+            "message": "Update check completed",
             "source_repo_url": settings.UPDATE_SOURCE_REPO_URL,
             "source_branch": settings.UPDATE_SOURCE_BRANCH,
             "current": {
