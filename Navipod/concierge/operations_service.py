@@ -38,6 +38,7 @@ REBUILD_REQUIRED_PATHS = {
     "nginx.conf",
 }
 UPDATER_INTERNAL_URL = "http://updater:8090/internal/update/apply"
+VERSION_FILE = REPO_ROOT / "VERSION"
 
 _scheduled_backup_task = None
 
@@ -131,16 +132,37 @@ def _run_compose_command(args, *, check=True):
     raise RuntimeError("No compose command available")
 
 
+def _normalize_version_label(raw_version: str | None):
+    version = (raw_version or "").strip()
+    if not version:
+        return "v0.0.0"
+    return version if version.startswith("v") else f"v{version}"
+
+
+def _read_release_version():
+    env_version = os.getenv("APP_VERSION")
+    if env_version:
+        return _normalize_version_label(env_version)
+    if VERSION_FILE.exists():
+        try:
+            return _normalize_version_label(VERSION_FILE.read_text(encoding="utf-8").strip())
+        except Exception:
+            pass
+    return "v0.0.0"
+
+
 def get_build_info():
     commit = os.getenv("APP_COMMIT") or _run_git(["rev-parse", "--short", "HEAD"], fallback="unknown")
     branch = os.getenv("APP_CHANNEL") or _run_git(["branch", "--show-current"], fallback=settings.UPDATE_SOURCE_BRANCH)
     build_date = os.getenv("APP_BUILD_DATE") or _run_git(["log", "-1", "--format=%cI"], fallback="unknown")
     revision = os.getenv("APP_REVISION") or _run_git(["rev-list", "--count", "HEAD"], fallback="unknown")
-    version = f"{branch}.r{revision}" if revision != "unknown" else branch
+    release_version = _read_release_version()
+    version = f"{release_version}+r{revision}" if revision != "unknown" else release_version
     return {
         "channel": branch,
         "commit": commit,
         "revision": revision,
+        "release_version": release_version,
         "version": version,
         "build_date": build_date,
         "repo_url": settings.UPDATE_SOURCE_REPO_URL,
