@@ -43,6 +43,10 @@ fi
 
 # 3. DROP PRIVILEGES AND RUN COMMAND
 if [ "$(id -u)" = "0" ]; then
+    if [ "${KEEP_ROOT:-false}" = "true" ]; then
+        echo "[ENTRYPOINT] KEEP_ROOT=true, running as root."
+        exec "$@"
+    fi
     echo "[ENTRYPOINT] Dropping privileges to appuser..."
     exec gosu appuser "$@"
 else
