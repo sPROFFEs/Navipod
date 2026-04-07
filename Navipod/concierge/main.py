@@ -23,6 +23,7 @@ from pydantic import BaseModel
 import asyncio
 import reaper
 import cache_maintenance
+import operations_service
 from routers import admin, user
 from routers.music import router as music_router
 import security
@@ -97,10 +98,14 @@ async def startup_event():
     # Force reload on startup to be sure
     i18n.load_translations()
     print(f"[I18N] Loaded languages: {list(i18n.translations.keys())}")
+    applied_migrations = operations_service.apply_schema_migrations()
+    if applied_migrations:
+        print(f"[MIGRATIONS] Applied: {', '.join(applied_migrations)}")
     
     # Start Reaper Background Loop
     asyncio.create_task(reaper_scheduler())
     asyncio.create_task(cache_cleanup_scheduler())
+    asyncio.create_task(operations_service.autobackup_scheduler())
 
 async def reaper_scheduler():
     check_interval = settings.CHECK_INTERVAL_MINUTES

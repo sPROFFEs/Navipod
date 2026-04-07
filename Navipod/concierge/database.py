@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, Boolean, DateTime, Text, text
+from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, Boolean, DateTime, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.sql import func
@@ -98,6 +98,52 @@ class SystemSettings(Base):
     __tablename__ = "system_settings"
     id = Column(Integer, primary_key=True, index=True)
     pool_limit_gb = Column(Integer, default=100)
+    autobackup_enabled = Column(Boolean, default=True)
+    autobackup_hour = Column(Integer, default=0)
+    autobackup_minute = Column(Integer, default=0)
+    autobackup_timezone = Column(String, default="UTC")
+    update_state_json = Column(Text, nullable=True)
+
+
+class SchemaMigration(Base):
+    __tablename__ = "schema_migrations"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    applied_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AdminJob(Base):
+    __tablename__ = "admin_jobs"
+    id = Column(Integer, primary_key=True, index=True)
+    job_type = Column(String, index=True)
+    status = Column(String, default="pending", index=True)
+    triggered_by = Column(String, nullable=True)
+    message = Column(String, nullable=True)
+    details_json = Column(Text, nullable=True)
+    started_at = Column(DateTime(timezone=True), server_default=func.now())
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class AdminOperationLock(Base):
+    __tablename__ = "admin_operation_locks"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    job_id = Column(Integer, ForeignKey("admin_jobs.id"), nullable=True)
+    acquired_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class BackupArtifact(Base):
+    __tablename__ = "backup_artifacts"
+    id = Column(Integer, primary_key=True, index=True)
+    slot = Column(String, unique=True, index=True)
+    filename = Column(String, nullable=True)
+    file_path = Column(String, nullable=True)
+    size_bytes = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), nullable=True)
+    source_commit = Column(String, nullable=True)
+    source_branch = Column(String, nullable=True)
+    manifest_json = Column(Text, nullable=True)
 
 class TokenBlacklist(Base):
     """Tokens JWT revocados (Logout)"""
@@ -218,18 +264,3 @@ class UserFavorite(Base):
 
 # Crea las tablas si no existen
 Base.metadata.create_all(bind=engine)
-
-
-def _ensure_playlist_schema():
-    with engine.begin() as conn:
-        columns = {
-            row[1]
-            for row in conn.execute(text("PRAGMA table_info(playlists)")).fetchall()
-        }
-        if "is_public" not in columns:
-            conn.execute(text("ALTER TABLE playlists ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0"))
-        if "source_playlist_id" not in columns:
-            conn.execute(text("ALTER TABLE playlists ADD COLUMN source_playlist_id INTEGER"))
-
-
-_ensure_playlist_schema()

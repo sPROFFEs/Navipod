@@ -1,4 +1,3 @@
-from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -19,25 +18,26 @@ class Settings(BaseSettings):
     CHECK_INTERVAL_MINUTES: int = 30
     NAVIDROME_IMAGE: str = "deluan/navidrome:latest"
     HOST_DATA_ROOT: str = "/opt/saas-data"
+    BACKUP_ROOT: str = "/saas-data/backups"
+    APP_SOURCE_ROOT: str = "/workspace"
     CONCURRENT_DOWNLOADS: int = 3
     COOKIE_SECURE: bool = True
+    BACKUP_SCHEDULER_POLL_SECONDS: int = 60
+    UPDATE_SOURCE_REPO_URL: str = "https://github.com/sPROFFEs/Navipod"
+    UPDATE_SOURCE_BRANCH: str = "main"
+    UPDATE_MANAGED_SERVICES: str = "concierge nginx tunnel"
     
     # Allowed Hosts (CORS & TrustedHost)
     DOMAIN: str = "localhost"
-    ALLOWED_HOSTS: list[str] = ["localhost", "127.0.0.1", "0.0.0.0", "domain.com", "*.domain.com"]
-
-    @field_validator("ALLOWED_HOSTS", mode="before")
-    @classmethod
-    def parse_allowed_hosts(cls, value):
-        if value is None:
-            return ["localhost", "127.0.0.1", "0.0.0.0", "domain.com", "*.domain.com"]
-        if isinstance(value, str):
-            return [host.strip() for host in value.split(",") if host.strip()]
-        return value
+    ALLOWED_HOSTS: str = "localhost,127.0.0.1,0.0.0.0,domain.com,*.domain.com"
     
     @property
     def all_allowed_hosts(self) -> list[str]:
-        hosts = [host for host in self.ALLOWED_HOSTS if host not in {"domain.com", "*.domain.com"}]
+        hosts = [
+            host.strip()
+            for host in self.ALLOWED_HOSTS.split(",")
+            if host.strip() and host.strip() not in {"domain.com", "*.domain.com"}
+        ]
         if self.DOMAIN and self.DOMAIN != "localhost":
             hosts.append(self.DOMAIN)
             hosts.append(f"*.{self.DOMAIN}")

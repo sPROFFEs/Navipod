@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Update Progress{% endblock %}
+{% block content %}
+<div class="admin-container" style="max-width: 900px;">
+    <div class="admin-header">
+        <div class="header-text">
+            <span class="admin-subtitle">System Update</span>
+            <h1 class="admin-title">Job #{{ job.id }}</h1>
+        </div>
+        <div class="action-group" style="display: flex; gap: 12px;">
+            <a href="/admin/system" class="btn-admin-action btn-admin-glass">
+                <i data-lucide="arrow-left"></i><span>Back to Monitor</span>
+            </a>
+        </div>
+    </div>
+
+    <div class="admin-section admin-section-padding" style="margin-bottom: 24px;">
+        <div style="display: grid; gap: 16px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+                <div><span style="color: var(--text-sub);">Type:</span> {{ job.job_type }}</div>
+                <div><span style="color: var(--text-sub);">Status:</span> <span id="job-status">{{ job.status }}</span></div>
+                <div><span style="color: var(--text-sub);">Triggered by:</span> {{ job.triggered_by or 'system' }}</div>
+            </div>
+            <div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span style="color: var(--text-sub);">Progress</span>
+                    <span id="job-progress-label">{{ job.details.progress or 0 }}%</span>
+                </div>
+                <div style="height: 10px; background: rgba(255,255,255,0.08); border-radius: 999px; overflow: hidden;">
+                    <div id="job-progress-bar" style="height: 100%; width: {{ job.details.progress or 0 }}%; background: linear-gradient(90deg, #1db954, #62d896); transition: width .35s ease;"></div>
+                </div>
+            </div>
+            <div>
+                <div style="color: var(--text-sub); font-size: 0.9rem;">Current phase</div>
+                <div id="job-phase" style="font-weight: 700; color: white;">{{ job.details.phase or 'queued' }}</div>
+            </div>
+            <div>
+                <div style="color: var(--text-sub); font-size: 0.9rem;">Latest message</div>
+                <div id="job-message" style="font-weight: 600; color: white;">{{ job.message or 'Waiting...' }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="admin-section admin-section-padding">
+        <h3 style="margin-bottom: 16px; color: white;">Activity Log</h3>
+        <div id="job-log" style="display: grid; gap: 10px; max-height: 420px; overflow-y: auto; padding-right: 6px;">
+            {% for item in job.details.logs or [] %}
+            <div class="glass-panel" style="padding: 12px 14px; border-radius: 12px;">
+                <div style="font-size: 0.8rem; color: var(--text-sub); margin-bottom: 4px;">{{ item.at }}</div>
+                <div style="color: white;">{{ item.message }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<script>
+const jobId = {{ job.id }};
+const terminalStates = new Set(["completed", "failed"]);
+
+function renderJob(data) {
+    document.getElementById("job-status").textContent = data.status || "unknown";
+    document.getElementById("job-progress-label").textContent = `${data.details?.progress || 0}%`;
+    document.getElementById("job-progress-bar").style.width = `${data.details?.progress || 0}%`;
+    document.getElementById("job-phase").textContent = data.details?.phase || "queued";
+    document.getElementById("job-message").textContent = data.message || "Waiting...";
+
+    const logContainer = document.getElementById("job-log");
+    const logs = data.details?.logs || [];
+    logContainer.innerHTML = logs.map(item => `
+        <div class="glass-panel" style="padding: 12px 14px; border-radius: 12px;">
+            <div style="font-size: 0.8rem; color: var(--text-sub); margin-bottom: 4px;">${item.at}</div>
+            <div style="color: white;">${item.message}</div>
+        </div>
+    `).join("");
+    logContainer.scrollTop = logContainer.scrollHeight;
+}
+
+async function pollJob() {
+    try {
+        const res = await fetch(`/admin/api/system/jobs/${jobId}`, { credentials: "same-origin" });
+        if (!res.ok) return;
+        const data = await res.json();
+        renderJob(data);
+        if (!terminalStates.has(data.status)) {
+            setTimeout(pollJob, 2000);
+        }
+    } catch (err) {
+        setTimeout(pollJob, 3000);
+    }
+}
+
+pollJob();
+</script>
+{% endblock %}

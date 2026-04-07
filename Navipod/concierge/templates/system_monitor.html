@@ -178,6 +178,228 @@
             </p>
         </div>
     </div>
+
+    <div class="grid-shelf" style="grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); margin: 32px 0;">
+        <div class="admin-section admin-section-padding" style="margin-bottom: 0;">
+            <h3 style="margin-bottom: 16px; color: white;">Build</h3>
+            <div style="display: grid; gap: 12px;">
+                <div>
+                    <div style="font-size: 0.8rem; color: var(--text-sub);">Version</div>
+                    <div style="font-weight: 700;">{{ build.display_version }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.8rem; color: var(--text-sub);">Channel</div>
+                    <div>{{ build.channel }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.8rem; color: var(--text-sub);">Commit</div>
+                    <div style="font-family: monospace;">{{ build.commit }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.8rem; color: var(--text-sub);">Build date</div>
+                    <div>{{ build.build_date }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.8rem; color: var(--text-sub);">Update source</div>
+                    <div><a href="{{ build.repo_url }}" target="_blank" style="color: var(--accent);">{{ build.repo_url }}</a></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="admin-section admin-section-padding" style="margin-bottom: 0;">
+            <h3 style="margin-bottom: 16px; color: white;">Schema</h3>
+            <div style="display: grid; gap: 12px;">
+                <div>
+                    <div style="font-size: 0.8rem; color: var(--text-sub);">Applied migrations</div>
+                    <div style="font-weight: 700;">{{ schema.count }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.8rem; color: var(--text-sub);">Latest migration</div>
+                    <div style="font-family: monospace;">{{ schema.latest }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.8rem; color: var(--text-sub);">Applied at</div>
+                    <div>{{ schema.latest_applied_at or 'Not available' }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.8rem; color: var(--text-sub);">Active admin lock</div>
+                    <div>
+                        {% if active_lock %}
+                        Job #{{ active_lock.job_id }} since {{ active_lock.acquired_at }}
+                        {% else %}
+                        No active lock
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="admin-section" style="border-radius: 16px; padding: 0; overflow: hidden; margin-bottom: 32px;">
+        <div style="padding: 24px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+            <div>
+                <h3 style="margin: 0; font-size: 1.1rem; color: white;">Updates</h3>
+                <p style="margin: 4px 0 0 0; font-size: 0.9rem; color: var(--text-sub);">Tracks the official GitHub main branch and can apply workspace updates after creating a backup.</p>
+            </div>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <form action="/admin/system/updates/check" method="post">
+                    <button type="submit" class="btn-admin-action btn-admin-glass">
+                        <i data-lucide="refresh-cw"></i><span>Check for Updates</span>
+                    </button>
+                </form>
+                <form action="/admin/system/updates/apply" method="post" onsubmit="return confirm('Apply update from GitHub main? A backup will be created first.')">
+                    <button type="submit" class="btn-admin-action btn-admin-warning">
+                        <i data-lucide="download-cloud"></i><span>Apply Update</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+        <div style="padding: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px;">
+            <div class="glass-panel" style="padding: 18px; border-radius: 14px; display: grid; gap: 10px;">
+                <div><span style="color: var(--text-sub);">Source:</span> {{ updates.source_repo_url }} @ {{ updates.source_branch }}</div>
+                <div><span style="color: var(--text-sub);">Last checked:</span> {{ updates.checked_at or 'Never' }}</div>
+                <div><span style="color: var(--text-sub);">Status:</span> {{ updates.message or 'No update check performed yet' }}</div>
+            </div>
+            <div class="glass-panel" style="padding: 18px; border-radius: 14px; display: grid; gap: 10px;">
+                <div><span style="color: var(--text-sub);">Local branch:</span> {{ updates.current.channel }}</div>
+                <div><span style="color: var(--text-sub);">Local commit:</span> <span style="font-family: monospace;">{{ updates.current.commit }}</span></div>
+                <div><span style="color: var(--text-sub);">Remote commit:</span> <span style="font-family: monospace;">{{ updates.remote.commit if updates.remote else 'Unknown' }}</span></div>
+                <div><span style="color: var(--text-sub);">Working tree:</span> {% if updates.current.dirty %}Dirty{% else %}Clean{% endif %}</div>
+            </div>
+            <div class="glass-panel" style="padding: 18px; border-radius: 14px; display: grid; gap: 10px;">
+                <div><span style="color: var(--text-sub);">Update available:</span> {% if updates.update_available %}Yes{% else %}No{% endif %}</div>
+                <div><span style="color: var(--text-sub);">Behind:</span> {{ updates.behind_count or 0 }}</div>
+                <div><span style="color: var(--text-sub);">Ahead:</span> {{ updates.ahead_count or 0 }}</div>
+            </div>
+        </div>
+        {% if updates.pending_commits %}
+        <div style="padding: 0 24px 24px 24px;">
+            <div class="glass-panel" style="padding: 18px; border-radius: 14px;">
+                <div style="font-size: 0.9rem; color: var(--text-sub); margin-bottom: 10px;">Pending commits from remote</div>
+                <div style="display: grid; gap: 6px; max-height: 180px; overflow-y: auto; font-family: monospace; font-size: 0.9rem;">
+                    {% for commit in updates.pending_commits %}
+                    <div>{{ commit }}</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="admin-section" style="border-radius: 16px; padding: 0; overflow: hidden; margin-bottom: 32px;">
+        <div style="padding: 24px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+            <div>
+                <h3 style="margin: 0; font-size: 1.1rem; color: white;">Backups</h3>
+                <p style="margin: 4px 0 0 0; font-size: 0.9rem; color: var(--text-sub);">Current and previous snapshot of the database and deployment configuration.</p>
+            </div>
+            <form action="/admin/system/backups/create" method="post">
+                <button type="submit" class="btn-admin-action btn-admin-glass">
+                    <i data-lucide="archive"></i><span>Create Backup</span>
+                </button>
+            </form>
+        </div>
+
+        <div style="padding: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
+            {% for slot_name in ['current', 'previous'] %}
+            {% set backup = backups[slot_name] %}
+            <div class="glass-panel" style="padding: 20px; border-radius: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: start; gap: 12px; margin-bottom: 16px;">
+                    <div>
+                        <div style="font-size: 0.8rem; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.08em;">{{ slot_name }}</div>
+                        <div style="font-size: 1.05rem; font-weight: 700; color: white;">{{ backup.filename if backup else 'Empty slot' }}</div>
+                    </div>
+                    {% if backup and backup.exists %}
+                    <form action="/admin/system/backups/restore" method="post" onsubmit="return confirm('Restore {{ slot_name }} backup? This overwrites the current database and configuration files.')">
+                        <input type="hidden" name="slot" value="{{ slot_name }}">
+                        <button type="submit" class="btn-admin-action btn-admin-warning">
+                            <i data-lucide="rotate-ccw"></i><span>Restore</span>
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% if backup %}
+                <div style="display: grid; gap: 10px; font-size: 0.92rem;">
+                    <div><span style="color: var(--text-sub);">Size:</span> {{ backup.size_label }}</div>
+                    <div><span style="color: var(--text-sub);">Created:</span> {{ backup.created_at }}</div>
+                    <div><span style="color: var(--text-sub);">Source:</span> {{ backup.source_branch }}@{{ backup.source_commit }}</div>
+                    <div><span style="color: var(--text-sub);">Status:</span> {{ 'Available' if backup.exists else 'Missing file' }}</div>
+                </div>
+                {% else %}
+                <div style="color: var(--text-sub);">No backup created for this slot yet.</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+
+        <div style="padding: 24px; border-top: 1px solid var(--glass-border); background: rgba(0,0,0,0.18);">
+            <form action="/admin/system/backups/settings" method="post" style="display: flex; flex-wrap: wrap; gap: 16px; align-items: end;">
+                <label style="display: flex; align-items: center; gap: 10px; min-height: 50px;">
+                    <input type="checkbox" name="autobackup_enabled" {% if backups.autobackup_enabled %}checked{% endif %}>
+                    <span>Enable daily autobackup</span>
+                </label>
+                <div class="admin-input-wrapper" style="padding: 4px 16px; width: 120px;">
+                    <input type="number" name="autobackup_hour" min="0" max="23" value="{{ backups.autobackup_hour }}" style="width: 100%; background: transparent; border: none; padding: 12px 0; color: white; outline: none;">
+                </div>
+                <div class="admin-input-wrapper" style="padding: 4px 16px; width: 120px;">
+                    <input type="number" name="autobackup_minute" min="0" max="59" value="{{ backups.autobackup_minute }}" style="width: 100%; background: transparent; border: none; padding: 12px 0; color: white; outline: none;">
+                </div>
+                <div class="admin-input-wrapper" style="padding: 4px 16px; min-width: 260px;">
+                    <select
+                        name="autobackup_timezone"
+                        style="width: 100%; background: #0b0b10; border: none; padding: 12px 0; color: white; outline: none;"
+                    >
+                        {% for tz_group in timezone_options %}
+                        <optgroup label="{{ tz_group.group }}">
+                            {% for tz in tz_group.zones %}
+                            <option value="{{ tz.value }}" {% if (backups.autobackup_timezone or 'UTC') == tz.value %}selected{% endif %}>
+                                {{ tz.label }} ({{ tz.value }})
+                            </option>
+                            {% endfor %}
+                        </optgroup>
+                        {% endfor %}
+                    </select>
+                    <style>
+                        select[name="autobackup_timezone"] option,
+                        select[name="autobackup_timezone"] optgroup {
+                            background: #0b0b10;
+                            color: #ffffff;
+                        }
+                    </style>
+                </div>
+                <button type="submit" class="admin-btn-primary" style="height: 50px; padding: 0 24px;">
+                    <i data-lucide="save" width="18" height="18"></i> Save backup settings
+                </button>
+            </form>
+            <div style="margin-top: 14px; display: grid; gap: 6px; font-size: 0.9rem; color: var(--text-sub);">
+                <div>Scheduler timezone: {{ backups.autobackup_timezone or 'UTC' }}</div>
+                <div>Next run: {{ backups.next_run or 'Disabled' }}</div>
+                <div>Last successful backup: {{ backups.latest_success_at or 'Never' }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="admin-section admin-section-padding" style="margin-bottom: 0;">
+        <h3 style="margin-bottom: 16px; color: white;">Recent Admin Jobs</h3>
+        {% if admin_jobs %}
+        <div style="display: grid; gap: 10px; max-height: 420px; overflow-y: auto; padding-right: 6px;">
+            {% for job in admin_jobs %}
+            <div class="glass-panel" style="padding: 14px 16px; border-radius: 12px; display: grid; gap: 6px;">
+                <div style="display: flex; justify-content: space-between; gap: 12px; align-items: center;">
+                    <div style="font-weight: 700; color: white;">#{{ job.id }} {{ job.job_type }}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-sub); text-transform: uppercase;">{{ job.status }}</div>
+                </div>
+                <div style="font-size: 0.92rem;">{{ job.message or 'No message' }}</div>
+                <div style="font-size: 0.82rem; color: var(--text-sub);">
+                    Triggered by {{ job.triggered_by or 'system' }} • {{ job.started_at }}
+                    {% if job.finished_at %}• finished {{ job.finished_at }}{% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div style="color: var(--text-sub);">No admin jobs recorded yet.</div>
+        {% endif %}
+    </div>
 </div>
 
 <script>

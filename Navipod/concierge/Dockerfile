@@ -4,7 +4,7 @@ WORKDIR /app
 
 # --- CAMBIO AQUÍ: Añadir ffmpeg, nodejs, git y deno (vía curl) ---
 RUN apt-get update && \
-    apt-get install -y docker.io ffmpeg git unzip nodejs curl ca-certificates gosu && \
+    apt-get install -y docker.io docker-compose ffmpeg git unzip nodejs curl ca-certificates gosu && \
     curl -fsSL https://deno.land/install.sh | sh -s -- -y && \
     mv /root/.deno/bin/deno /usr/bin/deno && \
     rm -rf /var/lib/apt/lists/*

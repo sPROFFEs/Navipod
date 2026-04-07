@@ -125,6 +125,8 @@ IDLE_THRESHOLD_MINUTES=30
 HOST_DATA_ROOT=/opt/saas-data
 NAVIDROME_IMAGE=deluan/navidrome:latest
 CONCURRENT_DOWNLOADS=3
+BACKUP_ROOT=/saas-data/backups
+APP_SOURCE_ROOT=/workspace
 ```
 
 Important notes:
@@ -133,6 +135,9 @@ Important notes:
 - If you do not use Cloudflare Tunnel, leave `TUNNEL_TOKEN` empty or disable the `tunnel` service.
 - Set `COOKIE_SECURE=true` for public HTTPS deployments, including Cloudflare Tunnel.
 - Set `COOKIE_SECURE=false` only for local plain HTTP access such as `http://localhost`.
+- The admin System Monitor now manages two rotating backup slots: `current` and `previous`.
+- `BACKUP_ROOT` is the path seen by the `concierge` container, not the host path. Leave `/saas-data/backups` unless you know exactly why you need a different container-internal mount path.
+- `APP_SOURCE_ROOT` is the repository root mounted inside the `concierge` container. It is used for build metadata and the upcoming update manager.
 
 ### 3. Run the setup script
 

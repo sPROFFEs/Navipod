@@ -42,6 +42,7 @@ fi
 # 1. Create Data Directories
 echo "📂 Creating data directories in $DATA_ROOT..."
 sudo mkdir -p "$DATA_ROOT/pool"
+sudo mkdir -p "$DATA_ROOT/backups"
 sudo mkdir -p "$IMPORT_STAGE"
 sudo chown -R $USER:$USER "$DATA_ROOT"
 # Use 777 to avoid permission issues with bind mounts and container users

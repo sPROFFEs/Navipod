@@ -7,6 +7,7 @@ import psutil
 import shutil
 import subprocess
 import os
+import operations_service
 
 router = APIRouter(prefix="/admin")
 from shared_templates import templates
@@ -189,11 +190,25 @@ async def system_monitor(request: Request, db: Session = Depends(get_db)):
     
     # Get Global Pool Status
     pool_used, pool_limit, pool_pct = manager.get_pool_status(db)
+    build_info = operations_service.get_build_info()
+    schema_status = operations_service.get_schema_status(db)
+    backup_state = operations_service.get_backup_state(db)
+    update_state = operations_service.get_update_state(db)
+    recent_jobs = operations_service.get_recent_admin_jobs(db, limit=8)
+    active_lock = operations_service.get_active_operation_lock(db)
+    timezone_options = operations_service.get_timezone_options()
     
     return templates.TemplateResponse("system_monitor.html", {
         "request": request, 
         "stats": stats,
         "pool": {"used": pool_used, "limit": pool_limit, "percent": pool_pct},
+        "build": build_info,
+        "schema": schema_status,
+        "backups": backup_state,
+        "updates": update_state,
+        "timezone_options": timezone_options,
+        "admin_jobs": recent_jobs,
+        "active_lock": active_lock,
         "username": admin.username,
         "is_admin": True
     })
@@ -293,6 +308,72 @@ async def update_pool_limit(limit_gb: int = Form(...), db: Session = Depends(get
         return RedirectResponse(f"/admin/system?msg=Pool limit updated to {limit_gb} GB", status_code=303)
     except Exception as e:
         return RedirectResponse(f"/admin/system?error=Failed to update pool limit: {str(e)}", status_code=303)
+
+
+@router.post("/system/backups/create")
+async def create_backup(request: Request, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
+    job_id = operations_service.queue_backup(admin.username, mode="manual")
+    return RedirectResponse(f"/admin/system?msg=Backup job #{job_id} queued", status_code=303)
+
+
+@router.post("/system/backups/restore")
+async def restore_backup(
+    slot: str = Form(...),
+    db: Session = Depends(get_db),
+    admin: database.User = Depends(get_current_admin)
+):
+    if slot not in {"current", "previous"}:
+        return RedirectResponse("/admin/system?error=Invalid backup slot", status_code=303)
+    job_id = operations_service.queue_restore(slot, admin.username)
+    return RedirectResponse(f"/admin/system?msg=Restore job #{job_id} queued for {slot}", status_code=303)
+
+
+@router.post("/system/backups/settings")
+async def update_backup_settings(
+    autobackup_enabled: str = Form("off"),
+    autobackup_hour: int = Form(0),
+    autobackup_minute: int = Form(0),
+    autobackup_timezone: str = Form("UTC"),
+    db: Session = Depends(get_db),
+    admin: database.User = Depends(get_current_admin)
+):
+    enabled = str(autobackup_enabled).lower() in {"1", "true", "on", "yes"}
+    operations_service.update_autobackup_settings(enabled, autobackup_hour, autobackup_minute, autobackup_timezone)
+    state = "enabled" if enabled else "disabled"
+    return RedirectResponse(f"/admin/system?msg=Autobackup {state}", status_code=303)
+
+
+@router.post("/system/updates/check")
+async def check_updates(request: Request, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
+    job_id = operations_service.queue_check_update(admin.username)
+    return RedirectResponse(f"/admin/system/updates/jobs/{job_id}", status_code=303)
+
+
+@router.post("/system/updates/apply")
+async def apply_updates(request: Request, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
+    job_id = operations_service.queue_apply_update(admin.username)
+    return RedirectResponse(f"/admin/system/updates/jobs/{job_id}", status_code=303)
+
+
+@router.get("/system/updates/jobs/{job_id}")
+async def update_job_progress_page(job_id: int, request: Request, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
+    job = operations_service.get_admin_job(db, job_id)
+    if not job:
+        return RedirectResponse("/admin/system?error=Update job not found", status_code=303)
+    return templates.TemplateResponse("update_progress.html", {
+        "request": request,
+        "job": job,
+        "username": admin.username,
+        "is_admin": True,
+    })
+
+
+@router.get("/api/system/jobs/{job_id}")
+async def get_admin_job_status(job_id: int, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
+    job = operations_service.get_admin_job(db, job_id)
+    if not job:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    return JSONResponse(job)
 
 
 # --- ADMIN LIBRARY MANAGEMENT ---
