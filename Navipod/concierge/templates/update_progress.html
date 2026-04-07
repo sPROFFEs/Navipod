@@ -218,13 +218,17 @@
 <script>
 const jobId = {{ job.id }};
 const terminalStates = new Set(["completed", "failed"]);
+let redirectScheduled = false;
+let lastJobData = {{ job|tojson }};
 
 function renderJob(data) {
+    lastJobData = data;
     const statusNode = document.getElementById("job-status");
     statusNode.textContent = data.status || "unknown";
     statusNode.className = `update-status-pill ${data.status || ''}`;
-    document.getElementById("job-progress-label").textContent = `${data.details?.progress || 0}%`;
-    document.getElementById("job-progress-bar").style.width = `${data.details?.progress || 0}%`;
+    const progressValue = data.status === "completed" ? 100 : (data.details?.progress || 0);
+    document.getElementById("job-progress-label").textContent = `${progressValue}%`;
+    document.getElementById("job-progress-bar").style.width = `${progressValue}%`;
     document.getElementById("job-phase").textContent = data.details?.phase || "queued";
     document.getElementById("job-message").textContent = data.message || "Waiting...";
 
@@ -237,6 +241,27 @@ function renderJob(data) {
         </div>
     `).join("");
     logContainer.scrollTop = logContainer.scrollHeight;
+
+    if (data.status === "completed" && !redirectScheduled) {
+        redirectScheduled = true;
+        setTimeout(() => {
+            window.location.href = "/admin/system?msg=Update applied successfully";
+        }, 1200);
+    }
+}
+
+function renderReconnectState() {
+    if (!lastJobData || terminalStates.has(lastJobData.status)) {
+        return;
+    }
+    if (!["recreate", "cleanup", "health"].includes(lastJobData.details?.phase || "")) {
+        return;
+    }
+    document.getElementById("job-message").textContent = "Waiting for services to come back after restart...";
+    document.getElementById("job-phase").textContent = lastJobData.details?.phase || "recreate";
+    const progressValue = Math.max(lastJobData.details?.progress || 0, 90);
+    document.getElementById("job-progress-label").textContent = `${progressValue}%`;
+    document.getElementById("job-progress-bar").style.width = `${progressValue}%`;
 }
 
 async function pollJob() {
@@ -249,6 +274,7 @@ async function pollJob() {
             setTimeout(pollJob, 2000);
         }
     } catch (err) {
+        renderReconnectState();
         setTimeout(pollJob, 3000);
     }
 }
