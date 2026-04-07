@@ -227,6 +227,16 @@
     gap: 12px;
     align-items: end;
 }
+.monitor-backup-form {
+    display: grid;
+    gap: 12px;
+}
+.monitor-backup-form-row {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;
+    gap: 12px;
+    align-items: end;
+}
 .monitor-input,
 .monitor-select {
     width: 100%;
@@ -371,6 +381,7 @@
     .monitor-panel-header > div:last-child > * { flex: 1 1 calc(50% - 8px); }
     .monitor-form-grid { grid-template-columns: 1fr; }
     .monitor-pool-form-row { grid-template-columns: 1fr; }
+    .monitor-backup-form-row { grid-template-columns: 1fr; }
     .monitor-card-value strong { font-size: 2rem; }
 }
 </style>
@@ -570,20 +581,25 @@
                 {% endfor %}
             </div>
 
-            <form action="/admin/system/backups/settings" method="post" class="monitor-form-grid">
+            <form action="/admin/system/backups/settings" method="post" class="monitor-backup-form">
                 <label class="monitor-inline-toggle">
                     <input type="checkbox" name="autobackup_enabled" {% if backups.autobackup_enabled %}checked{% endif %}>
                     <span>Enable daily autobackup</span>
                 </label>
-                <div class="monitor-field">
-                    <label for="autobackup-hour">Hour</label>
-                    <input id="autobackup-hour" class="monitor-input" type="number" name="autobackup_hour" min="0" max="23" value="{{ backups.autobackup_hour }}">
+                <div class="monitor-backup-form-row">
+                    <div class="monitor-field">
+                        <label for="autobackup-hour">Hour</label>
+                        <input id="autobackup-hour" class="monitor-input" type="number" name="autobackup_hour" min="0" max="23" value="{{ backups.autobackup_hour }}">
+                    </div>
+                    <div class="monitor-field">
+                        <label for="autobackup-minute">Minute</label>
+                        <input id="autobackup-minute" class="monitor-input" type="number" name="autobackup_minute" min="0" max="59" value="{{ backups.autobackup_minute }}">
+                    </div>
+                    <div class="monitor-field-action">
+                        <button type="submit" class="monitor-primary"><i data-lucide="save"></i><span>Save backup settings</span></button>
+                    </div>
                 </div>
                 <div class="monitor-field">
-                    <label for="autobackup-minute">Minute</label>
-                    <input id="autobackup-minute" class="monitor-input" type="number" name="autobackup_minute" min="0" max="59" value="{{ backups.autobackup_minute }}">
-                </div>
-                <div class="monitor-field" style="grid-column: span 2;">
                     <label for="autobackup-timezone">Timezone</label>
                     <select id="autobackup-timezone" name="autobackup_timezone" class="monitor-select">
                         {% for tz_group in timezone_options %}
@@ -594,10 +610,6 @@
                         </optgroup>
                         {% endfor %}
                     </select>
-                </div>
-                <div class="monitor-field">
-                    <label>&nbsp;</label>
-                    <button type="submit" class="monitor-primary"><i data-lucide="save"></i><span>Save backup settings</span></button>
                 </div>
             </form>
 

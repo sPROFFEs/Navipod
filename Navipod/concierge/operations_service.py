@@ -38,6 +38,7 @@ REBUILD_REQUIRED_PATHS = {
     "nginx.conf",
 }
 UPDATER_INTERNAL_URL = "http://updater:8090/internal/update/apply"
+ADMIN_JOB_RETENTION_LIMIT = 200
 VERSION_FILE = REPO_ROOT / "VERSION"
 
 _scheduled_backup_task = None
@@ -1059,9 +1060,32 @@ def create_admin_job(job_type: str, triggered_by: str | None, message: str, deta
         db.add(job)
         db.commit()
         db.refresh(job)
+        _prune_finished_admin_jobs(db, keep=ADMIN_JOB_RETENTION_LIMIT)
         return job.id
     finally:
         db.close()
+
+
+def _prune_finished_admin_jobs(db, keep: int = ADMIN_JOB_RETENTION_LIMIT):
+    keep = max(1, int(keep))
+    total_jobs = db.query(database.AdminJob.id).count()
+    overflow = total_jobs - keep
+    if overflow <= 0:
+        return
+
+    old_finished_jobs = (
+        db.query(database.AdminJob)
+        .filter(database.AdminJob.status.in_(["completed", "failed"]))
+        .order_by(database.AdminJob.id.asc())
+        .limit(overflow)
+        .all()
+    )
+    if not old_finished_jobs:
+        return
+
+    for job in old_finished_jobs:
+        db.delete(job)
+    db.commit()
 
 
 def update_admin_job(job_id: int, *, status=None, message=None, details=None, finished=False):
