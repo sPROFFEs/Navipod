@@ -1,187 +1,425 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block title %}{{ _('admin.title') }}{% endblock %}
-
 {% block content %}
-<div class="admin-container">
-    <div class="admin-header">
+<style>
+.admin-shell {
+    --panel-bg: #17191f;
+    --panel-bg-2: #1d2027;
+    --panel-border: #2a2e38;
+    --panel-text: #f3f4f6;
+    --panel-muted: #9aa3b2;
+    --panel-green: #2fbf71;
+    --panel-red: #dc2626;
+    --panel-amber: #d97706;
+    --panel-blue: #3b82f6;
+    display: grid;
+    gap: 24px;
+}
+.admin-shell-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.admin-shell-header h1 {
+    margin: 0;
+    color: var(--panel-text);
+    font-size: 2rem;
+    line-height: 1.1;
+}
+.admin-shell-header p {
+    margin: 8px 0 0;
+    color: var(--panel-muted);
+}
+.admin-shell-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.admin-shell-btn {
+    border: 1px solid var(--panel-border);
+    background: var(--panel-bg);
+    color: var(--panel-text);
+    border-radius: 10px;
+    min-height: 42px;
+    padding: 0 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-decoration: none;
+    cursor: pointer;
+}
+.admin-shell-btn.monitor { border-color: rgba(47, 191, 113, 0.35); }
+.admin-toast {
+    border: 1px solid var(--panel-border);
+    background: var(--panel-bg);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.admin-toast.success { border-color: rgba(47, 191, 113, 0.45); }
+.admin-toast.error { border-color: rgba(220, 38, 38, 0.45); }
+.admin-panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+}
+.admin-panel-header {
+    padding: 18px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    border-bottom: 1px solid var(--panel-border);
+    flex-wrap: wrap;
+}
+.admin-panel-header h2 {
+    margin: 0;
+    font-size: 1.15rem;
+    color: var(--panel-text);
+}
+.admin-panel-header p {
+    margin: 6px 0 0;
+    color: var(--panel-muted);
+}
+.admin-panel-body {
+    padding: 20px;
+    display: grid;
+    gap: 18px;
+}
+.admin-form-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    align-items: end;
+}
+.admin-field {
+    display: grid;
+    gap: 8px;
+}
+.admin-field label {
+    color: var(--panel-muted);
+    font-size: .82rem;
+}
+.admin-input-wrap {
+    min-height: 42px;
+    border: 1px solid var(--panel-border);
+    background: #0f1115;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 12px;
+}
+.admin-input-wrap input {
+    width: 100%;
+    background: transparent;
+    border: 0;
+    color: var(--panel-text);
+    outline: none;
+}
+.admin-toggle {
+    min-height: 42px;
+    border: 1px solid var(--panel-border);
+    background: #0f1115;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 12px;
+    color: var(--panel-text);
+}
+.admin-submit {
+    min-height: 42px;
+    border: 1px solid #334155;
+    background: #1e293b;
+    color: var(--panel-text);
+    border-radius: 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 14px;
+}
+.admin-table-wrap { overflow-x: auto; }
+.admin-users-table,
+.admin-library-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.admin-users-table th,
+.admin-users-table td,
+.admin-library-table th,
+.admin-library-table td {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--panel-border);
+    text-align: left;
+    vertical-align: middle;
+}
+.admin-users-table th,
+.admin-library-table th {
+    color: var(--panel-muted);
+    font-size: .8rem;
+    font-weight: 600;
+}
+.admin-user-name { color: var(--panel-text); font-weight: 700; }
+.admin-user-meta { color: var(--panel-muted); font-size: .82rem; margin-top: 4px; }
+.admin-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--panel-border);
+    background: var(--panel-bg-2);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: .76rem;
+    color: var(--panel-text);
+}
+.admin-badge.root { border-color: rgba(47, 191, 113, 0.3); color: var(--panel-green); }
+.admin-owner-tag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+    padding: 0 10px;
+    border-radius: 10px;
+    border: 1px solid #334155;
+    background: #111827;
+    color: #cbd5e1;
+    font-size: .78rem;
+}
+.admin-row-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.admin-icon-btn {
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--panel-border);
+    background: var(--panel-bg-2);
+    color: var(--panel-text);
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+.admin-icon-btn.danger { color: #fca5a5; border-color: rgba(220,38,38,0.25); }
+.admin-reset-row td {
+    background: #13161c;
+    padding-top: 0;
+}
+.admin-reset-panel {
+    margin: 0 0 16px;
+    border: 1px solid var(--panel-border);
+    background: var(--panel-bg-2);
+    border-radius: 10px;
+    padding: 18px;
+    display: grid;
+    gap: 16px;
+}
+.admin-reset-title { color: var(--panel-text); font-weight: 700; }
+.admin-inline-form {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.admin-inline-form .admin-input-wrap { flex: 1 1 280px; }
+.admin-library-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.admin-library-actions .admin-input-wrap { flex: 1 1 320px; }
+.admin-secondary-btn,
+.admin-danger-btn {
+    min-height: 42px;
+    border-radius: 10px;
+    padding: 0 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+}
+.admin-secondary-btn {
+    border: 1px solid var(--panel-border);
+    background: var(--panel-bg-2);
+    color: var(--panel-text);
+}
+.admin-danger-btn {
+    border: 1px solid rgba(220,38,38,0.35);
+    background: #341717;
+    color: #fecaca;
+}
+.admin-library-results {
+    max-height: 420px;
+    overflow: auto;
+}
+.admin-empty-state {
+    color: var(--panel-muted);
+    text-align: center;
+    padding: 28px 12px;
+}
+@media (max-width: 980px) {
+    .admin-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+    .admin-shell { gap: 18px; }
+    .admin-shell-header h1 { font-size: 1.55rem; }
+    .admin-panel-header,
+    .admin-panel-body { padding: 16px; }
+    .admin-form-grid { grid-template-columns: 1fr; }
+    .admin-shell-actions { width: 100%; }
+    .admin-shell-actions > * { flex: 1 1 calc(50% - 6px); }
+    .admin-users-table th,
+    .admin-users-table td,
+    .admin-library-table th,
+    .admin-library-table td { padding: 12px; }
+}
+</style>
+
+<div class="admin-container admin-shell">
+    <section class="admin-shell-header">
         <div>
-            <span class="admin-subtitle">{{ _('admin.system_root') }}</span>
-            <h1 class="admin-title">{{ _('admin.user_management') }}</h1>
+            <h1>{{ _('admin.user_management') }}</h1>
+            <p>Manage user accounts, credentials, and library maintenance without leaving the admin surface.</p>
         </div>
-
-        <div style="display: flex; gap: 12px;">
-            <a href="/admin/system" onclick="loadView('system_monitor'); return false;" class="glass-panel"
-                style="padding: 12px 24px; border-radius: 12px; color: #4ade80; text-decoration: none; font-size: 0.85rem; font-weight: 800; transition: 0.3s; display: flex; align-items: center; gap: 10px; border: 1px solid rgba(74, 222, 128, 0.2);">
-                <i data-lucide="activity" width="18" height="18"></i> {{ _('admin.monitor_button') }}
+        <div class="admin-shell-actions">
+            <a href="/admin/system" onclick="loadView('system_monitor'); return false;" class="admin-shell-btn monitor">
+                <i data-lucide="activity" width="18" height="18"></i>
+                <span>{{ _('admin.monitor_button') }}</span>
             </a>
-
-            <a href="/" onclick="loadView('home'); return false;" class="glass-panel"
-                style="padding: 12px 24px; border-radius: 12px; color: #aaa; text-decoration: none; font-size: 0.85rem; font-weight: 700; transition: 0.3s; display: flex; align-items: center; gap: 10px;">
-                <i data-lucide="arrow-left" width="18" height="18"></i> {{ _('menu.home') }}
+            <a href="/" onclick="loadView('home'); return false;" class="admin-shell-btn">
+                <i data-lucide="arrow-left" width="18" height="18"></i>
+                <span>{{ _('menu.home') }}</span>
             </a>
         </div>
-    </div>
+    </section>
 
     {% if request.query_params.msg %}
-    <div class="alert alert-success"
-        style="border-radius: 16px; margin-bottom: 32px; border: 1px solid rgba(74, 222, 128, 0.2); padding: 20px; background: rgba(74, 222, 128, 0.05); color: #4ade80; display: flex; align-items: center; gap: 12px; backdrop-filter: blur(10px);">
-        <i data-lucide="check-circle" width="20" height="20"></i>
-        <span style="font-weight: 600;">{{ request.query_params.msg }}</span>
+    <div class="admin-toast success">
+        <i data-lucide="check-circle" width="18" height="18"></i>
+        <span>{{ request.query_params.msg }}</span>
     </div>
     {% endif %}
-
     {% if request.query_params.error %}
-    <div class="alert alert-error"
-        style="border-radius: 16px; margin-bottom: 32px; border: 1px solid rgba(239, 68, 68, 0.2); padding: 20px; background: rgba(239, 68, 68, 0.05); color: #ef4444; display: flex; align-items: center; gap: 12px; backdrop-filter: blur(10px);">
-        <i data-lucide="alert-circle" width="20" height="20"></i>
-        <span style="font-weight: 600;">{{ request.query_params.error }}</span>
+    <div class="admin-toast error">
+        <i data-lucide="alert-circle" width="18" height="18"></i>
+        <span>{{ request.query_params.error }}</span>
     </div>
     {% endif %}
 
-    <div class="admin-section admin-section-padding" style="border-radius: 20px;">
-        <h3 class="admin-section-header"
-            style="background: none; padding: 0; border: none; margin-bottom: 32px; font-size: 1.2rem; letter-spacing: -0.5px;">
-            <i data-lucide="user-plus" style="color: var(--accent);" width="22" height="22"></i>
-            {{ _('admin.register_new') }}
-        </h3>
-
-        <form onsubmit="handleAdminForm(event, '/admin/users/create')"
-            style="display: grid; grid-template-columns: 1fr 1fr 200px 200px; gap: 24px; align-items: flex-end;">
-            <div class="admin-input-group">
-                <label class="admin-label">{{ _('admin.username_label') }}</label>
-                <div class="admin-input-wrapper">
-                    <i data-lucide="user" class="admin-input-icon" width="18" height="18"></i>
-                    <input type="text" name="username" placeholder="{{ _('admin.username_placeholder') }}" required
-                        class="admin-input">
-                </div>
+    <section class="admin-panel">
+        <div class="admin-panel-header">
+            <div>
+                <h2>{{ _('admin.register_new') }}</h2>
+                <p>Create a user account and optionally grant admin privileges.</p>
             </div>
-
-            <div class="admin-input-group">
-                <label class="admin-label">{{ _('admin.password_label') }}</label>
-                <div class="admin-input-wrapper">
-                    <i data-lucide="lock" class="admin-input-icon" width="18" height="18"></i>
-                    <input type="password" name="password" placeholder="{{ _('admin.password_placeholder') }}" required
-                        class="admin-input">
-                </div>
-            </div>
-
-            <div style="display: flex; align-items: center; gap: 15px; height: 54px; background: rgba(0,0,0,0.3); padding: 0 24px; border-radius: 10px;"
-                class="admin-checkbox-card">
-                <input type="checkbox" name="is_admin" value="true" id="is_admin_check"
-                    style="width: 20px; height: 20px; accent-color: var(--accent); cursor: pointer;">
-                <label for="is_admin_check"
-                    style="font-size: 0.95rem; color: #fff; cursor: pointer; white-space: nowrap; font-weight: 700;">{{
-                    _('admin.admin_checkbox') }}</label>
-            </div>
-
-            <button type="submit" class="admin-btn-primary" style="height: 54px; width: 100%;">
-                {{ _('admin.create_button') }}
-            </button>
-        </form>
-    </div>
-
-    <div class="admin-section" style="border-radius: 20px;">
-        <div class="admin-section-header" style="padding: 24px 32px;">
-            <i data-lucide="users" width="20" height="20"></i>
-            <h3 style="margin:0; font-size: 1.2rem; flex: 1; letter-spacing: -0.5px;">{{ _('admin.active_accounts') }}
-            </h3>
-            <span
-                style="font-family: monospace; font-size: 0.75rem; color: var(--text-sub); opacity: 0.6; text-transform: uppercase; letter-spacing: 1px;">{{
-                _('admin.auth_status') }}</span>
         </div>
+        <div class="admin-panel-body">
+            <form onsubmit="handleAdminForm(event, '/admin/users/create')" class="admin-form-grid">
+                <div class="admin-field">
+                    <label>{{ _('admin.username_label') }}</label>
+                    <div class="admin-input-wrap">
+                        <i data-lucide="user" width="16" height="16"></i>
+                        <input type="text" name="username" placeholder="{{ _('admin.username_placeholder') }}" required>
+                    </div>
+                </div>
+                <div class="admin-field">
+                    <label>{{ _('admin.password_label') }}</label>
+                    <div class="admin-input-wrap">
+                        <i data-lucide="lock" width="16" height="16"></i>
+                        <input type="password" name="password" placeholder="{{ _('admin.password_placeholder') }}" required>
+                    </div>
+                </div>
+                <div class="admin-field">
+                    <label>{{ _('admin.admin_checkbox') }}</label>
+                    <label class="admin-toggle">
+                        <input type="checkbox" name="is_admin" value="true" id="is_admin_check">
+                        <span>{{ _('admin.admin_checkbox') }}</span>
+                    </label>
+                </div>
+                <div class="admin-field">
+                    <label>&nbsp;</label>
+                    <button type="submit" class="admin-submit">{{ _('admin.create_button') }}</button>
+                </div>
+            </form>
+        </div>
+    </section>
 
-        <div style="overflow-x: auto;">
-            <table class="admin-table">
+    <section class="admin-panel">
+        <div class="admin-panel-header">
+            <div>
+                <h2>{{ _('admin.active_accounts') }}</h2>
+                <p>Review account roles and update credentials when needed.</p>
+            </div>
+        </div>
+        <div class="admin-table-wrap">
+            <table class="admin-users-table">
                 <thead>
                     <tr>
-                        <th class="admin-th" style="width: 50%; padding: 20px 32px;">{{ _('admin.table_identity') }}
-                        </th>
-                        <th class="admin-th">{{ _('admin.table_privileges') }}</th>
-                        <th class="admin-th" style="text-align: right; padding: 20px 32px;">{{ _('admin.table_actions')
-                            }}</th>
+                        <th>{{ _('admin.table_identity') }}</th>
+                        <th>{{ _('admin.table_privileges') }}</th>
+                        <th style="text-align: right;">{{ _('admin.table_actions') }}</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for u in users %}
-                    <tr class="admin-tr">
-                        <td class="admin-td" style="padding: 24px 32px;">
-                            <div style="font-weight: 800; font-size: 1.2rem; color: #fff; letter-spacing: -0.3px;">{{
-                                u.username }}</div>
-                            <div
-                                style="font-size: 0.8rem; color: var(--text-sub); font-family: 'JetBrains Mono', monospace; margin-top: 6px; opacity: 0.6; display: flex; align-items: center; gap: 6px;">
-                                <i data-lucide="fingerprint" width="12" height="12"></i> AUTH_ID: {{ u.id }}
-                            </div>
+                    <tr>
+                        <td>
+                            <div class="admin-user-name">{{ u.username }}</div>
+                            <div class="admin-user-meta">AUTH_ID: {{ u.id }}</div>
                         </td>
-                        <td class="admin-td">
+                        <td>
                             {% if u.is_admin %}
-                            <div
-                                style="display: inline-flex; align-items: center; gap: 8px; background: rgba(74, 222, 128, 0.1); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.2); padding: 6px 16px; border-radius: 10px; font-size: 0.75rem; font-weight: 900; text-transform: uppercase; letter-spacing: 1px;">
-                                <i data-lucide="shield" width="12" height="12"></i> {{ _('admin.role_root') }}
-                            </div>
+                            <span class="admin-badge root"><i data-lucide="shield" width="12" height="12"></i>{{ _('admin.role_root') }}</span>
                             {% else %}
-                            <div
-                                style="display: inline-flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.05); color: var(--text-sub); border: 1px solid rgba(255, 255, 255, 0.1); padding: 6px 16px; border-radius: 10px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">
-                                <i data-lucide="user" width="12" height="12"></i> {{ _('admin.role_standard') }}
-                            </div>
+                            <span class="admin-badge"><i data-lucide="user" width="12" height="12"></i>{{ _('admin.role_standard') }}</span>
                             {% endif %}
                         </td>
-                        <td class="admin-td" style="text-align: right; padding: 24px 32px;">
-                            <div style="display: flex; justify-content: flex-end; gap: 20px; align-items: center;">
-                                <button onclick="toggleReset('{{ u.id }}')" class="btn-icon" title="Reset Password"
-                                    style="color: var(--accent); width: 44px; height: 44px; background: rgba(var(--accent-rgb), 0.05);">
-                                    <i data-lucide="key-round" width="20" height="20"></i>
+                        <td>
+                            <div class="admin-row-actions">
+                                <button onclick="toggleReset('{{ u.id }}')" class="admin-icon-btn" title="Reset Password">
+                                    <i data-lucide="key-round" width="18" height="18"></i>
                                 </button>
-
                                 {% if u.username != username %}
-                                <div style="display: flex; align-items: center; margin: 0;">
-                                    <button type="button" class="btn-delete-pro"
-                                        onclick="deleteUser('{{ u.id }}', '{{ u.username }}')"
-                                        style="width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center;">
-                                        <i data-lucide="trash-2" width="20" height="20"></i>
-                                    </button>
-                                </div>
+                                <button type="button" class="admin-icon-btn danger" onclick="deleteUser('{{ u.id }}', '{{ u.username }}')" title="Delete User">
+                                    <i data-lucide="trash-2" width="18" height="18"></i>
+                                </button>
                                 {% else %}
-                                <div
-                                    style="color: var(--accent); font-size: 0.7rem; font-weight: 900; letter-spacing: 2px; padding: 10px 20px; border: 1px solid rgba(var(--accent-rgb), 0.2); border-radius: 10px; background: rgba(var(--accent-rgb), 0.03);">
-                                    OWNER</div>
+                                <span class="admin-owner-tag">OWNER</span>
                                 {% endif %}
                             </div>
                         </td>
                     </tr>
-
-                    <tr id="reset-row-{{ u.id }}" style="display: none; background: rgba(255, 255, 255, 0.01);">
-                        <td colspan="3" style="padding: 40px 60px; border-left: 6px solid var(--accent);">
-                            <div style="max-width: 650px;">
-                                <div
-                                    style="font-size: 0.8rem; color: var(--text-sub); font-weight: 900; text-transform: uppercase; margin-bottom: 24px; letter-spacing: 2px; display: flex; align-items: center; gap: 12px; color: var(--accent);">
-                                    <i data-lucide="shield-check" width="18" height="18"></i> {{
-                                    _('admin.update_security') }}
-                                </div>
-                                <form onsubmit="handleAdminForm(event, '/admin/users/reset-password')"
-                                    style="display: flex; gap: 20px; flex-wrap: wrap;">
+                    <tr id="reset-row-{{ u.id }}" class="admin-reset-row" style="display:none;">
+                        <td colspan="3">
+                            <div class="admin-reset-panel">
+                                <div class="admin-reset-title">{{ _('admin.update_security') }}</div>
+                                <form onsubmit="handleAdminForm(event, '/admin/users/reset-password')" class="admin-inline-form">
                                     <input type="hidden" name="user_id" value="{{ u.id }}">
-                                    <div style="flex: 1; min-width: 250px;" class="admin-input-wrapper">
-                                        <i data-lucide="lock" width="18" height="18" class="admin-input-icon"></i>
-                                        <input type="password" name="new_password"
+                                    <div class="admin-input-wrap">
+                                        <i data-lucide="lock" width="16" height="16"></i>
+                                        <input
+                                            type="password"
+                                            name="new_password"
                                             placeholder="{{ _('admin.new_pass_placeholder') }}"
                                             pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*]).{8,}"
-                                            title="{{ _('admin.pass_requirements_title') }}" required
-                                            class="admin-input" style="width: 100%;">
+                                            title="{{ _('admin.pass_requirements_title') }}"
+                                            required
+                                        >
                                     </div>
-                                    <button type="submit" class="admin-btn-primary"
-                                        style="padding: 0 40px; height: 54px;">
-                                        {{ _('admin.apply_button') }}
-                                    </button>
+                                    <button type="submit" class="admin-submit">{{ _('admin.apply_button') }}</button>
+                                    <button type="button" class="admin-secondary-btn" onclick="toggleReset('{{ u.id }}')">{{ _('admin.close_panel') }}</button>
                                 </form>
-
-                                <div style="margin-top: 32px;">
-                                    <button type="button" onclick="toggleReset('{{ u.id }}')"
-                                        style="background: transparent; border: none; color: #777; cursor: pointer; font-size: 0.9rem; font-weight: 700; display: flex; align-items: center; gap: 8px; transition: 0.3s;"
-                                        onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#777'">
-                                        <i data-lucide="chevron-up" width="18" height="18"></i> {{
-                                        _('admin.close_panel') }}
-                                    </button>
-                                </div>
                             </div>
                         </td>
                     </tr>
@@ -189,34 +427,34 @@
                 </tbody>
             </table>
         </div>
-    </div>
+    </section>
 
-    <!-- LIBRARY MANAGEMENT SECTION -->
-    <div class="admin-section" style="border-radius: 20px; margin-top: 32px;">
-        <div class="admin-section-header" style="padding: 24px 32px;">
-            <i data-lucide="music" width="20" height="20"></i>
-            <span style="font-weight: 800; font-size: 1.1rem; letter-spacing: -0.5px;">Library Management</span>
-        </div>
-
-        <div style="padding: 24px 32px;">
-            <div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">
-                <input type="text" id="library-search-input" placeholder="Search tracks by title or artist..."
-                    class="admin-input" style="flex: 1; min-width: 200px;"
-                    onkeyup="if(event.key==='Enter') adminSearchLibrary()">
-                <button onclick="adminSearchLibrary()" class="admin-btn-primary" style="padding: 0 24px;">
-                    <i data-lucide="search" width="18" height="18"></i> Search
-                </button>
-                <button onclick="adminFindDuplicates()" class="admin-btn-danger-soft" style="padding: 0 24px;">
-                    <i data-lucide="copy" width="18" height="18"></i> Find Duplicates
-                </button>
-            </div>
-
-            <div id="library-results" style="max-height: 400px; overflow-y: auto;">
-                <p style="color: var(--text-sub); text-align: center;">Search for tracks or click "Find Duplicates" to
-                    scan the library.</p>
+    <section class="admin-panel">
+        <div class="admin-panel-header">
+            <div>
+                <h2>Library Management</h2>
+                <p>Search tracks, inspect duplicates, and remove broken or redundant entries.</p>
             </div>
         </div>
-    </div>
-
+        <div class="admin-panel-body">
+            <div class="admin-library-actions">
+                <div class="admin-input-wrap">
+                    <i data-lucide="search" width="16" height="16"></i>
+                    <input type="text" id="library-search-input" placeholder="Search tracks by title or artist..." onkeyup="if(event.key==='Enter') adminSearchLibrary()">
+                </div>
+                <button onclick="adminSearchLibrary()" class="admin-submit">
+                    <i data-lucide="search" width="16" height="16"></i>
+                    <span>Search</span>
+                </button>
+                <button onclick="adminFindDuplicates()" class="admin-danger-btn">
+                    <i data-lucide="copy" width="16" height="16"></i>
+                    <span>Find Duplicates</span>
+                </button>
+            </div>
+            <div id="library-results" class="admin-library-results">
+                <div class="admin-empty-state">Search for tracks or run a duplicate scan.</div>
+            </div>
+        </div>
+    </section>
 </div>
 {% endblock %}

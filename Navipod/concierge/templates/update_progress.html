@@ -1,57 +1,218 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block title %}Update Progress{% endblock %}
 {% block content %}
-<div class="admin-container" style="max-width: 900px;">
-    <div class="admin-header">
-        <div class="header-text">
-            <span class="admin-subtitle">System Update</span>
-            <h1 class="admin-title">Job #{{ job.id }}</h1>
-        </div>
-        <div class="action-group" style="display: flex; gap: 12px;">
-            <a href="/admin/system" class="btn-admin-action btn-admin-glass">
-                <i data-lucide="arrow-left"></i><span>Back to Monitor</span>
-            </a>
-        </div>
-    </div>
+<style>
+.update-shell {
+    --surface: #17191f;
+    --surface-2: #1d2027;
+    --border: #2a2e38;
+    --text: #f3f4f6;
+    --muted: #9aa3b2;
+    --green: #2fbf71;
+    --red: #dc2626;
+    --amber: #d97706;
+    display: grid;
+    gap: 24px;
+    max-width: 960px;
+}
+.update-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.update-header h1 {
+    margin: 0;
+    font-size: 2rem;
+    color: var(--text);
+    line-height: 1.1;
+}
+.update-header p {
+    margin: 8px 0 0;
+    color: var(--muted);
+}
+.update-back {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 10px;
+    min-height: 42px;
+    padding: 0 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+}
+.update-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+}
+.update-panel-body {
+    padding: 20px;
+    display: grid;
+    gap: 18px;
+}
+.update-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+.update-meta {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    display: grid;
+    gap: 6px;
+}
+.update-meta-label {
+    color: var(--muted);
+    font-size: .82rem;
+}
+.update-meta-value {
+    color: var(--text);
+    word-break: break-word;
+}
+.update-progress-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+}
+.update-progress-track {
+    height: 8px;
+    border-radius: 999px;
+    background: #0f1115;
+    overflow: hidden;
+}
+.update-progress-bar {
+    height: 100%;
+    width: {{ job.details.progress or 0 }}%;
+    border-radius: inherit;
+    background: var(--green);
+    transition: width .25s ease;
+}
+.update-phase {
+    display: grid;
+    gap: 10px;
+}
+.update-phase strong {
+    color: var(--text);
+    font-size: 1rem;
+}
+.update-status-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: .76rem;
+    text-transform: uppercase;
+}
+.update-status-pill.completed { color: var(--green); }
+.update-status-pill.failed { color: #fecaca; border-color: rgba(220,38,38,0.35); background: #341717; }
+.update-status-pill.running,
+.update-status-pill.queued { color: #fde68a; border-color: rgba(217,119,6,0.35); background: #3b2413; }
+.update-log {
+    display: grid;
+    gap: 10px;
+    max-height: 460px;
+    overflow-y: auto;
+}
+.update-log-item {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    display: grid;
+    gap: 6px;
+}
+.update-log-item time {
+    color: var(--muted);
+    font-size: .8rem;
+}
+.update-log-item div {
+    color: var(--text);
+}
+@media (max-width: 760px) {
+    .update-shell { gap: 18px; }
+    .update-header h1 { font-size: 1.55rem; }
+    .update-meta-grid { grid-template-columns: 1fr; }
+    .update-panel-body { padding: 16px; }
+}
+</style>
 
-    <div class="admin-section admin-section-padding" style="margin-bottom: 24px;">
-        <div style="display: grid; gap: 16px;">
-            <div style="display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
-                <div><span style="color: var(--text-sub);">Type:</span> {{ job.job_type }}</div>
-                <div><span style="color: var(--text-sub);">Status:</span> <span id="job-status">{{ job.status }}</span></div>
-                <div><span style="color: var(--text-sub);">Triggered by:</span> {{ job.triggered_by or 'system' }}</div>
-            </div>
-            <div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                    <span style="color: var(--text-sub);">Progress</span>
-                    <span id="job-progress-label">{{ job.details.progress or 0 }}%</span>
-                </div>
-                <div style="height: 10px; background: rgba(255,255,255,0.08); border-radius: 999px; overflow: hidden;">
-                    <div id="job-progress-bar" style="height: 100%; width: {{ job.details.progress or 0 }}%; background: linear-gradient(90deg, #1db954, #62d896); transition: width .35s ease;"></div>
-                </div>
-            </div>
-            <div>
-                <div style="color: var(--text-sub); font-size: 0.9rem;">Current phase</div>
-                <div id="job-phase" style="font-weight: 700; color: white;">{{ job.details.phase or 'queued' }}</div>
-            </div>
-            <div>
-                <div style="color: var(--text-sub); font-size: 0.9rem;">Latest message</div>
-                <div id="job-message" style="font-weight: 600; color: white;">{{ job.message or 'Waiting...' }}</div>
-            </div>
+<div class="admin-container update-shell">
+    <section class="update-header">
+        <div>
+            <h1>Job #{{ job.id }}</h1>
+            <p>Background execution state for the requested administrative operation.</p>
         </div>
-    </div>
+        <a href="/admin/system" class="update-back">
+            <i data-lucide="arrow-left"></i>
+            <span>Back to Monitor</span>
+        </a>
+    </section>
 
-    <div class="admin-section admin-section-padding">
-        <h3 style="margin-bottom: 16px; color: white;">Activity Log</h3>
-        <div id="job-log" style="display: grid; gap: 10px; max-height: 420px; overflow-y: auto; padding-right: 6px;">
-            {% for item in job.details.logs or [] %}
-            <div class="glass-panel" style="padding: 12px 14px; border-radius: 12px;">
-                <div style="font-size: 0.8rem; color: var(--text-sub); margin-bottom: 4px;">{{ item.at }}</div>
-                <div style="color: white;">{{ item.message }}</div>
+    <section class="update-panel">
+        <div class="update-panel-body">
+            <div class="update-meta-grid">
+                <div class="update-meta">
+                    <div class="update-meta-label">Type</div>
+                    <div class="update-meta-value">{{ job.job_type }}</div>
+                </div>
+                <div class="update-meta">
+                    <div class="update-meta-label">Status</div>
+                    <div class="update-meta-value"><span id="job-status" class="update-status-pill {{ job.status }}">{{ job.status }}</span></div>
+                </div>
+                <div class="update-meta">
+                    <div class="update-meta-label">Triggered by</div>
+                    <div class="update-meta-value">{{ job.triggered_by or 'system' }}</div>
+                </div>
             </div>
-            {% endfor %}
+
+            <div>
+                <div class="update-progress-head">
+                    <span class="update-meta-label">Progress</span>
+                    <span id="job-progress-label" class="update-meta-value">{{ job.details.progress or 0 }}%</span>
+                </div>
+                <div class="update-progress-track">
+                    <div id="job-progress-bar" class="update-progress-bar"></div>
+                </div>
+            </div>
+
+            <div class="update-phase">
+                <div>
+                    <div class="update-meta-label">Current phase</div>
+                    <strong id="job-phase">{{ job.details.phase or 'queued' }}</strong>
+                </div>
+                <div>
+                    <div class="update-meta-label">Latest message</div>
+                    <strong id="job-message">{{ job.message or 'Waiting...' }}</strong>
+                </div>
+            </div>
         </div>
-    </div>
+    </section>
+
+    <section class="update-panel">
+        <div class="update-panel-body">
+            <div class="update-meta-label">Activity log</div>
+            <div id="job-log" class="update-log">
+                {% for item in job.details.logs or [] %}
+                <div class="update-log-item">
+                    <time>{{ item.at }}</time>
+                    <div>{{ item.message }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
 </div>
 
 <script>
@@ -59,7 +220,9 @@ const jobId = {{ job.id }};
 const terminalStates = new Set(["completed", "failed"]);
 
 function renderJob(data) {
-    document.getElementById("job-status").textContent = data.status || "unknown";
+    const statusNode = document.getElementById("job-status");
+    statusNode.textContent = data.status || "unknown";
+    statusNode.className = `update-status-pill ${data.status || ''}`;
     document.getElementById("job-progress-label").textContent = `${data.details?.progress || 0}%`;
     document.getElementById("job-progress-bar").style.width = `${data.details?.progress || 0}%`;
     document.getElementById("job-phase").textContent = data.details?.phase || "queued";
@@ -68,9 +231,9 @@ function renderJob(data) {
     const logContainer = document.getElementById("job-log");
     const logs = data.details?.logs || [];
     logContainer.innerHTML = logs.map(item => `
-        <div class="glass-panel" style="padding: 12px 14px; border-radius: 12px;">
-            <div style="font-size: 0.8rem; color: var(--text-sub); margin-bottom: 4px;">${item.at}</div>
-            <div style="color: white;">${item.message}</div>
+        <div class="update-log-item">
+            <time>${item.at}</time>
+            <div>${item.message}</div>
         </div>
     `).join("");
     logContainer.scrollTop = logContainer.scrollHeight;

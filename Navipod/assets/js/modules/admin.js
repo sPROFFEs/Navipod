@@ -6,6 +6,61 @@
 import * as state from './state.js';
 import * as ui from './ui.js';
 
+function showAdminConfirmDialog({ title, message, confirmLabel = 'Continue', tone = 'danger' }) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.55);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            z-index: 9999;
+        `;
+
+        const panel = document.createElement('div');
+        panel.style.cssText = `
+            width: min(100%, 460px);
+            background: #12141a;
+            border: 1px solid #2b313d;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.35);
+            color: #f3f4f6;
+        `;
+
+        const confirmBg = tone === 'danger' ? '#341717' : '#3b2413';
+        const confirmBorder = tone === 'danger' ? '#7f1d1d' : '#7c3d12';
+
+        panel.innerHTML = `
+            <div style="padding: 20px; display: grid; gap: 10px;">
+                <h3 style="margin: 0; font-size: 1.1rem;">${ui.escHtml(title)}</h3>
+                <p style="margin: 0; color: #9aa3b2; line-height: 1.45;">${ui.escHtml(message)}</p>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px; padding: 0 20px 20px;">
+                <button type="button" data-role="cancel" style="border: 1px solid #2a2e38; background: #17191f; color: #f3f4f6; border-radius: 10px; min-height: 42px; padding: 0 14px; cursor: pointer;">Cancel</button>
+                <button type="button" data-role="confirm" style="border: 1px solid ${confirmBorder}; background: ${confirmBg}; color: #f3f4f6; border-radius: 10px; min-height: 42px; padding: 0 14px; cursor: pointer;">${ui.escHtml(confirmLabel)}</button>
+            </div>
+        `;
+
+        function close(result) {
+            overlay.remove();
+            resolve(result);
+        }
+
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay) close(false);
+        });
+
+        panel.querySelector('[data-role="cancel"]').addEventListener('click', () => close(false));
+        panel.querySelector('[data-role="confirm"]').addEventListener('click', () => close(true));
+
+        overlay.appendChild(panel);
+        document.body.appendChild(overlay);
+    });
+}
+
 // === TOGGLE PASSWORD RESET ROW ===
 
 export function toggleReset(id) {
@@ -56,7 +111,13 @@ export async function handleAdminForm(event, url) {
 }
 
 export async function deleteUser(userId, username) {
-    if (!confirm(`Are you sure you want to delete user "${username}"? This action is irreversible.`)) return;
+    const confirmed = await showAdminConfirmDialog({
+        title: 'Delete user',
+        message: `Delete user "${username}"? This action is irreversible.`,
+        confirmLabel: 'Delete',
+        tone: 'danger',
+    });
+    if (!confirmed) return;
     const formData = new FormData();
     formData.append('user_id', userId);
     await adminAction('/admin/users/delete', formData);
@@ -69,7 +130,13 @@ export async function createUser(event) {
 }
 
 export async function resetPassword(userId, username) {
-    if (!confirm(`Are you sure you want to reset the password for user "${username}"? A new random password will be generated.`)) return;
+    const confirmed = await showAdminConfirmDialog({
+        title: 'Reset password',
+        message: `Reset the password for user "${username}"? A new random password will be generated.`,
+        confirmLabel: 'Reset password',
+        tone: 'warning',
+    });
+    if (!confirmed) return;
     const formData = new FormData();
     formData.append('user_id', userId);
     await adminAction('/admin/users/reset-password', formData);
