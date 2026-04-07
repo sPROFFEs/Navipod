@@ -6,6 +6,7 @@ import shutil
 import sqlite3
 import subprocess
 import tempfile
+import time
 import zipfile
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -545,6 +546,7 @@ def _fetch_update_tracking_ref():
             "fetch",
             "--prune",
             "--no-tags",
+            "--no-write-fetch-head",
             settings.UPDATE_SOURCE_REPO_URL,
             f"+refs/heads/{settings.UPDATE_SOURCE_BRANCH}:{UPDATE_TRACKING_REMOTE}",
         ],
@@ -632,6 +634,51 @@ async def _get_github_compare_payload(local_full_commit: str):
         }
 
 
+def _get_update_details_via_fetch(local_full_commit: str, current: dict):
+    fetch_result = _fetch_update_tracking_ref()
+    if not _run_git(["rev-parse", "--verify", UPDATE_TRACKING_REMOTE], fallback=None):
+        return None, fetch_result
+
+    remote_commit = _run_git(["rev-parse", "--short", UPDATE_TRACKING_REMOTE], fallback="unknown")
+    remote_full_commit = _run_git(["rev-parse", UPDATE_TRACKING_REMOTE], fallback="unknown")
+    counts = _run_git(["rev-list", "--left-right", "--count", f"HEAD...{UPDATE_TRACKING_REMOTE}"], fallback="0\t0")
+    ahead_count = 0
+    behind_count = 0
+    try:
+        ahead_str, behind_str = counts.split()
+        ahead_count = int(ahead_str)
+        behind_count = int(behind_str)
+    except Exception:
+        pass
+    pending_commits_raw = _run_git(
+        ["log", "--oneline", f"HEAD..{UPDATE_TRACKING_REMOTE}", "-n", "10"],
+        fallback="",
+    )
+    pending_commits = [line.strip() for line in pending_commits_raw.splitlines() if line.strip()]
+    payload = {
+        "checked_at": utcnow().isoformat(),
+        "status": "ok",
+        "message": "Update check completed via git fetch",
+        "source_repo_url": settings.UPDATE_SOURCE_REPO_URL,
+        "source_branch": settings.UPDATE_SOURCE_BRANCH,
+        "current": {
+            **current,
+            "full_commit": local_full_commit,
+            "dirty": _get_worktree_dirty(),
+        },
+        "remote": {
+            "commit": remote_commit,
+            "full_commit": remote_full_commit,
+        },
+        "ahead_count": ahead_count,
+        "behind_count": behind_count,
+        "update_available": behind_count > 0,
+        "pending_commits": pending_commits,
+        "fetch_result": fetch_result,
+    }
+    return payload, fetch_result
+
+
 def _get_worktree_dirty():
     status = _run_git(
         [
@@ -651,8 +698,56 @@ def _get_worktree_dirty():
 async def _get_update_check_payload():
     current = get_build_info()
     local_full_commit = _run_git(["rev-parse", "HEAD"], fallback="unknown")
-    compare_result = await _get_github_compare_payload(local_full_commit)
+    remote_sha, ls_remote_result = _get_remote_branch_sha_via_ls_remote()
+    if remote_sha:
+        remote_short = remote_sha[:7]
+        update_available = remote_sha != local_full_commit
+        payload = {
+            "checked_at": utcnow().isoformat(),
+            "status": "ok",
+            "message": "Update check completed via git ls-remote",
+            "source_repo_url": settings.UPDATE_SOURCE_REPO_URL,
+            "source_branch": settings.UPDATE_SOURCE_BRANCH,
+            "current": {
+                **current,
+                "full_commit": local_full_commit,
+                "dirty": _get_worktree_dirty(),
+            },
+            "remote": {
+                "commit": remote_short,
+                "full_commit": remote_sha,
+            },
+            "ahead_count": 0,
+            "behind_count": 1 if update_available else 0,
+            "update_available": update_available,
+            "pending_commits": [],
+            "fetch_result": ls_remote_result,
+        }
 
+        fetch_payload, fetch_result = _get_update_details_via_fetch(local_full_commit, current)
+        if fetch_payload:
+            payload = fetch_payload
+
+        if update_available:
+            compare_result = await _get_github_compare_payload(local_full_commit)
+            if compare_result and compare_result.get("ok"):
+                ahead_count = int(compare_result.get("ahead_by") or 0)
+                behind_count = int(compare_result.get("behind_by") or 0)
+                payload.update({
+                    "message": "Update check completed",
+                    "remote": {
+                        "commit": compare_result.get("remote_commit", remote_short),
+                        "full_commit": compare_result.get("remote_full_commit", remote_sha),
+                    },
+                    "ahead_count": ahead_count,
+                    "behind_count": behind_count,
+                    "update_available": behind_count > 0,
+                    "pending_commits": compare_result.get("pending_commits", payload.get("pending_commits", [])),
+                    "fetch_result": compare_result,
+                })
+        return payload
+
+    compare_result = await _get_github_compare_payload(local_full_commit)
     if compare_result and compare_result.get("ok"):
         ahead_count = int(compare_result.get("ahead_by") or 0)
         behind_count = int(compare_result.get("behind_by") or 0)
@@ -676,35 +771,6 @@ async def _get_update_check_payload():
             "update_available": behind_count > 0,
             "pending_commits": compare_result.get("pending_commits", []),
             "fetch_result": compare_result,
-        }
-
-    remote_sha, ls_remote_result = _get_remote_branch_sha_via_ls_remote()
-    if remote_sha:
-        remote_short = remote_sha[:7]
-        update_available = remote_sha != local_full_commit
-        message = "Update check completed via git ls-remote"
-        if update_available:
-            message = "Remote branch differs from local commit"
-        return {
-            "checked_at": utcnow().isoformat(),
-            "status": "ok",
-            "message": message,
-            "source_repo_url": settings.UPDATE_SOURCE_REPO_URL,
-            "source_branch": settings.UPDATE_SOURCE_BRANCH,
-            "current": {
-                **current,
-                "full_commit": local_full_commit,
-                "dirty": _get_worktree_dirty(),
-            },
-            "remote": {
-                "commit": remote_short,
-                "full_commit": remote_sha,
-            },
-            "ahead_count": 0,
-            "behind_count": 1 if update_available else 0,
-            "update_available": update_available,
-            "pending_commits": [],
-            "fetch_result": ls_remote_result,
         }
 
     fetch_result = _fetch_update_tracking_ref()
@@ -749,43 +815,55 @@ async def _get_update_check_payload():
             "fetch_stdout": fetch_stdout,
             "fetch_returncode": fetch_returncode,
         }
-    remote_commit = _run_git(["rev-parse", "--short", UPDATE_TRACKING_REMOTE], fallback="unknown")
-    remote_full_commit = _run_git(["rev-parse", UPDATE_TRACKING_REMOTE], fallback="unknown")
-    counts = _run_git(["rev-list", "--left-right", "--count", f"HEAD...{UPDATE_TRACKING_REMOTE}"], fallback="0\t0")
-    ahead_count = 0
-    behind_count = 0
-    try:
-        ahead_str, behind_str = counts.split()
-        ahead_count = int(ahead_str)
-        behind_count = int(behind_str)
-    except Exception:
-        pass
-    pending_commits_raw = _run_git(
-        ["log", "--oneline", f"HEAD..{UPDATE_TRACKING_REMOTE}", "-n", "10"],
-        fallback="",
+
+
+def _resolve_target_update_sha():
+    remote_sha, ls_remote_result = _get_remote_branch_sha_via_ls_remote()
+    if remote_sha:
+        return remote_sha, ls_remote_result
+    fetch_result = _fetch_update_tracking_ref()
+    fetched_sha = _run_git(["rev-parse", UPDATE_TRACKING_REMOTE], fallback=None)
+    return fetched_sha, fetch_result
+
+
+def _fetch_target_update_ref(target_sha: str | None):
+    if not target_sha:
+        return None
+    return _run_git(
+        [
+            "fetch",
+            "--prune",
+            "--no-tags",
+            "--no-write-fetch-head",
+            settings.UPDATE_SOURCE_REPO_URL,
+            f"+refs/heads/{settings.UPDATE_SOURCE_BRANCH}:{UPDATE_TRACKING_REMOTE}",
+        ],
+        fallback=None,
+        include_details=True,
     )
-    pending_commits = [line.strip() for line in pending_commits_raw.splitlines() if line.strip()]
-    return {
-        "checked_at": utcnow().isoformat(),
-        "status": "ok",
-        "message": "Update check completed",
-        "source_repo_url": settings.UPDATE_SOURCE_REPO_URL,
-        "source_branch": settings.UPDATE_SOURCE_BRANCH,
-        "current": {
-            **current,
-            "full_commit": local_full_commit,
-            "dirty": _get_worktree_dirty(),
-        },
-        "remote": {
-            "commit": remote_commit,
-            "full_commit": remote_full_commit,
-        },
-        "ahead_count": ahead_count,
-        "behind_count": behind_count,
-        "update_available": behind_count > 0,
-        "pending_commits": pending_commits,
-        "fetch_result": fetch_result,
-    }
+
+
+def _run_post_update_health_check():
+    urls = [
+        "http://concierge:8000/login",
+        "http://nginx/login",
+    ]
+    timeout_seconds = 45
+    deadline = utcnow().timestamp() + timeout_seconds
+    last_error = "health check did not start"
+
+    while utcnow().timestamp() < deadline:
+        for url in urls:
+            try:
+                response = httpx.get(url, timeout=5.0, follow_redirects=True)
+                if response.status_code < 500:
+                    return {"ok": True, "url": url, "status_code": response.status_code}
+                last_error = f"{url} returned {response.status_code}"
+            except Exception as e:
+                last_error = str(e)
+        time.sleep(2)
+
+    return {"ok": False, "error": last_error}
 
 
 def create_admin_job(job_type: str, triggered_by: str | None, message: str, details=None):
@@ -928,13 +1006,24 @@ def _run_apply_update_job(job_id: int, triggered_by: str | None):
             return
 
         update_admin_job(job_id, status="running", message="Checking for updates before apply")
-        payload = _get_update_check_payload()
+        payload = asyncio.run(_get_update_check_payload())
         save_update_state(db, payload)
         if payload.get("status") != "ok":
             update_admin_job(job_id, status="failed", message=payload.get("message") or "Update check failed", details=payload, finished=True)
             return
         if not payload.get("update_available"):
             update_admin_job(job_id, status="completed", message="Already up to date", details=payload, finished=True)
+            return
+
+        target_sha, target_result = _resolve_target_update_sha()
+        if not target_sha:
+            update_admin_job(
+                job_id,
+                status="failed",
+                message="Failed to resolve remote update target",
+                details={"precheck": payload, "target_result": target_result},
+                finished=True,
+            )
             return
 
         update_admin_job(job_id, status="running", message="Creating pre-update backup")
@@ -958,17 +1047,22 @@ def _run_apply_update_job(job_id: int, triggered_by: str | None):
             manifest=manifest,
         )
 
-        changed_files_raw = _run_git(["diff", "--name-only", f"HEAD..{UPDATE_TRACKING_REMOTE}"], fallback="") or ""
+        update_admin_job(job_id, status="running", message="Fetching target revision from remote")
+        fetch_result = _fetch_target_update_ref(target_sha)
+        if not fetch_result or not fetch_result.get("ok"):
+            raise RuntimeError((fetch_result or {}).get("stderr") or "git fetch failed")
+
+        changed_files_raw = _run_git(["diff", "--name-only", f"HEAD..{target_sha}"], fallback="") or ""
         changed_files = [line.strip() for line in changed_files_raw.splitlines() if line.strip()]
         rebuild_required = any(path in REBUILD_REQUIRED_PATHS for path in changed_files)
 
         update_admin_job(job_id, status="running", message="Applying update to local workspace")
-        reset_result = _run_git(["reset", "--hard", UPDATE_TRACKING_REMOTE], fallback=None)
+        reset_result = _run_git(["reset", "--hard", target_sha], fallback=None)
         if reset_result is None:
             raise RuntimeError("git reset --hard failed")
 
         applied_migrations = apply_schema_migrations()
-        post_payload = _get_update_check_payload()
+        post_payload = asyncio.run(_get_update_check_payload())
         save_update_state(db, post_payload)
 
         details = {
@@ -1051,6 +1145,19 @@ def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
             update_admin_job_progress(job_id, message="Already up to date", status="completed", phase="done", progress=100, extra=payload, finished=True)
             return
 
+        target_sha, target_result = _resolve_target_update_sha()
+        if not target_sha:
+            update_admin_job_progress(
+                job_id,
+                message="Failed to resolve remote update target",
+                status="failed",
+                phase="check",
+                progress=100,
+                extra={"precheck": payload, "target_result": target_result},
+                finished=True,
+            )
+            return
+
         update_admin_job_progress(job_id, message="Creating pre-update backup", status="running", phase="backup", progress=25)
         ensure_runtime_dirs()
         manifest = _build_backup_manifest(triggered_by, "pre-update")
@@ -1072,19 +1179,27 @@ def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
             manifest=manifest,
         )
 
-        changed_files_raw = _run_git(["diff", "--name-only", f"HEAD..{UPDATE_TRACKING_REMOTE}"], fallback="") or ""
+        update_admin_job_progress(job_id, message="Fetching target revision from remote", status="running", phase="fetch", progress=40)
+        fetch_result = _fetch_target_update_ref(target_sha)
+        if not fetch_result or not fetch_result.get("ok"):
+            raise RuntimeError((fetch_result or {}).get("stderr") or "git fetch failed")
+
+        changed_files_raw = _run_git(["diff", "--name-only", f"HEAD..{target_sha}"], fallback="") or ""
         changed_files = [line.strip() for line in changed_files_raw.splitlines() if line.strip()]
 
         update_admin_job_progress(job_id, message="Applying Git update to workspace", status="running", phase="workspace", progress=50)
-        reset_result = _run_git(["reset", "--hard", UPDATE_TRACKING_REMOTE], fallback=None)
+        reset_result = _run_git(["reset", "--hard", target_sha], fallback=None)
         if reset_result is None:
             raise RuntimeError("git reset --hard failed")
 
         update_admin_job_progress(job_id, message="Running schema migrations", status="running", phase="migrate", progress=70)
         applied_migrations = apply_schema_migrations()
         rebuild_required = _run_compose_update(job_id, changed_files)
+        health_result = _run_post_update_health_check()
+        if not health_result.get("ok"):
+            raise RuntimeError(f"health check failed: {health_result.get('error', 'unknown error')}")
 
-        post_payload = _get_update_check_payload()
+        post_payload = asyncio.run(_get_update_check_payload())
         save_update_state(db, post_payload)
         details = {
             "before": payload,
@@ -1092,6 +1207,8 @@ def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
             "changed_files": changed_files[:100],
             "rebuild_required": rebuild_required,
             "applied_migrations": applied_migrations,
+            "health_check": health_result,
+            "target_sha": target_sha,
         }
         update_admin_job_progress(
             job_id,
