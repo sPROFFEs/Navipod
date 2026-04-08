@@ -367,7 +367,15 @@ def _run_compose_update(job_id: int, changed_files: list[str]):
     if completed.returncode != 0:
         raise RuntimeError((completed.stderr or completed.stdout or "docker compose up failed").strip())
 
-    update_admin_job_progress(job_id, message="Pruning dangling Docker images and builder cache", phase="cleanup", progress=95, status="running")
+    update_admin_job_progress(job_id, message="Services recreated. Waiting for restarted services to become healthy", phase="health", progress=90, status="running")
+    health_result = _run_post_update_health_check()
+    if health_result.get("ok"):
+        update_admin_job_progress(job_id, message=f"Health check succeeded via {health_result.get('url')} ({health_result.get('status_code')})", phase="cleanup", progress=95, status="running")
+    else:
+        update_admin_job_progress(job_id, message=f"Health check failed: {health_result.get('error', 'unknown error')}", phase="health", progress=95, status="running")
+        raise RuntimeError(f"health check failed: {health_result.get('error', 'unknown error')}")
+
+    update_admin_job_progress(job_id, message="Pruning dangling Docker images and builder cache", phase="cleanup", progress=97, status="running")
     try:
         image_prune = subprocess.run(
             ["docker", "image", "prune", "-f"],
@@ -400,7 +408,7 @@ def _run_compose_update(job_id: int, changed_files: list[str]):
         )
     _log_command_result(job_id, "Docker image prune", image_prune)
     _log_command_result(job_id, "Docker builder prune", builder_prune)
-    return rebuild_required
+    return rebuild_required, health_result
 
 
 def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
@@ -466,14 +474,7 @@ def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
             update_admin_job_progress(job_id, message=f"Migrations applied: {', '.join(applied_migrations)}")
         else:
             update_admin_job_progress(job_id, message="No schema migrations needed")
-        rebuild_required = _run_compose_update(job_id, changed_files)
-        health_result = _run_post_update_health_check()
-        if health_result.get("ok"):
-            update_admin_job_progress(job_id, message=f"Health check succeeded via {health_result.get('url')} ({health_result.get('status_code')})")
-        else:
-            update_admin_job_progress(job_id, message=f"Health check failed: {health_result.get('error', 'unknown error')}")
-        if not health_result.get("ok"):
-            raise RuntimeError(f"health check failed: {health_result.get('error', 'unknown error')}")
+        rebuild_required, health_result = _run_compose_update(job_id, changed_files)
 
         post_payload = asyncio.run(_get_update_check_payload())
         save_update_state(db, post_payload)

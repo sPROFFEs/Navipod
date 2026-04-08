@@ -114,6 +114,8 @@ def update_admin_job(job_id: int, *, status=None, message=None, details=None, fi
         job = db.query(database.AdminJob).filter(database.AdminJob.id == job_id).first()
         if not job:
             return
+        if message:
+            print(f"[ADMIN-JOB {job_id}] {message}")
         if status:
             job.status = status
         if message is not None:
@@ -136,6 +138,8 @@ def update_admin_job_progress(job_id: int, *, message=None, status=None, phase=N
         job = db.query(database.AdminJob).filter(database.AdminJob.id == job_id).first()
         if not job:
             return
+        if message:
+            print(f"[ADMIN-JOB {job_id}] {message}")
         details = {}
         if job.details_json:
             try:

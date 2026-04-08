@@ -21,6 +21,7 @@ export function initUpdateProgress(root = document) {
     const messageNode = document.getElementById('job-message');
     const logContainer = document.getElementById('job-log');
     let redirectScheduled = false;
+    let reconnectAttempts = 0;
     let lastJobData = {
         status: shell.dataset.initialStatus || 'queued',
         details: {
@@ -73,20 +74,56 @@ export function initUpdateProgress(root = document) {
 
     async function pollJob() {
         try {
-            const res = await fetch(`/admin/api/system/jobs/${jobId}`, { credentials: 'same-origin' });
+            const res = await fetch(`/admin/api/system/jobs/${jobId}`, {
+                credentials: 'same-origin',
+                cache: 'no-store',
+                headers: { 'Accept': 'application/json' }
+            });
             if (!res.ok) {
+                reconnectAttempts += 1;
                 renderReconnectState();
+                await maybeRedirectToMonitor();
+                window.setTimeout(pollJob, 3000);
+                return;
+            }
+            const contentType = res.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+                reconnectAttempts += 1;
+                renderReconnectState();
+                await maybeRedirectToMonitor();
                 window.setTimeout(pollJob, 3000);
                 return;
             }
             const data = await res.json();
+            reconnectAttempts = 0;
             renderJob(data);
             if (!terminalStates.has(data.status)) {
                 window.setTimeout(pollJob, 2000);
             }
         } catch (_error) {
+            reconnectAttempts += 1;
             renderReconnectState();
+            await maybeRedirectToMonitor();
             window.setTimeout(pollJob, 3000);
+        }
+    }
+
+    async function maybeRedirectToMonitor() {
+        if (redirectScheduled) return;
+        if (reconnectAttempts < 3) return;
+        if (!lastJobData || terminalStates.has(lastJobData.status)) return;
+        if (!['recreate', 'health', 'cleanup'].includes(lastJobData.details?.phase || '')) return;
+        try {
+            const res = await fetch('/admin/system', {
+                credentials: 'same-origin',
+                cache: 'no-store',
+            });
+            if (res.ok) {
+                redirectScheduled = true;
+                window.location.href = '/admin/system?msg=Update progress resumed after restart';
+            }
+        } catch (_error) {
+            // Keep polling the job endpoint.
         }
     }
 
