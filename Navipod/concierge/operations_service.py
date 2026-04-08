@@ -1791,3 +1791,42 @@ async def autobackup_scheduler():
         except Exception as e:
             print(f"[BACKUP-SCHEDULER] {e}")
             await asyncio.sleep(60)
+
+
+# Facade exports for extracted services.
+from build_info_service import (
+    format_bytes,
+    format_datetime_for_display,
+    get_build_info,
+    get_timezone_options,
+)
+from job_service import (
+    create_admin_job,
+    get_active_operation_lock,
+    get_admin_job,
+    get_recent_admin_jobs,
+    release_lock as _release_lock,
+    acquire_lock as _acquire_lock,
+    update_admin_job,
+    update_admin_job_progress,
+)
+from backup_service import (
+    get_backup_state,
+    queue_backup,
+    queue_restore,
+    run_backup_job,
+    run_restore_job,
+    should_run_autobackup,
+    update_autobackup_settings,
+)
+from update_service import (
+    get_internal_updater_token,
+    get_update_state,
+    is_update_state_stale,
+    queue_apply_update,
+    queue_check_update,
+    queue_silent_update_refresh_if_stale,
+    run_apply_update_job_from_updater,
+    run_silent_update_refresh,
+    save_update_state,
+)
