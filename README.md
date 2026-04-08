@@ -509,3 +509,5 @@ In short:
 The full binding terms are in [LICENSE](C:\Users\user\Documents\Navipod\LICENSE).
 
 Updater test note: this line is a documentation-only change used to generate a safe test revision for the in-app update flow.
+
+Updater test marker: 2026-04-08T2026-04-08T14:31:24.0256531+02:00
