@@ -25,6 +25,7 @@ export async function loadUserData() {
         if (window.loadSidebarRadios) window.loadSidebarRadios();
 
         startHeartbeatSync();
+        requestSyncRefresh();
     } catch (e) {
         console.error("Failed to load user data:", e);
     }
@@ -35,8 +36,16 @@ export async function loadUserData() {
 
 export function startHeartbeatSync() {
     if (state.heartbeatInterval) clearInterval(state.heartbeatInterval);
-    state.setHeartbeatInterval(setInterval(checkSyncState, 3000));
+    state.setHeartbeatInterval(setInterval(checkSyncState, 15000));
     checkSyncState();
+}
+
+export async function requestSyncRefresh() {
+    try {
+        await fetch(`${state.API}/sync-refresh`, { method: 'POST' });
+    } catch (e) {
+        console.error('[SYNC] Refresh request error:', e);
+    }
 }
 
 export async function checkSyncState() {

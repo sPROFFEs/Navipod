@@ -16,6 +16,7 @@ from .core import get_db, get_current_user_safe
 
 
 router = APIRouter()
+_navidrome_sync_tasks: dict[str, asyncio.Task] = {}
 
 
 # --- M3U GENERATION ---
@@ -52,7 +53,7 @@ def generate_favorites_m3u(db: Session, user):
 
 # --- NAVIDROME SYNC ---
 
-async def sync_favorite_to_navidrome(db: Session, user, track, is_starred: bool):
+async def sync_favorite_to_navidrome(user, track, is_starred: bool):
     """Synchronize favorite status with Navidrome via Subsonic API"""
     try:
         target_ip = manager.get_or_spawn_container(user.username)
@@ -183,18 +184,38 @@ async def sync_navidrome_to_local(db: Session, user):
         print(f"[SYNC-BACK] Error: {e}")
 
 
+def schedule_navidrome_sync(user_id: int, username: str, delay_seconds: float = 1.0):
+    existing = _navidrome_sync_tasks.get(username)
+    if existing and not existing.done():
+        existing.cancel()
+
+    async def worker():
+        await asyncio.sleep(delay_seconds)
+        db = database.SessionLocal()
+        try:
+            user = db.query(database.User).filter(database.User.id == user_id).first()
+            if not user:
+                return
+            await sync_navidrome_to_local(db, user)
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            print(f"[SYNC-BACKGROUND] Error: {e}")
+        finally:
+            db.close()
+
+    _navidrome_sync_tasks[username] = asyncio.create_task(worker())
+
+
 # --- API ENDPOINTS ---
 
 @router.get("/api/favorites")
 async def list_favorites(request: Request, db: Session = Depends(get_db)):
-    """Get user's favorite tracks (with 2-way sync)"""
+    """Get user's favorite tracks from the local database."""
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
-    # 2-WAY SYNC
-    await sync_navidrome_to_local(db, user)
-    
+
     try:
         favorites = db.query(database.UserFavorite).filter(
             database.UserFavorite.user_id == user.id
@@ -243,7 +264,7 @@ async def add_favorite(track_id: int, request: Request, db: Session = Depends(ge
     generate_favorites_m3u(db, user)
     
     # Sync with Navidrome Star system (Background)
-    asyncio.create_task(sync_favorite_to_navidrome(db, user, track, True))
+    asyncio.create_task(sync_favorite_to_navidrome(user, track, True))
     
     return JSONResponse({"status": "liked", "liked": True})
 
@@ -272,6 +293,6 @@ async def remove_favorite(track_id: int, request: Request, db: Session = Depends
     # Sync with Navidrome Star system (Background)
     track = db.query(database.Track).filter(database.Track.id == track_id).first()
     if track:
-        asyncio.create_task(sync_favorite_to_navidrome(db, user, track, False))
+        asyncio.create_task(sync_favorite_to_navidrome(user, track, False))
     
     return JSONResponse({"status": "unliked", "liked": False})

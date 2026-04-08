@@ -13,6 +13,7 @@ import spotify_service
 import youtube_service
 
 from .core import get_db, get_current_user_safe
+from .favorites import schedule_navidrome_sync
 
 
 router = APIRouter()
@@ -70,6 +71,16 @@ async def get_sync_state(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         print(f"[SYNC-STATE] Error: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.post("/api/sync-refresh")
+async def queue_sync_refresh(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    schedule_navidrome_sync(user.id, user.username, delay_seconds=0.5)
+    return JSONResponse({"status": "queued"})
 
 
 @router.get("/api/check-duplicate")

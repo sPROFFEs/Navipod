@@ -15,7 +15,7 @@ import manager
 from navipod_config import settings
 
 from .core import get_db, get_current_user_safe
-from .favorites import sync_navidrome_to_local
+from .favorites import schedule_navidrome_sync
 
 
 router = APIRouter()
@@ -248,14 +248,11 @@ async def clean_remote_playlist(username: str, playlist_name: str):
 
 @router.get("/api/playlists")
 async def list_playlists(request: Request, db: Session = Depends(get_db)):
-    """List user's playlists (with 2-way sync)"""
+    """List user's playlists from the local database."""
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
-    # 2-WAY SYNC
-    await sync_navidrome_to_local(db, user)
-    
+
     playlists = db.query(database.Playlist).filter(database.Playlist.owner_id == user.id).all()
     
     filtered = [
@@ -303,6 +300,7 @@ async def create_playlist(req: CreatePlaylistRequest, request: Request, db: Sess
     
     # Trigger Sync
     schedule_playlist_sync(db, user)
+    schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
 
     return JSONResponse({"id": playlist.id, "name": playlist.name})
 
@@ -326,6 +324,7 @@ async def set_playlist_public(playlist_id: int, payload: PublishPlaylistRequest,
 
     playlist.is_public = bool(payload.is_public)
     db.commit()
+    schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
     return JSONResponse({
         "id": playlist.id,
         "is_public": bool(playlist.is_public)
@@ -395,6 +394,7 @@ async def copy_public_playlist(playlist_id: int, request: Request, db: Session =
     sync_playlist_copy_contents(db, source_playlist, local_copy)
     generate_m3u_for_playlist(db, local_copy, user.username)
     schedule_playlist_sync(db, user, force_now=True)
+    schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
 
     return JSONResponse({
         "status": action,
@@ -505,6 +505,7 @@ async def add_to_playlist(playlist_id: int, req: AddToPlaylistRequest, request: 
     # Regenerate M3U
     generate_m3u_for_playlist(db, playlist, user.username)
     schedule_playlist_sync(db, user)
+    schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
     
     return JSONResponse({"status": "added", "position": max_pos + 1})
 
@@ -541,6 +542,7 @@ async def remove_from_playlist(playlist_id: int, track_id: int, request: Request
     # Regenerate M3U
     generate_m3u_for_playlist(db, playlist, user.username)
     schedule_playlist_sync(db, user)
+    schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
     
     return JSONResponse({"status": "removed"})
 
@@ -575,6 +577,7 @@ async def delete_playlist(playlist_id: int, request: Request, db: Session = Depe
 
     # Trigger scan for consistency
     schedule_playlist_sync(db, user, force_now=True)
+    schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
     
     return JSONResponse({"status": "deleted"})
 
@@ -618,5 +621,6 @@ async def update_playlist(playlist_id: int, payload: PlaylistUpdateRequest, requ
     
     # 5. Trigger scan
     schedule_playlist_sync(db, user, force_now=True)
+    schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
     
     return JSONResponse({"id": playlist.id, "name": playlist.name})

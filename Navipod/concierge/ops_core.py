@@ -216,6 +216,105 @@ def _ensure_schema_migrations_table():
         """))
 
 
+def _migration_000_base_schema(conn):
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY,
+            username TEXT NOT NULL UNIQUE,
+            hashed_password TEXT,
+            is_active INTEGER DEFAULT 1,
+            is_admin INTEGER DEFAULT 0,
+            avatar_path TEXT,
+            last_access DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_username ON users(username)"))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS download_settings (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER NOT NULL UNIQUE,
+            spotify_client_id TEXT,
+            spotify_client_secret TEXT,
+            lastfm_api_key TEXT,
+            lastfm_shared_secret TEXT,
+            youtube_cookies_path TEXT,
+            youtube_cookies TEXT,
+            metadata_preferences TEXT DEFAULT '[\"spotify\", \"lastfm\", \"musicbrainz\"]',
+            audio_quality TEXT DEFAULT '320',
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    """))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS tracks (
+            id INTEGER PRIMARY KEY,
+            title TEXT,
+            artist TEXT,
+            album TEXT,
+            duration INTEGER,
+            filepath TEXT UNIQUE,
+            source_id TEXT UNIQUE,
+            file_hash TEXT UNIQUE,
+            source_provider TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tracks_filepath ON tracks(filepath)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tracks_source_id ON tracks(source_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tracks_file_hash ON tracks(file_hash)"))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS user_playlists (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            name TEXT,
+            source_url TEXT,
+            folder_path TEXT,
+            auto_sync INTEGER DEFAULT 0,
+            last_synced_at DATETIME,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    """))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS playlist_tracks (
+            id INTEGER PRIMARY KEY,
+            playlist_id INTEGER NOT NULL,
+            title TEXT,
+            file_path TEXT,
+            source_id TEXT,
+            FOREIGN KEY (playlist_id) REFERENCES user_playlists(id)
+        )
+    """))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS download_jobs (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            input_url TEXT,
+            target_playlist_id INTEGER,
+            new_playlist_name TEXT,
+            status TEXT DEFAULT 'pending',
+            progress_percent INTEGER DEFAULT 0,
+            current_file TEXT,
+            error_log TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (target_playlist_id) REFERENCES user_playlists(id)
+        )
+    """))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS token_blacklist (
+            id INTEGER PRIMARY KEY,
+            token TEXT NOT NULL UNIQUE,
+            blacklisted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_token_blacklist_token ON token_blacklist(token)"))
+
+
 def _applied_migration_names(conn):
     return {row[0] for row in conn.execute(text("SELECT name FROM schema_migrations")).fetchall()}
 
@@ -366,6 +465,7 @@ def _migration_008_system_settings_update_state(conn):
 
 
 MIGRATIONS = [
+    ("000_base_schema", _migration_000_base_schema),
     ("001_tracks_library_columns", _migration_001_tracks_library_columns),
     ("002_user_favorites", _migration_002_user_favorites),
     ("003_download_settings_metadata", _migration_003_download_settings_metadata),

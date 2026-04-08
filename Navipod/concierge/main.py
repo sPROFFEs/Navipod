@@ -6,14 +6,6 @@ import re
 import ipaddress
 from urllib.parse import urljoin, urlparse
 
-# ---  GLOBAL NETWORK FIX  ---
-old_getaddrinfo = socket.getaddrinfo
-def new_getaddrinfo(*args, **kwargs):
-    responses = old_getaddrinfo(*args, **kwargs)
-    return [r for r in responses if r[0] == socket.AF_INET]
-socket.getaddrinfo = new_getaddrinfo
-# -------------------------------
-
 from fastapi import FastAPI, Request, Depends, Form, UploadFile, File, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, JSONResponse, StreamingResponse
