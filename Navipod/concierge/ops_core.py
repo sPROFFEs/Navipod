@@ -14,9 +14,20 @@ from sqlalchemy import text
 import database
 from navipod_config import settings
 
+
+def _detect_compose_project_root(repo_root: Path) -> Path:
+    direct = repo_root / "docker-compose.yaml"
+    nested = repo_root / "Navipod" / "docker-compose.yaml"
+    if direct.exists():
+        return repo_root
+    if nested.exists():
+        return repo_root / "Navipod"
+    return repo_root / "Navipod"
+
+
 DB_FILE_PATH = "/saas-data/concierge.db"
 REPO_ROOT = Path(settings.APP_SOURCE_ROOT)
-COMPOSE_PROJECT_ROOT = REPO_ROOT / "Navipod"
+COMPOSE_PROJECT_ROOT = _detect_compose_project_root(REPO_ROOT)
 ENV_FILE_PATH = settings.RUNTIME_ENV_FILE
 COMPOSE_ENV_FILE = settings.COMPOSE_ENV_FILE
 BACKUP_ROOT = Path(settings.BACKUP_ROOT)
@@ -97,7 +108,12 @@ def _get_host_visible_compose_roots():
     host_repo_root = _get_container_mount_source(REPO_ROOT)
     if not host_repo_root:
         return None, None
-    return host_repo_root, host_repo_root / "Navipod"
+    try:
+        compose_relative = COMPOSE_PROJECT_ROOT.relative_to(REPO_ROOT)
+    except ValueError:
+        compose_relative = Path(".")
+    host_compose_root = (host_repo_root / compose_relative).resolve()
+    return host_repo_root, host_compose_root
 
 
 def _build_host_bind_compose_file():
