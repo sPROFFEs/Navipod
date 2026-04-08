@@ -693,7 +693,7 @@ const statsInterval = setInterval(async () => {
         if (poolSub) poolSub.textContent = data.pool.used + 'GB used of ' + data.pool.limit + 'GB';
         if (poolBar) {
             poolBar.style.width = data.pool.percent + '%';
-            poolBar.style.background = data.pool.percent > 90 - 'var(--monitor-red)' : 'var(--monitor-blue)';
+            poolBar.style.background = data.pool.percent > 90 ? 'var(--monitor-red)' : 'var(--monitor-blue)';
         }
     } catch (e) {}
 }, 10000);
