@@ -233,6 +233,14 @@ async def _fetch_radio_proxy_response(url: str) -> httpx.Response:
 
     raise ValueError("Too many upstream redirects.")
 
+
+def get_db():
+    db = database.SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
 @app.on_event("shutdown")
 async def shutdown_event():
     await proxy_client.aclose()
@@ -263,11 +271,6 @@ async def general_stream_proxy(url: str, request: Request, db: Session = Depends
         return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:
         return JSONResponse({"error": f"Stream proxy error: {str(e)}"}, status_code=502)
-
-def get_db():
-    db = database.SessionLocal()
-    try: yield db
-    finally: db.close()
 
 # --- CONNECT MUSIC ROUTER (LIBRARY & DOWNLOADS) ---
 # This automatically adds: /downloads, /library, /api/downloads..., /api/library...
