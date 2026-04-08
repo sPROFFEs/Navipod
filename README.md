@@ -507,3 +507,5 @@ In short:
 - offering it to third parties as a paid or hosted service is not allowed
 
 The full binding terms are in [LICENSE](C:\Users\user\Documents\Navipod\LICENSE).
+
+Updater test note: this line is a documentation-only change used to generate a safe test revision for the in-app update flow.
