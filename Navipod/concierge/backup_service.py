@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 import database
-import operations_service as ops
+import ops_core as ops
 from build_info_service import format_bytes, format_datetime_for_display, get_build_info
 from job_service import acquire_lock, create_admin_job, release_lock, update_admin_job, update_admin_job_progress
 

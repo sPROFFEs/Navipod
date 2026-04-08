@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 import httpx
 
 import database
-import operations_service as ops
+import ops_core as ops
 from build_info_service import get_build_info
 from job_service import acquire_lock, create_admin_job, get_active_operation_lock, get_admin_job, get_recent_admin_jobs, release_lock, update_admin_job_progress
 
