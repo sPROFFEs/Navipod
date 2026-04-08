@@ -464,6 +464,38 @@ def _migration_008_system_settings_update_state(conn):
         conn.execute(text("ALTER TABLE system_settings ADD COLUMN update_state_json TEXT"))
 
 
+def _migration_009_tracks_fts(conn):
+    try:
+        conn.execute(text("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS tracks_fts
+            USING fts5(title, artist, album, content='tracks', content_rowid='id')
+        """))
+        conn.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS tracks_ai AFTER INSERT ON tracks BEGIN
+                INSERT INTO tracks_fts(rowid, title, artist, album)
+                VALUES (new.id, COALESCE(new.title, ''), COALESCE(new.artist, ''), COALESCE(new.album, ''));
+            END
+        """))
+        conn.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS tracks_ad AFTER DELETE ON tracks BEGIN
+                INSERT INTO tracks_fts(tracks_fts, rowid, title, artist, album)
+                VALUES ('delete', old.id, COALESCE(old.title, ''), COALESCE(old.artist, ''), COALESCE(old.album, ''));
+            END
+        """))
+        conn.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS tracks_au AFTER UPDATE ON tracks BEGIN
+                INSERT INTO tracks_fts(tracks_fts, rowid, title, artist, album)
+                VALUES ('delete', old.id, COALESCE(old.title, ''), COALESCE(old.artist, ''), COALESCE(old.album, ''));
+                INSERT INTO tracks_fts(rowid, title, artist, album)
+                VALUES (new.id, COALESCE(new.title, ''), COALESCE(new.artist, ''), COALESCE(new.album, ''));
+            END
+        """))
+        conn.execute(text("INSERT INTO tracks_fts(tracks_fts) VALUES ('rebuild')"))
+    except Exception:
+        # FTS is an optimization. Fall back to plain LIKE queries if unavailable.
+        pass
+
+
 MIGRATIONS = [
     ("000_base_schema", _migration_000_base_schema),
     ("001_tracks_library_columns", _migration_001_tracks_library_columns),
@@ -474,6 +506,7 @@ MIGRATIONS = [
     ("006_admin_ops_tables", _migration_006_admin_ops_tables),
     ("007_system_settings_timezone", _migration_007_system_settings_timezone),
     ("008_system_settings_update_state", _migration_008_system_settings_update_state),
+    ("009_tracks_fts", _migration_009_tracks_fts),
 ]
 
 

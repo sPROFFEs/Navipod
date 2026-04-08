@@ -4,6 +4,7 @@ Unified search: local library plus remote providers.
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from pydantic import BaseModel
 
 import database
@@ -14,6 +15,7 @@ import metadata_cache
 from lastfm_service import lastfm_service
 from musicbrainz_service import musicbrainz_service
 from limiter import limiter
+from search_utils import build_fts_query, spotify_source_candidates, youtube_source_candidates
 
 from .core import get_db, get_current_user_safe
 
@@ -21,6 +23,35 @@ from .core import get_db, get_current_user_safe
 router = APIRouter()
 
 
+def _search_local_tracks(db: Session, raw_query: str, limit: int = 50):
+    fts_query = build_fts_query(raw_query)
+    if fts_query:
+        try:
+            rows = db.execute(
+                text("SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH :query LIMIT :limit"),
+                {"query": fts_query, "limit": limit},
+            ).fetchall()
+            track_ids = [row[0] for row in rows]
+            if track_ids:
+                tracks = db.query(database.Track).filter(database.Track.id.in_(track_ids)).all()
+                track_map = {track.id: track for track in tracks}
+                return [track_map[track_id] for track_id in track_ids if track_id in track_map]
+            return []
+        except Exception:
+            pass
+
+    return db.query(database.Track).filter(
+        (database.Track.title.ilike(f"%{raw_query}%")) |
+        (database.Track.artist.ilike(f"%{raw_query}%"))
+    ).limit(limit).all()
+
+
+def _fetch_existing_source_ids(db: Session, candidate_ids: set[str]) -> set[str]:
+    normalized = {candidate for candidate in candidate_ids if candidate}
+    if not normalized:
+        return set()
+    rows = db.query(database.Track.source_id).filter(database.Track.source_id.in_(normalized)).all()
+    return {row[0] for row in rows if row and row[0]}
 def _cover_proxy(artist: str, title: str) -> str:
     return f"/api/cover/resolve?artist={artist}&title={title}"
 
@@ -51,11 +82,7 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
     local_ids = set()
 
     # 1. LOCAL SEARCH (Database)
-    # Keep this query for deduplication even when the active tab is remote-only.
-    local_tracks = db.query(database.Track).filter(
-        (database.Track.title.ilike(f"%{q}%")) | 
-        (database.Track.artist.ilike(f"%{q}%"))
-    ).limit(50).all()
+    local_tracks = _search_local_tracks(db, q, limit=50) if source in ["all", "local"] else []
     
     for t in local_tracks:
         if source in ["all", "local"]:
@@ -82,10 +109,17 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
     if source in ["all", "youtube"]:
         try:
             yt_items = await youtube_service.youtube_service.search_videos(q, limit=20)
+            youtube_existing_ids = _fetch_existing_source_ids(
+                db,
+                {
+                    candidate
+                    for item in yt_items
+                    for candidate in youtube_source_candidates(item.get("id"))
+                },
+            )
             for item in yt_items:
-                # Normalizar ID para cotejar con DB
                 vid = item['id']
-                if vid not in local_ids and f"youtube:{vid}" not in local_ids:
+                if not youtube_source_candidates(vid).intersection(local_ids | youtube_existing_ids):
                     remote_results.append({
                         "id": item.get('url') or f"https://www.youtube.com/watch?v={item['id']}",
                         "title": item.get('title', 'Unknown'),
@@ -110,6 +144,14 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
                     type="track",
                     limit=20,
                 )
+                spotify_existing_ids = _fetch_existing_source_ids(
+                    db,
+                    {
+                        candidate
+                        for item in sp_items
+                        for candidate in spotify_source_candidates(item.get("id") if isinstance(item.get("id"), str) else "")
+                    },
+                )
                 for item in sp_items:
                     item_id = item.get("id")
                     normalized_id = item_id if isinstance(item_id, str) else ""
@@ -118,7 +160,7 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
                     if normalized_id and not normalized_id.startswith("spotify:track:"):
                         dedup_id = f"spotify:track:{normalized_id}"
 
-                    if dedup_id and dedup_id not in local_ids:
+                    if dedup_id and dedup_id not in (local_ids | spotify_existing_ids):
                         title = item.get('name') or item.get('title') or 'Unknown'
                         artist = item.get('artist', 'Unknown')
                         album = item.get('album') or source_name.title()

@@ -4,6 +4,7 @@ Audio streaming and cover art endpoints.
 import os
 import io
 import mimetypes
+import random
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse, JSONResponse, FileResponse, StreamingResponse, Response
 from sqlalchemy.orm import Session
@@ -24,6 +25,22 @@ router = APIRouter()
 
 def _cover_metadata_key(artist: str, title: str) -> str:
     return metadata_cache.make_key("cover-proxy", artist=artist, title=title)
+
+
+def _pick_random_track(db: Session):
+    bounds = db.query(
+        func.min(database.Track.id),
+        func.max(database.Track.id),
+    ).one()
+    min_id, max_id = bounds
+    if min_id is None or max_id is None:
+        return None
+
+    pivot = random.randint(min_id, max_id)
+    track = db.query(database.Track).filter(database.Track.id >= pivot).order_by(database.Track.id.asc()).first()
+    if track:
+        return track
+    return db.query(database.Track).filter(database.Track.id < pivot).order_by(database.Track.id.asc()).first()
 
 
 @router.get("/api/cover/{track_id:int}")
@@ -131,8 +148,7 @@ async def stream_track(track_id: int, request: Request, db: Session = Depends(ge
 @router.get("/api/random-track")
 async def get_random_track(db: Session = Depends(get_db)):
     """Return a random track from the local library."""
-    # SQLite random optimization
-    track = db.query(database.Track).order_by(func.random()).first()
+    track = _pick_random_track(db)
     if not track:
         return JSONResponse({"error": "Library is empty"}, status_code=404)
     

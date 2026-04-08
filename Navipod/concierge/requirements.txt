@@ -21,3 +21,4 @@ psutil
 pydantic-settings
 slowapi
 PyYAML
+pytest
