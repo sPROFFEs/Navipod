@@ -70,6 +70,14 @@ def _lock_expiry():
     return utcnow() + timedelta(minutes=LOCK_TIMEOUT_MINUTES)
 
 
+def _as_utc(value):
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def _is_job_terminal(job):
     if not job:
         return True
@@ -87,7 +95,8 @@ def _should_reclaim_lock(db, lock):
     if not lock:
         return False
     now = utcnow()
-    if lock.expires_at and lock.expires_at <= now:
+    expires_at = _as_utc(lock.expires_at)
+    if expires_at and expires_at <= now:
         return True
     if lock.job_id is None:
         return False
