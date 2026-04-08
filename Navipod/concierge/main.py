@@ -3,6 +3,8 @@ import socket
 import os
 import shutil
 import re
+import ipaddress
+from urllib.parse import urljoin, urlparse
 
 # ---  GLOBAL NETWORK FIX  ---
 old_getaddrinfo = socket.getaddrinfo
@@ -144,6 +146,93 @@ proxy_client = httpx.AsyncClient(
     timeout=httpx.Timeout(60.0, read=None)
 )
 
+RADIO_PROXY_ALLOWED_SCHEMES = {"http", "https"}
+RADIO_PROXY_MAX_REDIRECTS = 5
+
+
+def _is_public_ip_address(host: str) -> bool:
+    try:
+        ip_obj = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+
+    return not (
+        ip_obj.is_private
+        or ip_obj.is_loopback
+        or ip_obj.is_link_local
+        or ip_obj.is_multicast
+        or ip_obj.is_reserved
+        or ip_obj.is_unspecified
+    )
+
+
+def _validate_radio_proxy_url(url: str) -> tuple[bool, str]:
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False, "Invalid URL."
+
+    if parsed.scheme.lower() not in RADIO_PROXY_ALLOWED_SCHEMES:
+        return False, "Unsupported URL scheme."
+
+    if not parsed.hostname:
+        return False, "Missing target host."
+
+    host = parsed.hostname.strip()
+    lowered_host = host.lower()
+    if lowered_host in {"localhost"}:
+        return False, "Target host is not allowed."
+
+    try:
+        if _is_public_ip_address(host):
+            return True, ""
+    except Exception:
+        return False, "Invalid target host."
+
+    try:
+        resolved_ips = {
+            info[4][0]
+            for info in socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
+        }
+    except socket.gaierror:
+        return False, "Unable to resolve target host."
+    except Exception:
+        return False, "Failed to validate target host."
+
+    if not resolved_ips:
+        return False, "Unable to resolve target host."
+
+    for resolved_ip in resolved_ips:
+        if not _is_public_ip_address(resolved_ip):
+            return False, "Target host resolved to a private or reserved address."
+
+    return True, ""
+
+
+async def _fetch_radio_proxy_response(url: str) -> httpx.Response:
+    current_url = url
+    for _ in range(RADIO_PROXY_MAX_REDIRECTS + 1):
+        is_valid, error_message = _validate_radio_proxy_url(current_url)
+        if not is_valid:
+            raise ValueError(error_message)
+
+        request = proxy_client.build_request("GET", current_url)
+        response = await proxy_client.send(request, stream=True, follow_redirects=False)
+
+        if response.status_code not in {301, 302, 303, 307, 308}:
+            return response
+
+        location = response.headers.get("location")
+        if not location:
+            await response.aclose()
+            raise ValueError("Upstream redirect missing location header.")
+
+        next_url = urljoin(str(response.url), location)
+        await response.aclose()
+        current_url = next_url
+
+    raise ValueError("Too many upstream redirects.")
+
 @app.on_event("shutdown")
 async def shutdown_event():
     await proxy_client.aclose()
@@ -151,13 +240,14 @@ async def shutdown_event():
     await http_client.aclose()
 
 @app.get("/api/proxy/radio")
-async def general_stream_proxy(url: str):
+async def general_stream_proxy(url: str, request: Request, db: Session = Depends(get_db)):
     """General proxy for any stream URL to bypass CORS."""
+    user = auth.get_current_user(request, db)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
     try:
-        # Build the request to the external stream
-        rp_req = proxy_client.build_request("GET", url)
-        # We follow redirects to reach the actual stream source
-        rp_resp = await proxy_client.send(rp_req, stream=True, follow_redirects=True)
+        rp_resp = await _fetch_radio_proxy_response(url)
         
         # Forward essential headers for audio streaming
         headers = {k: v for k, v in rp_resp.headers.items() 
@@ -169,6 +259,8 @@ async def general_stream_proxy(url: str):
             headers=headers,
             background=BackgroundTask(rp_resp.aclose)
         )
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:
         return JSONResponse({"error": f"Stream proxy error: {str(e)}"}, status_code=502)
 

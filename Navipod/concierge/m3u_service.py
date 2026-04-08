@@ -1,241 +1,189 @@
 """
-M3U Service - Gestión de playlists M3U para usuarios.
-
-Responsabilidades:
-- Crear/eliminar playlists para usuarios
-- Añadir/quitar tracks de playlists
-- Generar archivos .m3u compatibles con Navidrome
+M3U service backed by the current Playlist / PlaylistItem models.
 """
 
-import os
 import logging
+import os
 from pathlib import Path
 from typing import List, Optional
+
 from sqlalchemy.orm import Session
 
 import database
 from navipod_config import settings
 
+
 logger = logging.getLogger(__name__)
 
 
 class M3UService:
-    """Servicio para gestionar playlists M3U de usuarios."""
-    
+    """Manage user playlists and their exported M3U files."""
+
     def __init__(self, db: Session, user: database.User):
         self.db = db
         self.user = user
-        # Align with music.py and Docker mount: /saas-data/users/{user}/music/playlists
-        self.playlists_root = f"{settings.MUSIC_ROOT}/{user.username}/music/playlists"
-        os.makedirs(self.playlists_root, exist_ok=True)
-    
-    # =========================================================================
-    # GESTIÓN DE PLAYLISTS
-    # =========================================================================
-    
-    def create_playlist(self, name: str, source_url: str = None) -> database.UserPlaylist:
-        """Crea una nueva playlist para el usuario."""
-        # Sanitizar nombre
+        self.playlists_root = Path(settings.MUSIC_ROOT) / user.username / "music" / "playlists"
+        self.playlists_root.mkdir(parents=True, exist_ok=True)
+
+    def create_playlist(self, name: str, source_url: str = None) -> database.Playlist:
         safe_name = self._sanitize_name(name) or f"Playlist_{self.user.id}"
-        m3u_path = str(Path(self.playlists_root) / f"{safe_name}.m3u")
-        
-        # Verificar si ya existe
-        existing = self.db.query(database.UserPlaylist).filter(
-            database.UserPlaylist.user_id == self.user.id,
-            database.UserPlaylist.name == safe_name
+        existing = self.db.query(database.Playlist).filter(
+            database.Playlist.owner_id == self.user.id,
+            database.Playlist.name == safe_name,
+            database.Playlist.source_playlist_id.is_(None),
         ).first()
-        
         if existing:
             return existing
-        
-        # Crear playlist
-        playlist = database.UserPlaylist(
-            user_id=self.user.id,
+
+        playlist = database.Playlist(
+            owner_id=self.user.id,
             name=safe_name,
-            m3u_path=m3u_path,
-            source_url=source_url
+            is_public=False,
+            m3u_path=str(self._build_m3u_path(safe_name)),
         )
         self.db.add(playlist)
         self.db.commit()
         self.db.refresh(playlist)
-        
-        # Generar archivo M3U vacío
         self._write_m3u(playlist)
-        
-        logger.info(f"Playlist creada: {safe_name} para {self.user.username}")
+        logger.info("Playlist created: %s for %s", safe_name, self.user.username)
         return playlist
-    
+
     def delete_playlist(self, playlist_id: int) -> bool:
-        """Elimina una playlist del usuario."""
-        playlist = self.db.query(database.UserPlaylist).filter(
-            database.UserPlaylist.id == playlist_id,
-            database.UserPlaylist.user_id == self.user.id
-        ).first()
-        
-        if not playlist:
-            return False
-        
-        # Eliminar archivo M3U
-        if playlist.m3u_path and os.path.exists(playlist.m3u_path):
-            os.remove(playlist.m3u_path)
-        
-        # Eliminar de DB
-        self.db.delete(playlist)
-        self.db.commit()
-        
-        logger.info(f"Playlist eliminada: {playlist.name}")
-        return True
-    
-    def get_user_playlists(self) -> List[database.UserPlaylist]:
-        """Obtiene todas las playlists del usuario."""
-        return self.db.query(database.UserPlaylist).filter(
-            database.UserPlaylist.user_id == self.user.id
-        ).order_by(database.UserPlaylist.name).all()
-    
-    # =========================================================================
-    # GESTIÓN DE TRACKS EN PLAYLISTS
-    # =========================================================================
-    
-    def add_track_to_playlist(self, playlist_id: int, track_id: int, position: int = None) -> bool:
-        """Añade un track a una playlist."""
         playlist = self._get_user_playlist(playlist_id)
         if not playlist:
             return False
-        
+
+        self._delete_m3u_file(playlist)
+        self.db.delete(playlist)
+        self.db.commit()
+        logger.info("Playlist deleted: %s", playlist.name)
+        return True
+
+    def get_user_playlists(self) -> List[database.Playlist]:
+        return self.db.query(database.Playlist).filter(
+            database.Playlist.owner_id == self.user.id
+        ).order_by(database.Playlist.name).all()
+
+    def add_track_to_playlist(self, playlist_id: int, track_id: int, position: int = None) -> bool:
+        playlist = self._get_user_playlist(playlist_id)
+        if not playlist:
+            return False
+
         track = self.db.query(database.Track).filter(database.Track.id == track_id).first()
         if not track:
             return False
-        
-        # Verificar si ya está en la playlist
-        existing = self.db.query(database.PlaylistTrackLink).filter(
-            database.PlaylistTrackLink.playlist_id == playlist_id,
-            database.PlaylistTrackLink.track_id == track_id
+
+        existing = self.db.query(database.PlaylistItem).filter(
+            database.PlaylistItem.playlist_id == playlist_id,
+            database.PlaylistItem.track_id == track_id,
         ).first()
-        
         if existing:
-            logger.info(f"Track {track_id} ya está en playlist {playlist_id}")
             return True
-        
-        # Calcular posición
+
         if position is None:
-            max_pos = self.db.query(database.PlaylistTrackLink).filter(
-                database.PlaylistTrackLink.playlist_id == playlist_id
-            ).count()
-            position = max_pos
-        
-        # Crear link
-        link = database.PlaylistTrackLink(
+            position = len(playlist.items)
+
+        item = database.PlaylistItem(
             playlist_id=playlist_id,
             track_id=track_id,
-            position=position
+            position=position,
         )
-        self.db.add(link)
+        self.db.add(item)
         self.db.commit()
-        
-        # Regenerar M3U
+        self.db.refresh(playlist)
         self._write_m3u(playlist)
-        
-        logger.info(f"Track {track.title} añadido a {playlist.name}")
+        logger.info("Track %s added to %s", track.title, playlist.name)
         return True
-    
+
     def remove_track_from_playlist(self, playlist_id: int, track_id: int) -> bool:
-        """Elimina un track de una playlist."""
         playlist = self._get_user_playlist(playlist_id)
         if not playlist:
             return False
-        
-        link = self.db.query(database.PlaylistTrackLink).filter(
-            database.PlaylistTrackLink.playlist_id == playlist_id,
-            database.PlaylistTrackLink.track_id == track_id
+
+        item = self.db.query(database.PlaylistItem).filter(
+            database.PlaylistItem.playlist_id == playlist_id,
+            database.PlaylistItem.track_id == track_id,
         ).first()
-        
-        if not link:
+        if not item:
             return False
-        
-        self.db.delete(link)
+
+        self.db.delete(item)
         self.db.commit()
-        
-        # Regenerar M3U
+        self.db.refresh(playlist)
         self._write_m3u(playlist)
-        
         return True
-    
+
     def get_playlist_tracks(self, playlist_id: int) -> List[database.Track]:
-        """Obtiene todos los tracks de una playlist ordenados por posición."""
         playlist = self._get_user_playlist(playlist_id)
         if not playlist:
             return []
-        
-        links = self.db.query(database.PlaylistTrackLink).filter(
-            database.PlaylistTrackLink.playlist_id == playlist_id
-        ).order_by(database.PlaylistTrackLink.position).all()
-        
-        return [link.track for link in links if link.track]
-    
-    # =========================================================================
-    # GENERACIÓN DE M3U
-    # =========================================================================
-    
-    def _write_m3u(self, playlist: database.UserPlaylist):
-        """
-        Genera el archivo M3U con rutas absolutas a la pool.
-        Formato compatible con Navidrome.
-        """
-        if not playlist.m3u_path:
-            return
-        
-        # Asegurar directorio
-        os.makedirs(os.path.dirname(playlist.m3u_path), exist_ok=True)
-        
-        # Obtener tracks ordenados
-        links = self.db.query(database.PlaylistTrackLink).filter(
-            database.PlaylistTrackLink.playlist_id == playlist.id
-        ).order_by(database.PlaylistTrackLink.position).all()
-        
+
+        items = self.db.query(database.PlaylistItem).filter(
+            database.PlaylistItem.playlist_id == playlist_id
+        ).order_by(database.PlaylistItem.position).all()
+        return [item.track for item in items if item.track]
+
+    def regenerate_all_m3u(self):
+        for playlist in self.get_user_playlists():
+            self._write_m3u(playlist)
+
+    def _write_m3u(self, playlist: database.Playlist):
+        safe_name = self._sanitize_name(playlist.name) or f"Playlist_{playlist.id}"
+        m3u_path = self._build_m3u_path(safe_name)
+        m3u_path.parent.mkdir(parents=True, exist_ok=True)
+
+        items = self.db.query(database.PlaylistItem).filter(
+            database.PlaylistItem.playlist_id == playlist.id
+        ).order_by(database.PlaylistItem.position).all()
+
         try:
-            with open(playlist.m3u_path, 'w', encoding='utf-8') as f:
+            with open(m3u_path, "w", encoding="utf-8") as f:
                 f.write("#EXTM3U\n")
                 f.write(f"#PLAYLIST:{playlist.name}\n")
-                
-                for link in links:
-                    track = link.track
-                    if track and track.file_path and os.path.exists(track.file_path):
-                        # Extended M3U con duración
-                        duration = track.duration_ms // 1000 if track.duration_ms else -1
-                        f.write(f"#EXTINF:{duration},{track.artist} - {track.title}\n")
-                        f.write(f"{track.file_path}\n")
-            
-            logger.info(f"M3U generado: {playlist.m3u_path}")
-        except Exception as e:
-            logger.error(f"Error escribiendo M3U: {e}")
-    
-    def regenerate_all_m3u(self):
-        """Regenera todos los archivos M3U del usuario."""
-        playlists = self.get_user_playlists()
-        for playlist in playlists:
-            self._write_m3u(playlist)
-    
-    # =========================================================================
-    # UTILIDADES
-    # =========================================================================
-    
-    def _get_user_playlist(self, playlist_id: int) -> Optional[database.UserPlaylist]:
-        """Obtiene una playlist verificando que pertenece al usuario."""
-        return self.db.query(database.UserPlaylist).filter(
-            database.UserPlaylist.id == playlist_id,
-            database.UserPlaylist.user_id == self.user.id
+                for item in items:
+                    track = item.track
+                    if not track or not track.filepath:
+                        continue
+                    duration = track.duration if track.duration is not None else -1
+                    f.write(f"#EXTINF:{duration},{track.artist or 'Unknown'} - {track.title or 'Unknown'}\n")
+                    f.write(f"{self._render_track_path(track.filepath)}\n")
+
+            playlist.m3u_path = str(m3u_path)
+            self.db.commit()
+        except Exception:
+            logger.exception("Error writing M3U for playlist %s", playlist.id)
+
+    def _get_user_playlist(self, playlist_id: int) -> Optional[database.Playlist]:
+        return self.db.query(database.Playlist).filter(
+            database.Playlist.id == playlist_id,
+            database.Playlist.owner_id == self.user.id,
         ).first()
-    
+
     def _sanitize_name(self, name: str) -> str:
-        """Sanitiza nombre de playlist para sistema de archivos."""
         if not name:
             return ""
         unsafe = '<>:"/\\|?*'
         for char in unsafe:
-            name = name.replace(char, '')
+            name = name.replace(char, "")
         return name.strip()[:80]
 
+    def _build_m3u_path(self, safe_name: str) -> Path:
+        return self.playlists_root / f"{safe_name}.m3u"
 
-# Función de conveniencia
+    def _render_track_path(self, filepath: str) -> str:
+        normalized = filepath.replace("\\", "/")
+        if "/pool/" in normalized:
+            return "../Library/" + normalized.split("/pool/", 1)[1]
+        return normalized
+
+    def _delete_m3u_file(self, playlist: database.Playlist):
+        path = playlist.m3u_path or str(self._build_m3u_path(self._sanitize_name(playlist.name) or f"Playlist_{playlist.id}"))
+        try:
+            if path and os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            logger.exception("Failed to delete M3U file for playlist %s", playlist.id)
+
+
 def get_m3u_service(db: Session, user: database.User) -> M3UService:
     return M3UService(db, user)
