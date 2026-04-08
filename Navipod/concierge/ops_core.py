@@ -8,6 +8,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import yaml
 from sqlalchemy import text
 
 import database
@@ -105,20 +106,50 @@ def _build_host_bind_compose_file():
     if not host_repo_root or not host_app_root or not compose_file.exists():
         return None
 
-    compose_text = compose_file.read_text(encoding="utf-8")
-    replacements = {
-        "- ..:/workspace": f"- {host_repo_root.as_posix()}:/workspace",
-        "- ./concierge/templates:/app/templates": f"- {host_app_root.as_posix()}/concierge/templates:/app/templates",
-        "- ./concierge:/app": f"- {host_app_root.as_posix()}/concierge:/app",
-        "- ./assets:/app/assets": f"- {host_app_root.as_posix()}/assets:/app/assets",
-        "- ./assets:/app/assets:ro": f"- {host_app_root.as_posix()}/assets:/app/assets:ro",
-        "- ./nginx.conf:/etc/nginx/nginx.conf:ro": f"- {host_app_root.as_posix()}/nginx.conf:/etc/nginx/nginx.conf:ro",
-    }
-    for old, new in replacements.items():
-        compose_text = compose_text.replace(old, new)
+    compose_data = yaml.safe_load(compose_file.read_text(encoding="utf-8")) or {}
+
+    def _resolve_host_path(raw_path: str) -> str:
+        candidate = Path(raw_path)
+        if candidate.is_absolute():
+            return candidate.as_posix()
+        if raw_path.startswith("../"):
+            return (host_app_root / raw_path).resolve().as_posix()
+        return (host_app_root / raw_path).resolve().as_posix()
+
+    def _rewrite_volume_entry(entry):
+        if isinstance(entry, str):
+            if ":" not in entry:
+                return _resolve_host_path(entry)
+            source, remainder = entry.split(":", 1)
+            if not source or source.startswith("/") or source.startswith("${"):
+                return entry
+            return f"{_resolve_host_path(source)}:{remainder}"
+        if isinstance(entry, dict):
+            source = entry.get("source")
+            if entry.get("type") == "bind" and isinstance(source, str) and source and not source.startswith("/") and not source.startswith("${"):
+                updated = dict(entry)
+                updated["source"] = _resolve_host_path(source)
+                return updated
+        return entry
+
+    services = compose_data.get("services") or {}
+    for service in services.values():
+        build = service.get("build")
+        if isinstance(build, str) and build and not Path(build).is_absolute():
+            service["build"] = _resolve_host_path(build)
+        elif isinstance(build, dict):
+            context = build.get("context")
+            if isinstance(context, str) and context and not Path(context).is_absolute():
+                updated_build = dict(build)
+                updated_build["context"] = _resolve_host_path(context)
+                service["build"] = updated_build
+
+        volumes = service.get("volumes")
+        if isinstance(volumes, list):
+            service["volumes"] = [_rewrite_volume_entry(volume) for volume in volumes]
 
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".host-bind.yml", prefix="navipod-compose-", dir=str(COMPOSE_PROJECT_ROOT), delete=False) as tmp:
-        tmp.write(compose_text)
+        yaml.safe_dump(compose_data, tmp, sort_keys=False)
         return Path(tmp.name)
 
 

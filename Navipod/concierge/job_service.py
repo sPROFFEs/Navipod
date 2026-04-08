@@ -26,16 +26,27 @@ def create_admin_job(job_type: str, triggered_by: str | None, message: str, deta
         db.add(job)
         db.commit()
         db.refresh(job)
-        _prune_finished_admin_jobs(db, keep=ADMIN_JOB_RETENTION_LIMIT)
+        _prune_admin_jobs(db, keep=ADMIN_JOB_RETENTION_LIMIT)
         return job.id
     finally:
         db.close()
 
 
-def _prune_finished_admin_jobs(db, keep: int = ADMIN_JOB_RETENTION_LIMIT):
+def _prune_admin_jobs(db, keep: int = ADMIN_JOB_RETENTION_LIMIT):
     keep = max(1, int(keep))
     total_jobs = db.query(database.AdminJob.id).count()
-    overflow = total_jobs - keep
+    active_count = (
+        db.query(database.AdminJob.id)
+        .filter(database.AdminJob.status.in_(["queued", "running"]))
+        .count()
+    )
+    keep_finished = max(0, keep - active_count)
+    finished_count = (
+        db.query(database.AdminJob.id)
+        .filter(database.AdminJob.status.in_(["completed", "failed"]))
+        .count()
+    )
+    overflow = finished_count - keep_finished
     if overflow <= 0:
         return
 
@@ -69,6 +80,8 @@ def update_admin_job(job_id: int, *, status=None, message=None, details=None, fi
         if finished:
             job.finished_at = utcnow()
         db.commit()
+        if finished or status in {"completed", "failed"}:
+            _prune_admin_jobs(db, keep=ADMIN_JOB_RETENTION_LIMIT)
     finally:
         db.close()
 
@@ -103,6 +116,8 @@ def update_admin_job_progress(job_id: int, *, message=None, status=None, phase=N
             job.finished_at = utcnow()
         job.details_json = json.dumps(details, ensure_ascii=False)
         db.commit()
+        if finished or status in {"completed", "failed"}:
+            _prune_admin_jobs(db, keep=ADMIN_JOB_RETENTION_LIMIT)
     finally:
         db.close()
 
