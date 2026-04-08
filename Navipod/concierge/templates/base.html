@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/assets/css/style.css?v={{ range(1, 9999) | random }}">
     <link rel="stylesheet" href="/assets/css/mobile_fixes.css?v={{ range(1, 9999) | random }}">
+    <link rel="stylesheet" href="/assets/css/admin_system.css?v={{ range(1, 9999) | random }}">
 
     <!-- PWA & Mobile Meta -->
     <link rel="manifest" href="/assets/site.webmanifest">
@@ -23,104 +24,6 @@
     <link rel="icon" type="image/png" href="/assets/icon.png">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <style>
-        .update-toast {
-            display: none;
-            position: fixed;
-            right: 12px;
-            bottom: 12px;
-            z-index: 2200;
-            width: min(400px, calc(100vw - 24px));
-        }
-
-        .update-toast-card {
-            background: #17191f;
-            border: 1px solid #2a2e38;
-            border-radius: 12px;
-            box-shadow: 0 16px 32px rgba(0, 0, 0, 0.28);
-            padding: 14px;
-            display: grid;
-            gap: 12px;
-        }
-
-        .update-toast-head {
-            display: flex;
-            align-items: flex-start;
-            gap: 12px;
-        }
-
-        .update-toast-icon {
-            width: 34px;
-            height: 34px;
-            border-radius: 10px;
-            background: rgba(var(--accent-rgb), 0.16);
-            color: var(--accent);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex: 0 0 auto;
-        }
-
-        .update-toast-copy {
-            min-width: 0;
-            display: grid;
-            gap: 4px;
-        }
-
-        .update-toast-title {
-            font-weight: 700;
-            color: #f3f4f6;
-        }
-
-        .update-toast-message {
-            color: #cbd5e1;
-            line-height: 1.4;
-        }
-
-        .update-toast-actions {
-            display: flex;
-            gap: 10px;
-            justify-content: flex-end;
-            flex-wrap: wrap;
-        }
-
-        .update-toast-btn {
-            min-height: 40px;
-            padding: 0 14px;
-            border-radius: 10px;
-            border: 1px solid #2a2e38;
-            background: #1d2027;
-            color: #f3f4f6;
-            cursor: pointer;
-        }
-
-        .update-toast-btn-primary {
-            border-color: rgba(var(--accent-rgb), 0.35);
-            background: rgba(var(--accent-rgb), 0.18);
-        }
-
-        @media (max-width: 768px) {
-            .update-toast {
-                right: 8px;
-                left: 8px;
-                bottom: 8px;
-                width: auto;
-            }
-
-            .update-toast-card {
-                padding: 12px;
-            }
-
-            .update-toast-actions {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-            }
-
-            .update-toast-btn {
-                width: 100%;
-            }
-        }
-    </style>
     {% block head %}{% endblock %}
 </head>
 
@@ -433,57 +336,7 @@
         };
     </script>
     <script type="module" src="/assets/js/main.js?v={{ range(1, 99999) | random }}"></script>
-    <script>
-        // Global persistence check for icons
-        document.addEventListener('DOMContentLoaded', () => {
-            if (window.lucide) {
-                lucide.createIcons();
-            }
-
-            {% if is_admin %}
-            const toast = document.getElementById('update-available-toast');
-            const toastMessage = document.getElementById('update-toast-message');
-            const dismissButton = document.getElementById('update-toast-dismiss');
-            const openButton = document.getElementById('update-toast-open');
-
-            async function loadUpdateNotification() {
-                try {
-                    const response = await fetch('/admin/api/update-notification', { credentials: 'same-origin' });
-                    if (!response.ok) return;
-                    const data = await response.json();
-                    if (!data.update_available || !data.remote_full_commit) return;
-
-                    const dismissKey = `navipod-dismissed-update:${data.remote_full_commit}`;
-                    if (localStorage.getItem(dismissKey) === '1') return;
-
-                    const versionLabel = data.remote_version || data.remote_release_version || data.remote_commit || 'unknown';
-                    toastMessage.textContent = `Update available ${versionLabel}`;
-                    toast.style.display = 'block';
-                    if (window.lucide) lucide.createIcons();
-
-                    dismissButton.onclick = () => {
-                        localStorage.setItem(dismissKey, '1');
-                        toast.style.display = 'none';
-                    };
-                    openButton.onclick = () => {
-                        toast.style.display = 'none';
-                        window.location.href = '/admin/system';
-                    };
-                } catch (err) {
-                    // Ignore notification failures.
-                }
-            }
-
-            loadUpdateNotification();
-            {% endif %}
-        });
-        // Extra check for late rendering
-        window.addEventListener('load', () => {
-            if (window.lucide) {
-                lucide.createIcons();
-            }
-        });
-    </script>
+    <script type="module" src="/assets/js/modules/admin_system.js?v={{ range(1, 99999) | random }}"></script>
     {% block scripts %}{% endblock %}
 </body>
 

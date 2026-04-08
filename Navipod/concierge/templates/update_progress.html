@@ -1,154 +1,11 @@
 ﻿{% extends "base.html" %}
 {% block title %}Update Progress{% endblock %}
 {% block content %}
-<style>
-.update-shell {
-    --surface: #17191f;
-    --surface-2: #1d2027;
-    --border: #2a2e38;
-    --text: #f3f4f6;
-    --muted: #9aa3b2;
-    --green: #2fbf71;
-    --red: #dc2626;
-    --amber: #d97706;
-    display: grid;
-    gap: 24px;
-    max-width: 960px;
-}
-.update-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 16px;
-    flex-wrap: wrap;
-}
-.update-header h1 {
-    margin: 0;
-    font-size: 2rem;
-    color: var(--text);
-    line-height: 1.1;
-}
-.update-header p {
-    margin: 8px 0 0;
-    color: var(--muted);
-}
-.update-back {
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text);
-    border-radius: 10px;
-    min-height: 42px;
-    padding: 0 14px;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    text-decoration: none;
-}
-.update-panel {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-}
-.update-panel-body {
-    padding: 20px;
-    display: grid;
-    gap: 18px;
-}
-.update-meta-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-}
-.update-meta {
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 14px;
-    display: grid;
-    gap: 6px;
-}
-.update-meta-label {
-    color: var(--muted);
-    font-size: .82rem;
-}
-.update-meta-value {
-    color: var(--text);
-    word-break: break-word;
-}
-.update-progress-head {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    align-items: center;
-}
-.update-progress-track {
-    height: 8px;
-    border-radius: 999px;
-    background: #0f1115;
-    overflow: hidden;
-}
-.update-progress-bar {
-    height: 100%;
-    width: {{ job.details.progress or 0 }}%;
-    border-radius: inherit;
-    background: var(--green);
-    transition: width .25s ease;
-}
-.update-phase {
-    display: grid;
-    gap: 10px;
-}
-.update-phase strong {
-    color: var(--text);
-    font-size: 1rem;
-}
-.update-status-pill {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 28px;
-    padding: 0 10px;
-    border-radius: 999px;
-    border: 1px solid var(--border);
-    background: var(--surface-2);
-    color: var(--text);
-    font-size: .76rem;
-    text-transform: uppercase;
-}
-.update-status-pill.completed { color: var(--green); }
-.update-status-pill.failed { color: #fecaca; border-color: rgba(220,38,38,0.35); background: #341717; }
-.update-status-pill.running,
-.update-status-pill.queued { color: #fde68a; border-color: rgba(217,119,6,0.35); background: #3b2413; }
-.update-log {
-    display: grid;
-    gap: 10px;
-    max-height: 460px;
-    overflow-y: auto;
-}
-.update-log-item {
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 14px;
-    display: grid;
-    gap: 6px;
-}
-.update-log-item time {
-    color: var(--muted);
-    font-size: .8rem;
-}
-.update-log-item div {
-    color: var(--text);
-}
-@media (max-width: 760px) {
-    .update-shell { gap: 18px; }
-    .update-header h1 { font-size: 1.55rem; }
-    .update-meta-grid { grid-template-columns: 1fr; }
-    .update-panel-body { padding: 16px; }
-}
-</style>
-
-<div class="admin-container update-shell">
+<div class="admin-container update-shell"
+     data-update-job-id="{{ job.id }}"
+     data-initial-status="{{ job.status }}"
+     data-initial-phase="{{ job.details.phase or 'queued' }}"
+     data-initial-progress="{{ job.details.progress or 0 }}">
     <section class="update-header">
         <div>
             <h1>Job #{{ job.id }}</h1>
@@ -183,7 +40,7 @@
                     <span id="job-progress-label" class="update-meta-value">{{ job.details.progress or 0 }}%</span>
                 </div>
                 <div class="update-progress-track">
-                    <div id="job-progress-bar" class="update-progress-bar"></div>
+                    <div id="job-progress-bar" class="update-progress-bar" style="width: {{ job.details.progress or 0 }}%;"></div>
                 </div>
             </div>
 
@@ -215,74 +72,4 @@
     </section>
 </div>
 
-<script>
-const jobId = {{ job.id }};
-const terminalStates = new Set(["completed", "failed"]);
-let redirectScheduled = false;
-let lastJobData = {{ job|tojson }};
-
-function renderJob(data) {
-    lastJobData = data;
-    const statusNode = document.getElementById("job-status");
-    statusNode.textContent = data.status || "unknown";
-    statusNode.className = `update-status-pill ${data.status || ''}`;
-    const progressValue = data.status === "completed" ? 100 : (data.details?.progress || 0);
-    document.getElementById("job-progress-label").textContent = `${progressValue}%`;
-    document.getElementById("job-progress-bar").style.width = `${progressValue}%`;
-    document.getElementById("job-phase").textContent = data.details?.phase || "queued";
-    document.getElementById("job-message").textContent = data.message || "Waiting...";
-
-    const logContainer = document.getElementById("job-log");
-    const logs = data.details?.logs || [];
-    logContainer.innerHTML = logs.map(item => `
-        <div class="update-log-item">
-            <time>${item.at}</time>
-            <div>${item.message}</div>
-        </div>
-    `).join("");
-    logContainer.scrollTop = logContainer.scrollHeight;
-
-    if (data.status === "completed" && !redirectScheduled) {
-        redirectScheduled = true;
-        setTimeout(() => {
-            window.location.href = "/admin/system?msg=Update applied successfully";
-        }, 1200);
-    }
-}
-
-function renderReconnectState() {
-    if (!lastJobData || terminalStates.has(lastJobData.status)) {
-        return;
-    }
-    if (!["recreate", "cleanup", "health"].includes(lastJobData.details?.phase || "")) {
-        return;
-    }
-    document.getElementById("job-message").textContent = "Waiting for services to come back after restart...";
-    document.getElementById("job-phase").textContent = lastJobData.details?.phase || "recreate";
-    const progressValue = Math.max(lastJobData.details?.progress || 0, 90);
-    document.getElementById("job-progress-label").textContent = `${progressValue}%`;
-    document.getElementById("job-progress-bar").style.width = `${progressValue}%`;
-}
-
-async function pollJob() {
-    try {
-        const res = await fetch(`/admin/api/system/jobs/${jobId}`, { credentials: "same-origin" });
-        if (!res.ok) {
-            renderReconnectState();
-            setTimeout(pollJob, 3000);
-            return;
-        }
-        const data = await res.json();
-        renderJob(data);
-        if (!terminalStates.has(data.status)) {
-            setTimeout(pollJob, 2000);
-        }
-    } catch (err) {
-        renderReconnectState();
-        setTimeout(pollJob, 3000);
-    }
-}
-
-pollJob();
-</script>
 {% endblock %}

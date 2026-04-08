@@ -24,6 +24,40 @@ def get_internal_updater_token():
     return hashlib.sha256(f"navipod-updater:{ops.settings.SECRET_KEY}".encode("utf-8")).hexdigest()
 
 
+def _truncate_log_text(value, limit: int = 700):
+    text = (value or "").strip()
+    if not text:
+        return ""
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3] + "..."
+
+
+def _log_command_result(job_id: int, label: str, result):
+    if isinstance(result, dict):
+        ok = bool(result.get("ok"))
+        command = result.get("command")
+        stdout = _truncate_log_text(result.get("stdout"))
+        stderr = _truncate_log_text(result.get("stderr"))
+        returncode = result.get("returncode")
+    else:
+        ok = getattr(result, "returncode", 1) == 0
+        command = None
+        stdout = _truncate_log_text(getattr(result, "stdout", ""))
+        stderr = _truncate_log_text(getattr(result, "stderr", ""))
+        returncode = getattr(result, "returncode", None)
+
+    status_label = "succeeded" if ok else "failed"
+    suffix = f" (exit {returncode})" if returncode is not None else ""
+    update_admin_job_progress(job_id, message=f"{label} {status_label}{suffix}")
+    if command:
+        update_admin_job_progress(job_id, message=f"{label} command: {command}")
+    if stdout:
+        update_admin_job_progress(job_id, message=f"{label} stdout: {stdout}")
+    if stderr:
+        update_admin_job_progress(job_id, message=f"{label} stderr: {stderr}")
+
+
 def _serialize_update_state_payload(payload):
     payload = payload or {}
     return json.dumps(payload, ensure_ascii=False)
@@ -321,12 +355,15 @@ def _run_compose_update(job_id: int, changed_files: list[str]):
     rebuild_required = any(path in ops.REBUILD_REQUIRED_PATHS for path in changed_files)
     update_admin_job_progress(job_id, message=f"Recreating services: {' '.join(services)}", phase="recreate", progress=85, status="running", extra={"changed_files": changed_files[:100], "rebuild_required": rebuild_required})
     completed = ops._run_compose_command(["up", "-d", "--build", "--remove-orphans", *services], check=False)
+    _log_command_result(job_id, "Compose update", completed)
     if completed.returncode != 0:
         raise RuntimeError((completed.stderr or completed.stdout or "docker compose up failed").strip())
 
     update_admin_job_progress(job_id, message="Pruning dangling Docker images and builder cache", phase="cleanup", progress=95, status="running")
-    subprocess.run(["docker", "image", "prune", "-f"], capture_output=True, text=True, check=False)
-    subprocess.run(["docker", "builder", "prune", "-f"], capture_output=True, text=True, check=False)
+    image_prune = subprocess.run(["docker", "image", "prune", "-f"], capture_output=True, text=True, check=False)
+    builder_prune = subprocess.run(["docker", "builder", "prune", "-f"], capture_output=True, text=True, check=False)
+    _log_command_result(job_id, "Docker image prune", image_prune)
+    _log_command_result(job_id, "Docker builder prune", builder_prune)
     return rebuild_required
 
 
@@ -374,6 +411,7 @@ def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
 
         update_admin_job_progress(job_id, message="Fetching target revision from remote", status="running", phase="fetch", progress=40)
         fetch_result = _fetch_target_update_ref(target_sha)
+        _log_command_result(job_id, "Git fetch", fetch_result)
         if not fetch_result or not fetch_result.get("ok"):
             raise RuntimeError((fetch_result or {}).get("stderr") or "git fetch failed")
 
@@ -381,14 +419,23 @@ def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
         changed_files = [line.strip() for line in changed_files_raw.splitlines() if line.strip()]
 
         update_admin_job_progress(job_id, message="Applying Git update to workspace", status="running", phase="workspace", progress=50)
-        reset_result = _run_git(["reset", "--hard", target_sha], fallback=None)
-        if reset_result is None:
+        reset_result = _run_git(["reset", "--hard", target_sha], fallback=None, include_details=True)
+        _log_command_result(job_id, "Git reset", reset_result)
+        if not reset_result or not reset_result.get("ok"):
             raise RuntimeError("git reset --hard failed")
 
         update_admin_job_progress(job_id, message="Running schema migrations", status="running", phase="migrate", progress=70)
         applied_migrations = ops.apply_schema_migrations()
+        if applied_migrations:
+            update_admin_job_progress(job_id, message=f"Migrations applied: {', '.join(applied_migrations)}")
+        else:
+            update_admin_job_progress(job_id, message="No schema migrations needed")
         rebuild_required = _run_compose_update(job_id, changed_files)
         health_result = _run_post_update_health_check()
+        if health_result.get("ok"):
+            update_admin_job_progress(job_id, message=f"Health check succeeded via {health_result.get('url')} ({health_result.get('status_code')})")
+        else:
+            update_admin_job_progress(job_id, message=f"Health check failed: {health_result.get('error', 'unknown error')}")
         if not health_result.get("ok"):
             raise RuntimeError(f"health check failed: {health_result.get('error', 'unknown error')}")
 
