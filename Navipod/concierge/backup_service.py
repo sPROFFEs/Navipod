@@ -278,3 +278,26 @@ def update_autobackup_settings(enabled: bool, hour: int, minute: int, timezone_n
         db.commit()
     finally:
         db.close()
+
+
+async def autobackup_scheduler():
+    print(
+        f"[BACKUP-SCHEDULER] Started. Poll interval={ops.settings.BACKUP_SCHEDULER_POLL_SECONDS}s "
+        f"backup_root={ops.BACKUP_ROOT}"
+    )
+    while True:
+        try:
+            db = database.SessionLocal()
+            try:
+                should_run, reason = should_run_autobackup(db)
+                if should_run:
+                    print("[BACKUP-SCHEDULER] Autobackup conditions met. Queueing backup job.")
+                    queue_backup("system", mode="auto")
+                else:
+                    print(f"[BACKUP-SCHEDULER] Skipping autobackup: {reason}")
+            finally:
+                db.close()
+            await asyncio.sleep(ops.settings.BACKUP_SCHEDULER_POLL_SECONDS)
+        except Exception as e:
+            print(f"[BACKUP-SCHEDULER] {e}")
+            await asyncio.sleep(60)
