@@ -505,13 +505,30 @@ body {
 }
 
 .user-menu {
+    position: relative;
+}
+
+.user-menu-trigger {
+    list-style: none;
     display: flex;
     align-items: center;
     gap: 10px;
+    min-height: 38px;
     background: rgba(0, 0, 0, 0.3);
-    padding: 4px 12px 4px 4px;
-    border-radius: 30px;
+    padding: 4px 8px 4px 4px;
+    border-radius: 10px;
     border: 1px solid var(--glass-border);
+    cursor: pointer;
+}
+
+.user-menu-trigger::-webkit-details-marker {
+    display: none;
+}
+
+.user-menu-trigger:hover,
+.user-menu[open] .user-menu-trigger {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.14);
 }
 
 .avatar-circle {
@@ -529,6 +546,82 @@ body {
     font-size: 0.9rem;
     font-weight: 700;
     color: white;
+}
+
+.user-menu-chevron {
+    width: 16px;
+    height: 16px;
+    color: rgba(255, 255, 255, 0.7);
+    flex: 0 0 auto;
+}
+
+.user-menu-panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 188px;
+    padding: 6px;
+    background: #17191f;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.34);
+    z-index: 1200;
+}
+
+.user-menu-list {
+    display: grid;
+    gap: 4px;
+}
+
+.user-menu-list form {
+    margin: 0;
+}
+
+.user-menu-item,
+.user-menu-action {
+    width: 100%;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 10px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: #f3f4f6;
+    text-decoration: none;
+    font: inherit;
+    cursor: pointer;
+    text-align: left;
+}
+
+.user-menu-item:hover,
+.user-menu-action:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.user-menu-action-danger {
+    color: #fecaca;
+}
+
+.user-menu-action-danger:hover {
+    background: rgba(127, 29, 29, 0.28);
+    border-color: rgba(220, 38, 38, 0.22);
+}
+
+.user-menu-panel i,
+.user-menu-panel svg {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+}
+
+@media (max-width: 768px) {
+    .user-menu-panel {
+        right: -4px;
+        min-width: 168px;
+    }
 }
 
 .view-content {

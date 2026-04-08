@@ -208,21 +208,25 @@
         }
         .user-settings-toggle-secret {
             position: absolute;
-            right: 10px;
+            right: 8px;
             top: 50%;
             transform: translateY(-50%);
-            width: 28px;
-            height: 28px;
-            border: 0;
-            background: transparent;
+            width: 32px;
+            height: 32px;
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            background: var(--panel-bg-2);
             color: var(--panel-muted);
             display: inline-flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
+            transition: border-color .15s ease, color .15s ease, background-color .15s ease;
         }
         .user-settings-toggle-secret:hover {
             color: var(--panel-text);
+            border-color: rgba(var(--accent-rgb), 0.45);
+            background: #232730;
         }
         .secret-toggle-icon,
         .secret-toggle-icon svg {
@@ -247,6 +251,11 @@
             gap: 8px;
             cursor: pointer;
             text-decoration: none;
+            font: inherit;
+            font-weight: 600;
+            border-width: 1px;
+            border-style: solid;
+            transition: border-color .15s ease, background-color .15s ease, color .15s ease;
         }
         .user-settings-button {
             border: 1px solid rgba(var(--accent-rgb), 0.35);
@@ -264,6 +273,18 @@
             color: #fecaca;
             width: 100%;
         }
+        .user-settings-button:hover {
+            background: rgba(var(--accent-rgb), 0.24);
+            border-color: rgba(var(--accent-rgb), 0.5);
+        }
+        .user-settings-button-secondary:hover {
+            background: #232730;
+            border-color: rgba(var(--accent-rgb), 0.32);
+        }
+        .user-settings-button-danger:hover {
+            background: #411818;
+            border-color: rgba(220, 38, 38, 0.5);
+        }
         .user-settings-status {
             display: inline-flex;
             align-items: center;
@@ -278,18 +299,10 @@
             font-size: .8rem;
             font-weight: 600;
         }
-        .user-settings-session-box {
-            background: var(--panel-bg-2);
-            border: 1px solid var(--panel-border);
-            border-radius: 10px;
-            padding: 14px;
-            display: grid;
-            gap: 8px;
-        }
-        .user-settings-session-box code {
-            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-            color: var(--accent);
-            word-break: break-all;
+        .user-settings-inline-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
         }
         @media (max-width: 920px) {
             .user-settings-grid {
@@ -523,20 +536,19 @@
 
         <section class="user-settings-panel">
             <div class="user-settings-panel-header">
-                <h2><i data-lucide="log-out" width="18" height="18"></i>Session</h2>
-                <p>Review the active session token prefix and terminate the current web session.</p>
+                <h2><i data-lucide="shield" width="18" height="18"></i>Account</h2>
+                <p>Manage this profile and end the current web session when needed.</p>
             </div>
             <div class="user-settings-panel-body">
-                <div class="user-settings-session-box">
-                    <div class="user-settings-help">Current Session ID</div>
-                    <code>{{ request.cookies.get('access_token')[:10] }}...</code>
+                <div class="user-settings-help">Session controls are also available from the user menu in the top bar.</div>
+                <div class="user-settings-inline-actions">
+                    <form action="/logout" method="post" style="margin:0; width:100%;">
+                        <button type="submit" class="user-settings-button-danger">
+                            <i data-lucide="power" width="16" height="16"></i>
+                            <span>Log Out</span>
+                        </button>
+                    </form>
                 </div>
-                <form action="/logout" method="post">
-                    <button type="submit" class="user-settings-button-danger">
-                        <i data-lucide="power" width="16" height="16"></i>
-                        <span>Log Out</span>
-                    </button>
-                </form>
             </div>
         </section>
     </div>
