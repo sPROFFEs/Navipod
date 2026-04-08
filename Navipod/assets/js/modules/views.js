@@ -13,6 +13,60 @@ import * as favorites from './favorites.js';
 import * as playlists from './playlists.js';
 import * as downloads from './downloads.js';
 
+const SECRET_EYE_ICON = `
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"></path>
+        <circle cx="12" cy="12" r="3"></circle>
+    </svg>
+`;
+
+const SECRET_EYE_OFF_ICON = `
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-5 0-9.27-3.11-11-8 1-2.68 2.87-4.9 5.31-6.34"></path>
+        <path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c5 0 9.27 3.11 11 8a11.05 11.05 0 0 1-4.08 5.36"></path>
+        <path d="M14.12 14.12A3 3 0 1 1 9.88 9.88"></path>
+        <path d="M3 3l18 18"></path>
+    </svg>
+`;
+
+function renderSecretToggleIcon(button, revealed) {
+    const iconTarget = button.querySelector('.secret-toggle-icon');
+    if (!iconTarget) return;
+    iconTarget.innerHTML = revealed ? SECRET_EYE_OFF_ICON : SECRET_EYE_ICON;
+}
+
+function initUserSettingsView(container) {
+    const userSettingsShell = container.querySelector('.user-settings-shell');
+    if (!userSettingsShell) return;
+
+    const avatarInput = userSettingsShell.querySelector('#avatar-input');
+    const avatarForm = userSettingsShell.querySelector('#avatar-form');
+    if (avatarInput && avatarForm && avatarInput.dataset.bound !== 'true') {
+        avatarInput.dataset.bound = 'true';
+        avatarInput.addEventListener('change', function () {
+            if (this.files && this.files.length > 0 && typeof htmx !== 'undefined') {
+                htmx.trigger(avatarForm, 'submit');
+            }
+        });
+    }
+
+    userSettingsShell.querySelectorAll('.toggle-secret-btn').forEach((button) => {
+        if (button.dataset.bound === 'true') return;
+        button.dataset.bound = 'true';
+
+        const wrapper = button.closest('.user-settings-secret');
+        const input = wrapper?.querySelector('.secret-input');
+        if (!input) return;
+
+        renderSecretToggleIcon(button, input.type !== 'password');
+        button.addEventListener('click', () => {
+            const reveal = input.type === 'password';
+            input.type = reveal ? 'text' : 'password';
+            renderSecretToggleIcon(button, reveal);
+        });
+    });
+}
+
 // === VIEW ROUTING ===
 
 export async function loadView(view, param = null) {
@@ -86,6 +140,10 @@ export async function renderExternalView(container, url) {
             htmx.process(container);
         }
 
+        if (url === '/user/settings') {
+            initUserSettingsView(container);
+        }
+
         const scripts = doc.querySelectorAll('script[src]');
         for (const script of scripts) {
             const src = script.getAttribute('src');
@@ -105,6 +163,14 @@ export async function renderExternalView(container, url) {
         container.innerHTML = `<div class="empty-state">Failed to load content.<br><a href="${url}" style="color:var(--accent);">Open directly</a></div>`;
     }
 }
+
+document.body.addEventListener('htmx:afterSwap', (event) => {
+    if (event.target?.id !== 'view-container') return;
+    const sidebarAvatar = document.querySelector('.user-menu .avatar-circle img');
+    if (sidebarAvatar && window.USER_DATA?.username) {
+        sidebarAvatar.src = `/user/avatar/${window.USER_DATA.username}?t=${Date.now()}`;
+    }
+});
 
 
 // === HOME VIEW ===

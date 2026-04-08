@@ -224,6 +224,12 @@
         .user-settings-toggle-secret:hover {
             color: var(--panel-text);
         }
+        .secret-toggle-icon,
+        .secret-toggle-icon svg {
+            width: 16px;
+            height: 16px;
+            display: block;
+        }
         .user-settings-actions {
             display: flex;
             gap: 10px;
@@ -392,7 +398,12 @@
                         <div class="user-settings-secret">
                             <input type="password" name="spotify_client_id" class="user-settings-input secret-input" value="{{ dl_settings.spotify_client_id if dl_settings and dl_settings.spotify_client_id else '' }}">
                             <button type="button" class="user-settings-toggle-secret toggle-secret-btn" aria-label="Toggle Spotify Client ID visibility">
-                                <span class="secret-toggle-icon" aria-hidden="true"></span>
+                                <span class="secret-toggle-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"></path>
+                                        <circle cx="12" cy="12" r="3"></circle>
+                                    </svg>
+                                </span>
                             </button>
                         </div>
                     </div>
@@ -402,7 +413,12 @@
                         <div class="user-settings-secret">
                             <input type="password" name="spotify_client_secret" class="user-settings-input secret-input" value="{{ dl_settings.spotify_client_secret if dl_settings and dl_settings.spotify_client_secret else '' }}">
                             <button type="button" class="user-settings-toggle-secret toggle-secret-btn" aria-label="Toggle Spotify Client Secret visibility">
-                                <span class="secret-toggle-icon" aria-hidden="true"></span>
+                                <span class="secret-toggle-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"></path>
+                                        <circle cx="12" cy="12" r="3"></circle>
+                                    </svg>
+                                </span>
                             </button>
                         </div>
                     </div>
@@ -412,7 +428,12 @@
                         <div class="user-settings-secret">
                             <input type="password" name="lastfm_api_key" class="user-settings-input secret-input" value="{{ dl_settings.lastfm_api_key if dl_settings and dl_settings.lastfm_api_key else '' }}">
                             <button type="button" class="user-settings-toggle-secret toggle-secret-btn" aria-label="Toggle Last.fm API Key visibility">
-                                <span class="secret-toggle-icon" aria-hidden="true"></span>
+                                <span class="secret-toggle-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"></path>
+                                        <circle cx="12" cy="12" r="3"></circle>
+                                    </svg>
+                                </span>
                             </button>
                         </div>
                     </div>
@@ -422,7 +443,12 @@
                         <div class="user-settings-secret">
                             <input type="password" name="lastfm_shared_secret" class="user-settings-input secret-input" value="{{ dl_settings.lastfm_shared_secret if dl_settings and dl_settings.lastfm_shared_secret else '' }}">
                             <button type="button" class="user-settings-toggle-secret toggle-secret-btn" aria-label="Toggle Last.fm Shared Secret visibility">
-                                <span class="secret-toggle-icon" aria-hidden="true"></span>
+                                <span class="secret-toggle-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"></path>
+                                        <circle cx="12" cy="12" r="3"></circle>
+                                    </svg>
+                                </span>
                             </button>
                         </div>
                         <div class="user-settings-help">Only needed for signed methods such as authenticated Last.fm write actions.</div>
@@ -515,70 +541,3 @@
         </section>
     </div>
 </div>
-
-<script>
-    document.getElementById('avatar-input')?.addEventListener('change', function () {
-        if (this.files.length > 0) {
-            const form = document.getElementById('avatar-form');
-            if (form && typeof htmx !== 'undefined') {
-                htmx.trigger(form, 'submit');
-            }
-        }
-    });
-
-    document.body.addEventListener('htmx:afterSwap', function (e) {
-        if (e.target.id === 'view-container') {
-            const sidebarAvatar = document.querySelector('.user-menu .avatar-circle img');
-            if (sidebarAvatar) {
-                sidebarAvatar.src = '/user/avatar/{{ user.username }}?t=' + Date.now();
-            }
-        }
-    });
-
-    function renderSecretToggleIcon(button, revealed) {
-        const iconTarget = button.querySelector('.secret-toggle-icon');
-        if (!iconTarget) return;
-        iconTarget.innerHTML = revealed
-            ? `
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-5 0-9.27-3.11-11-8 1-2.68 2.87-4.9 5.31-6.34"></path>
-                    <path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c5 0 9.27 3.11 11 8a11.05 11.05 0 0 1-4.08 5.36"></path>
-                    <path d="M14.12 14.12A3 3 0 1 1 9.88 9.88"></path>
-                    <path d="M3 3l18 18"></path>
-                </svg>
-            `
-            : `
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"></path>
-                    <circle cx="12" cy="12" r="3"></circle>
-                </svg>
-            `;
-    }
-
-    function initializeSecretToggles(root = document) {
-        root.querySelectorAll('.toggle-secret-btn').forEach((button) => {
-            if (button.dataset.secretToggleBound === 'true') return;
-            button.dataset.secretToggleBound = 'true';
-
-            const wrapper = button.closest('.user-settings-secret');
-            const input = wrapper?.querySelector('.secret-input');
-            if (!input) return;
-
-            renderSecretToggleIcon(button, input.type !== 'password');
-
-            button.addEventListener('click', () => {
-                const reveal = input.type === 'password';
-                input.type = reveal ? 'text' : 'password';
-                renderSecretToggleIcon(button, reveal);
-            });
-        });
-    }
-
-    initializeSecretToggles(document);
-
-    document.body.addEventListener('htmx:afterSwap', function (e) {
-        if (e.target.id === 'view-container') {
-            initializeSecretToggles(e.target);
-        }
-    });
-</script>
