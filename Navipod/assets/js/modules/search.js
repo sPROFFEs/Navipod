@@ -7,14 +7,6 @@ import * as state from './state.js';
 import * as ui from './ui.js';
 import * as api from './api.js';
 
-let searchCardRenderer = () => '';
-let searchTrackRowRenderer = () => '';
-
-export function registerSearchRenderers({ createCard, createTrackRow }) {
-    searchCardRenderer = typeof createCard === 'function' ? createCard : searchCardRenderer;
-    searchTrackRowRenderer = typeof createTrackRow === 'function' ? createTrackRow : searchTrackRowRenderer;
-}
-
 // === SEARCH INPUT HANDLER ===
 
 export function handleSearch(val) {
@@ -36,21 +28,6 @@ export function setSource(el, src) {
     el.classList.add('active');
     const val = document.getElementById('search-input')?.value || "";
     executeSearch(val.trim());
-}
-
-
-export function bindSearchView(container) {
-    const input = container.querySelector('#search-input');
-    if (input && input.dataset.bound !== 'true') {
-        input.dataset.bound = 'true';
-        input.addEventListener('input', (event) => handleSearch(event.target.value));
-    }
-
-    container.querySelectorAll('[data-search-source]').forEach((chip) => {
-        if (chip.dataset.bound === 'true') return;
-        chip.dataset.bound = 'true';
-        chip.addEventListener('click', () => setSource(chip, chip.dataset.searchSource));
-    });
 }
 
 
@@ -97,7 +74,7 @@ export async function executeSearch(query) {
                     <div class="shelf-header">
                         <h2 class="shelf-title">${ui.escHtml(section.title)}</h2>
                     </div>
-                    <div class="grid-shelf">${section.items.map(item => searchCardRenderer(item)).join('')}</div>
+                    <div class="grid-shelf">${section.items.map(item => window.createCard ? window.createCard(item) : '').join('')}</div>
                 </div>`;
             });
             results.innerHTML = html;
@@ -106,7 +83,7 @@ export async function executeSearch(query) {
         }
 
         // Render list
-        results.innerHTML = `<div class="track-list"><div class="track-row header"><div class="track-num">#</div><div>Title</div><div>Source</div><div></div><div></div></div>${data.map((item, i) => searchTrackRowRenderer(item, i)).join('')}</div>`;
+        results.innerHTML = `<div class="track-list"><div class="track-row header"><div class="track-num">#</div><div>Title</div><div>Source</div><div></div><div></div></div>${data.map((item, i) => window.createTrackRow ? window.createTrackRow(item, i) : '').join('')}</div>`;
         lucide.createIcons();
     } catch (e) {
         console.error("[SEARCH] Error:", e);

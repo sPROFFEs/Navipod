@@ -217,19 +217,18 @@ export function renderSearch(container) {
     container.innerHTML = `
         <div class="search-input-wrapper glass-panel" style="margin-top: 8px;">
             <i data-lucide="search" class="search-icon"></i>
-            <input type="text" id="search-input" placeholder="What do you want to listen to?">
+            <input type="text" id="search-input" placeholder="What do you want to listen to?" oninput="handleSearch(this.value)">
         </div>
         <div class="source-chips">
-            <div class="chip active" data-search-source="all">All</div>
-            <div class="chip spotify" data-search-source="spotify">Spotify</div>
-            <div class="chip youtube" data-search-source="youtube">YouTube</div>
-            <div class="chip lastfm" data-search-source="lastfm">Last.fm</div>
-            <div class="chip musicbrainz" data-search-source="musicbrainz">MusicBrainz</div>
-            <div class="chip" data-search-source="local">Local</div>
+            <div class="chip active" onclick="setSource(this, 'all')">All</div>
+            <div class="chip spotify" onclick="setSource(this, 'spotify')">Spotify</div>
+            <div class="chip youtube" onclick="setSource(this, 'youtube')">YouTube</div>
+            <div class="chip lastfm" onclick="setSource(this, 'lastfm')">Last.fm</div>
+            <div class="chip musicbrainz" onclick="setSource(this, 'musicbrainz')">MusicBrainz</div>
+            <div class="chip" onclick="setSource(this, 'local')">Local</div>
         </div>
         <div id="search-results"></div>`;
     lucide.createIcons();
-    search.bindSearchView(container);
     document.getElementById('search-input')?.focus();
     search.executeSearch("");
 }

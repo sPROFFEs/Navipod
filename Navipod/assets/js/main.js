@@ -45,6 +45,9 @@ window.toggleQueue = queue.toggleQueue;
 window.renderQueue = queue.renderQueue;
 
 // Search
+window.handleSearch = search.handleSearch;
+window.setSource = search.setSource;
+window.executeSearch = search.executeSearch;
 window.downloadUrl = search.downloadUrl;
 
 // Radio
@@ -123,11 +126,6 @@ window.onYouTubeIframeAPIReady = () => {
 // === INITIALIZATION ===
 document.addEventListener('DOMContentLoaded', () => {
     console.log('[MAIN] Navipod ES6 Modules Initialized');
-
-    search.registerSearchRenderers({
-        createCard: views.createCard,
-        createTrackRow: views.createTrackRow,
-    });
 
     // Initialize YouTube API
     player.initYoutubeAPI();
