@@ -147,10 +147,16 @@ export async function renderExternalView(container, url) {
         const scripts = doc.querySelectorAll('script[src]');
         for (const script of scripts) {
             const src = script.getAttribute('src');
+            if (!src) continue;
+            if (src.includes('/assets/js/main.js') || src.includes('/assets/js/modules/admin_system.js')) {
+                continue;
+            }
             if (!document.querySelector(`script[src="${src}"]`)) {
                 await new Promise((resolve, reject) => {
                     const s = document.createElement('script');
                     s.src = src;
+                    const scriptType = script.getAttribute('type');
+                    if (scriptType) s.type = scriptType;
                     s.onload = resolve;
                     s.onerror = reject;
                     document.head.appendChild(s);
@@ -241,7 +247,7 @@ export function createCard(item) {
     const data = btoa(encodeURIComponent(JSON.stringify(item)));
     const sourceMap = {
         'spotify': { icon: 'music', color: '#1DB954' },
-        'youtube': { icon: 'youtube', color: '#ff0000' },
+        'youtube': { icon: 'tv', color: '#ff0000' },
         'lastfm': { icon: 'radio', color: '#d51007' },
         'musicbrainz': { icon: 'disc-3', color: '#BA478F' },
         'local': { icon: 'hard-drive', color: '#ffffff' }
