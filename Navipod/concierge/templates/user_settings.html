@@ -392,7 +392,7 @@
                         <div class="user-settings-secret">
                             <input type="password" name="spotify_client_id" class="user-settings-input secret-input" value="{{ dl_settings.spotify_client_id if dl_settings and dl_settings.spotify_client_id else '' }}">
                             <button type="button" class="user-settings-toggle-secret toggle-secret-btn" aria-label="Toggle Spotify Client ID visibility">
-                                <i data-lucide="eye" width="16" height="16"></i>
+                                <span class="secret-toggle-icon" aria-hidden="true"></span>
                             </button>
                         </div>
                     </div>
@@ -402,7 +402,7 @@
                         <div class="user-settings-secret">
                             <input type="password" name="spotify_client_secret" class="user-settings-input secret-input" value="{{ dl_settings.spotify_client_secret if dl_settings and dl_settings.spotify_client_secret else '' }}">
                             <button type="button" class="user-settings-toggle-secret toggle-secret-btn" aria-label="Toggle Spotify Client Secret visibility">
-                                <i data-lucide="eye" width="16" height="16"></i>
+                                <span class="secret-toggle-icon" aria-hidden="true"></span>
                             </button>
                         </div>
                     </div>
@@ -412,7 +412,7 @@
                         <div class="user-settings-secret">
                             <input type="password" name="lastfm_api_key" class="user-settings-input secret-input" value="{{ dl_settings.lastfm_api_key if dl_settings and dl_settings.lastfm_api_key else '' }}">
                             <button type="button" class="user-settings-toggle-secret toggle-secret-btn" aria-label="Toggle Last.fm API Key visibility">
-                                <i data-lucide="eye" width="16" height="16"></i>
+                                <span class="secret-toggle-icon" aria-hidden="true"></span>
                             </button>
                         </div>
                     </div>
@@ -422,7 +422,7 @@
                         <div class="user-settings-secret">
                             <input type="password" name="lastfm_shared_secret" class="user-settings-input secret-input" value="{{ dl_settings.lastfm_shared_secret if dl_settings and dl_settings.lastfm_shared_secret else '' }}">
                             <button type="button" class="user-settings-toggle-secret toggle-secret-btn" aria-label="Toggle Last.fm Shared Secret visibility">
-                                <i data-lucide="eye" width="16" height="16"></i>
+                                <span class="secret-toggle-icon" aria-hidden="true"></span>
                             </button>
                         </div>
                         <div class="user-settings-help">Only needed for signed methods such as authenticated Last.fm write actions.</div>
@@ -535,20 +535,44 @@
         }
     });
 
-    document.querySelectorAll('.toggle-secret-btn').forEach((button) => {
-        button.addEventListener('click', () => {
+    function renderSecretToggleIcon(button, revealed) {
+        const iconTarget = button.querySelector('.secret-toggle-icon');
+        if (!iconTarget || !window.lucide?.icons) return;
+        const iconName = revealed ? 'eye-off' : 'eye';
+        const iconFactory = window.lucide.icons[iconName];
+        if (!iconFactory || typeof iconFactory.toSvg !== 'function') return;
+        iconTarget.innerHTML = iconFactory.toSvg({
+            width: 16,
+            height: 16,
+            stroke: 'currentColor',
+            'stroke-width': 2
+        });
+    }
+
+    function initializeSecretToggles(root = document) {
+        root.querySelectorAll('.toggle-secret-btn').forEach((button) => {
+            if (button.dataset.secretToggleBound === 'true') return;
+            button.dataset.secretToggleBound = 'true';
+
             const wrapper = button.closest('.user-settings-secret');
             const input = wrapper?.querySelector('.secret-input');
-            const icon = button.querySelector('i');
             if (!input) return;
-            const reveal = input.type === 'password';
-            input.type = reveal ? 'text' : 'password';
-            if (icon) {
-                icon.setAttribute('data-lucide', reveal ? 'eye-off' : 'eye');
-                if (window.lucide && typeof window.lucide.createIcons === 'function') {
-                    window.lucide.createIcons();
-                }
-            }
+
+            renderSecretToggleIcon(button, input.type !== 'password');
+
+            button.addEventListener('click', () => {
+                const reveal = input.type === 'password';
+                input.type = reveal ? 'text' : 'password';
+                renderSecretToggleIcon(button, reveal);
+            });
         });
+    }
+
+    initializeSecretToggles(document);
+
+    document.body.addEventListener('htmx:afterSwap', function (e) {
+        if (e.target.id === 'view-container') {
+            initializeSecretToggles(e.target);
+        }
     });
 </script>
