@@ -180,15 +180,17 @@ def _run_compose_command(args, *, check=True, timeout_seconds: int | None = None
                 )
                 return completed
             except subprocess.TimeoutExpired as e:
+                stderr_extra = e.stderr.decode("utf-8", errors="replace") if isinstance(e.stderr, bytes) else (e.stderr or "")
+                stdout_text = e.stdout.decode("utf-8", errors="replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
                 stderr = f"Command timed out after {timeout_seconds}s"
-                if e.stderr:
-                    stderr = f"{stderr}: {e.stderr}"
+                if stderr_extra:
+                    stderr = f"{stderr}: {stderr_extra}"
                 if check:
                     raise RuntimeError(stderr) from e
                 return subprocess.CompletedProcess(
                     cmd,
                     124,
-                    stdout=(e.stdout or ""),
+                    stdout=stdout_text,
                     stderr=stderr,
                 )
             except FileNotFoundError as e:

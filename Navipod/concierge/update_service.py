@@ -29,7 +29,11 @@ def get_internal_updater_token():
 
 
 def _truncate_log_text(value, limit: int = 700):
-    text = (value or "").strip()
+    if isinstance(value, bytes):
+        text = value.decode("utf-8", errors="replace")
+    else:
+        text = str(value or "")
+    text = text.strip()
     if not text:
         return ""
     if len(text) <= limit:
@@ -385,10 +389,11 @@ def _run_compose_update(job_id: int, changed_files: list[str]):
             timeout=DOCKER_PRUNE_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired as e:
+        stdout_text = e.stdout.decode("utf-8", errors="replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
         image_prune = subprocess.CompletedProcess(
             e.cmd,
             124,
-            stdout=(e.stdout or ""),
+            stdout=stdout_text,
             stderr=f"Command timed out after {DOCKER_PRUNE_TIMEOUT_SECONDS}s",
         )
     try:
@@ -400,10 +405,11 @@ def _run_compose_update(job_id: int, changed_files: list[str]):
             timeout=DOCKER_PRUNE_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired as e:
+        stdout_text = e.stdout.decode("utf-8", errors="replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
         builder_prune = subprocess.CompletedProcess(
             e.cmd,
             124,
-            stdout=(e.stdout or ""),
+            stdout=stdout_text,
             stderr=f"Command timed out after {DOCKER_PRUNE_TIMEOUT_SECONDS}s",
         )
     _log_command_result(job_id, "Docker image prune", image_prune)
