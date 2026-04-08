@@ -150,16 +150,6 @@ def _build_host_bind_compose_file():
 
     services = compose_data.get("services") or {}
     for service in services.values():
-        build = service.get("build")
-        if isinstance(build, str) and build and not Path(build).is_absolute():
-            service["build"] = _resolve_host_path(build)
-        elif isinstance(build, dict):
-            context = build.get("context")
-            if isinstance(context, str) and context and not Path(context).is_absolute():
-                updated_build = dict(build)
-                updated_build["context"] = _resolve_host_path(context)
-                service["build"] = updated_build
-
         volumes = service.get("volumes")
         if isinstance(volumes, list):
             service["volumes"] = [_rewrite_volume_entry(volume) for volume in volumes]
