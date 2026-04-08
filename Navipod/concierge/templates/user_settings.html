@@ -537,16 +537,22 @@
 
     function renderSecretToggleIcon(button, revealed) {
         const iconTarget = button.querySelector('.secret-toggle-icon');
-        if (!iconTarget || !window.lucide?.icons) return;
-        const iconName = revealed ? 'eye-off' : 'eye';
-        const iconFactory = window.lucide.icons[iconName];
-        if (!iconFactory || typeof iconFactory.toSvg !== 'function') return;
-        iconTarget.innerHTML = iconFactory.toSvg({
-            width: 16,
-            height: 16,
-            stroke: 'currentColor',
-            'stroke-width': 2
-        });
+        if (!iconTarget) return;
+        iconTarget.innerHTML = revealed
+            ? `
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-5 0-9.27-3.11-11-8 1-2.68 2.87-4.9 5.31-6.34"></path>
+                    <path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c5 0 9.27 3.11 11 8a11.05 11.05 0 0 1-4.08 5.36"></path>
+                    <path d="M14.12 14.12A3 3 0 1 1 9.88 9.88"></path>
+                    <path d="M3 3l18 18"></path>
+                </svg>
+            `
+            : `
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+            `;
     }
 
     function initializeSecretToggles(root = document) {
