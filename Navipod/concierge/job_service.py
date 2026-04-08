@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import database
 
 ADMIN_JOB_RETENTION_LIMIT = 200
 GLOBAL_OPERATION_LOCK = "admin-global-operation"
+LOCK_TIMEOUT_MINUTES = 30
 
 
 def utcnow():
@@ -65,6 +66,48 @@ def _prune_admin_jobs(db, keep: int = ADMIN_JOB_RETENTION_LIMIT):
     db.commit()
 
 
+def _lock_expiry():
+    return utcnow() + timedelta(minutes=LOCK_TIMEOUT_MINUTES)
+
+
+def _is_job_terminal(job):
+    if not job:
+        return True
+    return job.status in {"completed", "failed"}
+
+
+def _clear_lock(db, lock):
+    if not lock:
+        return
+    db.delete(lock)
+    db.commit()
+
+
+def _should_reclaim_lock(db, lock):
+    if not lock:
+        return False
+    now = utcnow()
+    if lock.expires_at and lock.expires_at <= now:
+        return True
+    if lock.job_id is None:
+        return False
+    job = db.query(database.AdminJob).filter(database.AdminJob.id == lock.job_id).first()
+    return _is_job_terminal(job)
+
+
+def _heartbeat_lock(db, job_id: int | None):
+    if job_id is None:
+        return
+    lock = (
+        db.query(database.AdminOperationLock)
+        .filter(database.AdminOperationLock.name == GLOBAL_OPERATION_LOCK)
+        .first()
+    )
+    if not lock or lock.job_id != job_id:
+        return
+    lock.expires_at = _lock_expiry()
+
+
 def update_admin_job(job_id: int, *, status=None, message=None, details=None, finished=False):
     db = database.SessionLocal()
     try:
@@ -79,6 +122,7 @@ def update_admin_job(job_id: int, *, status=None, message=None, details=None, fi
             job.details_json = json.dumps(details, ensure_ascii=False)
         if finished:
             job.finished_at = utcnow()
+        _heartbeat_lock(db, job_id)
         db.commit()
         if finished or status in {"completed", "failed"}:
             _prune_admin_jobs(db, keep=ADMIN_JOB_RETENTION_LIMIT)
@@ -114,6 +158,7 @@ def update_admin_job_progress(job_id: int, *, message=None, status=None, phase=N
             job.status = status
         if finished:
             job.finished_at = utcnow()
+        _heartbeat_lock(db, job_id)
         job.details_json = json.dumps(details, ensure_ascii=False)
         db.commit()
         if finished or status in {"completed", "failed"}:
@@ -171,6 +216,9 @@ def get_active_operation_lock(db):
     lock = db.query(database.AdminOperationLock).filter(database.AdminOperationLock.name == GLOBAL_OPERATION_LOCK).first()
     if not lock:
         return None
+    if _should_reclaim_lock(db, lock):
+        _clear_lock(db, lock)
+        return None
     return {
         "name": lock.name,
         "job_id": lock.job_id,
@@ -181,9 +229,12 @@ def get_active_operation_lock(db):
 
 def acquire_lock(db, job_id: int | None):
     existing = db.query(database.AdminOperationLock).filter(database.AdminOperationLock.name == GLOBAL_OPERATION_LOCK).first()
+    if existing and _should_reclaim_lock(db, existing):
+        _clear_lock(db, existing)
+        existing = None
     if existing:
         return False
-    lock = database.AdminOperationLock(name=GLOBAL_OPERATION_LOCK, job_id=job_id)
+    lock = database.AdminOperationLock(name=GLOBAL_OPERATION_LOCK, job_id=job_id, expires_at=_lock_expiry())
     db.add(lock)
     db.commit()
     return True

@@ -159,7 +159,7 @@ def _build_host_bind_compose_file():
         return Path(tmp.name)
 
 
-def _run_compose_command(args, *, check=True):
+def _run_compose_command(args, *, check=True, timeout_seconds: int | None = None):
     temp_compose_file = _build_host_bind_compose_file()
     compose_file_arg = str(temp_compose_file) if temp_compose_file else "docker-compose.yaml"
     commands_to_try = [
@@ -170,8 +170,27 @@ def _run_compose_command(args, *, check=True):
     try:
         for cmd in commands_to_try:
             try:
-                completed = subprocess.run(cmd, check=check, capture_output=True, text=True, cwd=str(COMPOSE_PROJECT_ROOT))
+                completed = subprocess.run(
+                    cmd,
+                    check=check,
+                    capture_output=True,
+                    text=True,
+                    cwd=str(COMPOSE_PROJECT_ROOT),
+                    timeout=timeout_seconds,
+                )
                 return completed
+            except subprocess.TimeoutExpired as e:
+                stderr = f"Command timed out after {timeout_seconds}s"
+                if e.stderr:
+                    stderr = f"{stderr}: {e.stderr}"
+                if check:
+                    raise RuntimeError(stderr) from e
+                return subprocess.CompletedProcess(
+                    cmd,
+                    124,
+                    stdout=(e.stdout or ""),
+                    stderr=stderr,
+                )
             except FileNotFoundError as e:
                 last_error = e
             except subprocess.CalledProcessError as e:

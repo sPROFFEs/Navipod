@@ -19,6 +19,10 @@ import ops_core as ops
 from build_info_service import get_build_info
 from job_service import acquire_lock, create_admin_job, get_active_operation_lock, get_admin_job, get_recent_admin_jobs, release_lock, update_admin_job_progress
 
+COMPOSE_UPDATE_TIMEOUT_SECONDS = 600
+DOCKER_PRUNE_TIMEOUT_SECONDS = 120
+HEALTH_CHECK_TIMEOUT_SECONDS = 45
+
 
 def get_internal_updater_token():
     return hashlib.sha256(f"navipod-updater:{ops.settings.SECRET_KEY}".encode("utf-8")).hexdigest()
@@ -304,7 +308,7 @@ def _fetch_target_update_ref(target_sha: str | None):
 
 def _run_post_update_health_check():
     urls = ["http://concierge:8000/login", "http://nginx/login"]
-    timeout_seconds = 45
+    timeout_seconds = HEALTH_CHECK_TIMEOUT_SECONDS
     deadline = ops.utcnow().timestamp() + timeout_seconds
     last_error = "health check did not start"
 
@@ -354,14 +358,46 @@ def _run_compose_update(job_id: int, changed_files: list[str]):
     services = [svc.strip() for svc in ops.settings.UPDATE_MANAGED_SERVICES.split() if svc.strip()]
     rebuild_required = any(path in ops.REBUILD_REQUIRED_PATHS for path in changed_files)
     update_admin_job_progress(job_id, message=f"Recreating services: {' '.join(services)}", phase="recreate", progress=85, status="running", extra={"changed_files": changed_files[:100], "rebuild_required": rebuild_required})
-    completed = ops._run_compose_command(["up", "-d", "--build", "--remove-orphans", *services], check=False)
+    completed = ops._run_compose_command(
+        ["up", "-d", "--build", "--remove-orphans", *services],
+        check=False,
+        timeout_seconds=COMPOSE_UPDATE_TIMEOUT_SECONDS,
+    )
     _log_command_result(job_id, "Compose update", completed)
     if completed.returncode != 0:
         raise RuntimeError((completed.stderr or completed.stdout or "docker compose up failed").strip())
 
     update_admin_job_progress(job_id, message="Pruning dangling Docker images and builder cache", phase="cleanup", progress=95, status="running")
-    image_prune = subprocess.run(["docker", "image", "prune", "-f"], capture_output=True, text=True, check=False)
-    builder_prune = subprocess.run(["docker", "builder", "prune", "-f"], capture_output=True, text=True, check=False)
+    try:
+        image_prune = subprocess.run(
+            ["docker", "image", "prune", "-f"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=DOCKER_PRUNE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as e:
+        image_prune = subprocess.CompletedProcess(
+            e.cmd,
+            124,
+            stdout=(e.stdout or ""),
+            stderr=f"Command timed out after {DOCKER_PRUNE_TIMEOUT_SECONDS}s",
+        )
+    try:
+        builder_prune = subprocess.run(
+            ["docker", "builder", "prune", "-f"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=DOCKER_PRUNE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as e:
+        builder_prune = subprocess.CompletedProcess(
+            e.cmd,
+            124,
+            stdout=(e.stdout or ""),
+            stderr=f"Command timed out after {DOCKER_PRUNE_TIMEOUT_SECONDS}s",
+        )
     _log_command_result(job_id, "Docker image prune", image_prune)
     _log_command_result(job_id, "Docker builder prune", builder_prune)
     return rebuild_required
