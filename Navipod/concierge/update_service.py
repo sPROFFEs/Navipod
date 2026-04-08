@@ -4,8 +4,12 @@ import asyncio
 import hashlib
 import json
 import os
+import shutil
 import subprocess
+import tempfile
 import time
+from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
@@ -58,9 +62,9 @@ def _parse_state_checked_at(payload: dict):
     if not checked_at:
         return None
     try:
-        parsed = ops.datetime.fromisoformat(checked_at.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(checked_at.replace("Z", "+00:00"))
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=ops.timezone.utc)
+            parsed = parsed.replace(tzinfo=timezone.utc)
         return parsed
     except Exception:
         return None
@@ -358,13 +362,13 @@ def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
         update_admin_job_progress(job_id, message="Creating pre-update backup", status="running", phase="backup", progress=25)
         ops.ensure_runtime_dirs()
         manifest = _build_backup_manifest(triggered_by, "pre-update")
-        with ops.tempfile.NamedTemporaryFile(delete=False, suffix=".zip", dir=ops.BACKUP_ROOT) as tmp:
-            temp_path = ops.Path(tmp.name)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".zip", dir=ops.BACKUP_ROOT) as tmp:
+            temp_path = Path(tmp.name)
         database.engine.dispose()
         _write_backup_zip(temp_path, manifest)
         _rotate_current_to_previous(db)
         current_path = ops.BACKUP_ROOT / ops.CURRENT_BACKUP_NAME
-        ops.shutil.move(str(temp_path), current_path)
+        shutil.move(str(temp_path), current_path)
         temp_path = None
         _upsert_backup_artifact(db, "current", filename=ops.CURRENT_BACKUP_NAME, file_path=str(current_path), size_bytes=current_path.stat().st_size, created_at=ops.utcnow(), manifest=manifest)
 
