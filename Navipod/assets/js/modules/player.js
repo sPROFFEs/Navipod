@@ -370,9 +370,25 @@ export function syncPlayerShellVisibility(track = state.currentTrack) {
     }
 }
 
+function hasUpcomingTrack() {
+    if (state.userQueue.length > 0) return true;
+    if (state.shuffleMode && state.contextQueue.length === 0) return true;
+    if (state.contextQueue.length === 0) return false;
+
+    const nextIdx = state.contextIndex + 1;
+    if (nextIdx < state.contextQueue.length) return true;
+    if (state.repeatMode === 'all') return state.contextQueue.length > 0;
+    if (state.shuffleMode) return true;
+    return false;
+}
+
 function clearFinishedPlaybackState() {
     state.setCurrentTrack(null);
     state.setIsPlaying(false);
+    releasePlaybackLock();
+    if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'none';
+    }
     syncPlayerShellVisibility(null);
     ui.updatePlayButton();
     ui.updateUIProgress(0, 0);
@@ -420,9 +436,8 @@ export function setupPlayer() {
         state.setIsPlaying(false);
         ui.updatePlayButton();
         state.audio._endHandled = true;
-        releasePlaybackLock();
         if ('mediaSession' in navigator) {
-            navigator.mediaSession.playbackState = 'none';
+            navigator.mediaSession.playbackState = hasUpcomingTrack() ? 'playing' : 'none';
         }
         playNext();
         syncPlayerShellVisibility();
@@ -435,6 +450,9 @@ export function setupPlayer() {
             if (!state.audio._endHandled) {
                 state.audio._endHandled = true;
                 console.log('[BG-PLAY] Fallback triggered, advancing to next');
+                if ('mediaSession' in navigator) {
+                    navigator.mediaSession.playbackState = hasUpcomingTrack() ? 'playing' : 'none';
+                }
                 playNext();
             }
         }
