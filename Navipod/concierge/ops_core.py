@@ -79,6 +79,16 @@ def _path_variants_for_match(path: str | Path | None) -> set[str]:
     return {variant for variant in variants if variant}
 
 
+def _path_matches_required_target(path: str | Path | None, required_target: str) -> bool:
+    normalized_target = _normalize_repo_path(required_target)
+    if not normalized_target:
+        return False
+    for variant in _path_variants_for_match(path):
+        if variant == normalized_target or variant.endswith(f"/{normalized_target}"):
+            return True
+    return False
+
+
 def normalize_changed_files(changed_files: list[str]) -> list[str]:
     normalized = []
     seen = set()
@@ -92,9 +102,21 @@ def normalize_changed_files(changed_files: list[str]) -> list[str]:
 
 def should_rebuild_for_changed_files(changed_files: list[str]) -> bool:
     for path in changed_files:
-        if REBUILD_REQUIRED_PATHS.intersection(_path_variants_for_match(path)):
-            return True
+        for target in REBUILD_REQUIRED_PATHS:
+            if _path_matches_required_target(path, target):
+                return True
     return False
+
+
+def matched_rebuild_targets(changed_files: list[str]) -> list[str]:
+    matches = []
+    seen = set()
+    for target in REBUILD_REQUIRED_PATHS:
+        if any(_path_matches_required_target(path, target) for path in changed_files):
+            if target not in seen:
+                matches.append(target)
+                seen.add(target)
+    return sorted(matches)
 
 
 def get_scheduler_timezone_name(system_settings=None):

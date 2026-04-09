@@ -361,6 +361,7 @@ def _run_check_update_job(job_id: int, triggered_by: str | None):
 def _run_compose_update(job_id: int, changed_files: list[str]):
     services = [svc.strip() for svc in ops.settings.UPDATE_MANAGED_SERVICES.split() if svc.strip()]
     normalized_changed_files = ops.normalize_changed_files(changed_files)
+    rebuild_targets = ops.matched_rebuild_targets(changed_files)
     rebuild_required = ops.should_rebuild_for_changed_files(changed_files)
     compose_args = ["up", "-d"]
     compose_phase = "build" if rebuild_required else "recreate"
@@ -379,8 +380,16 @@ def _run_compose_update(job_id: int, changed_files: list[str]):
         phase=compose_phase,
         progress=compose_progress,
         status="running",
-        extra={"changed_files": normalized_changed_files[:100], "rebuild_required": rebuild_required},
+        extra={
+            "changed_files": normalized_changed_files[:100],
+            "rebuild_required": rebuild_required,
+            "rebuild_targets": rebuild_targets,
+        },
     )
+    if rebuild_targets:
+        update_admin_job_progress(job_id, message=f"Rebuild triggered by: {', '.join(rebuild_targets)}")
+    else:
+        update_admin_job_progress(job_id, message="No rebuild-triggering files detected in update diff")
     completed = ops._run_compose_command(
         compose_args,
         check=False,
@@ -433,7 +442,7 @@ def _run_compose_update(job_id: int, changed_files: list[str]):
         )
     _log_command_result(job_id, "Docker image prune", image_prune)
     _log_command_result(job_id, "Docker builder prune", builder_prune)
-    return rebuild_required, health_result, normalized_changed_files
+    return rebuild_required, health_result, normalized_changed_files, rebuild_targets
 
 
 def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
@@ -499,11 +508,11 @@ def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
             update_admin_job_progress(job_id, message=f"Migrations applied: {', '.join(applied_migrations)}")
         else:
             update_admin_job_progress(job_id, message="No schema migrations needed")
-        rebuild_required, health_result, normalized_changed_files = _run_compose_update(job_id, changed_files)
+        rebuild_required, health_result, normalized_changed_files, rebuild_targets = _run_compose_update(job_id, changed_files)
 
         post_payload = asyncio.run(_get_update_check_payload())
         save_update_state(db, post_payload)
-        details = {"before": payload, "after": post_payload, "changed_files": normalized_changed_files[:100], "rebuild_required": rebuild_required, "applied_migrations": applied_migrations, "health_check": health_result, "target_sha": target_sha}
+        details = {"before": payload, "after": post_payload, "changed_files": normalized_changed_files[:100], "rebuild_required": rebuild_required, "rebuild_targets": rebuild_targets, "applied_migrations": applied_migrations, "health_check": health_result, "target_sha": target_sha}
         update_admin_job_progress(job_id, message="Update applied and services recreated successfully", status="completed", phase="done", progress=100, extra=details, finished=True)
     except Exception as e:
         update_admin_job_progress(job_id, message=f"Apply update failed: {e}", status="failed", phase="error", progress=100, finished=True)
