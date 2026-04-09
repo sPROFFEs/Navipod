@@ -10,14 +10,44 @@
 }
 
 .search-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 16px;
     border-radius: var(--radius-md);
+    padding: 16px 28px;
+    margin-bottom: 32px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .search-panel {
     margin-top: 8px;
 }
 
+.search-input-wrapper:hover {
+    background: var(--surface-2);
+    border-color: var(--border-strong);
+}
+
+.search-input-wrapper:focus-within {
+    background: var(--surface-2);
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-md);
+    transform: none;
+}
+
+.search-input-wrapper input {
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: var(--text-main);
+    font-size: 1.15rem;
+    font-weight: 500;
+    outline: none;
+    letter-spacing: -0.2px;
+}
+
 .source-chips {
+    display: flex;
     gap: 10px;
     margin-bottom: 22px;
     flex-wrap: wrap;
@@ -31,6 +61,8 @@
     color: var(--text-sub);
     font-size: 0.88rem;
     font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
     backdrop-filter: none;
 }
 
@@ -38,12 +70,14 @@
     background: var(--surface-2);
     color: var(--text-main);
     box-shadow: none;
+    transform: none;
 }
 
 .chip.active {
     background: var(--surface-3);
     border-color: var(--border-strong);
     box-shadow: none;
+    transform: none;
 }
 
 .chip.spotify.active,
@@ -54,33 +88,57 @@
 }
 
 .card {
+    cursor: pointer;
     background: transparent;
     border: 1px solid transparent;
     border-radius: var(--radius-md);
     padding: 10px;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .card:hover {
     background: rgba(255, 255, 255, 0.03);
     border-color: var(--border-subtle);
     box-shadow: none;
+    transform: none;
 }
 
 .card-img-container {
+    width: 100%;
+    aspect-ratio: 1;
+    overflow: hidden;
     margin-bottom: 12px;
     border-radius: var(--radius-sm);
     box-shadow: none;
     border: 1px solid var(--border-subtle);
 }
 
+.card-img-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.2s ease;
+}
+
+.card:hover .card-img-container img {
+    transform: scale(1.02);
+}
+
 .card-title {
     font-size: 0.94rem;
     font-weight: 600;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .card-subtitle {
     color: var(--text-sub);
     font-size: 0.8rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .track-row {
@@ -106,16 +164,28 @@
 }
 
 .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     min-height: 260px;
     border-radius: var(--radius-lg);
+    text-align: center;
     color: var(--text-sub);
 }
 
 .music-loader {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     opacity: 0.85;
 }
 
 .empty-icon {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 16px;
     color: var(--text-faint);
 }
 

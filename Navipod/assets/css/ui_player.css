@@ -1,9 +1,23 @@
 .player-footer {
+    grid-area: player;
     background: rgba(21, 24, 27, 0.96);
     border: 0;
     border-top: 1px solid var(--border-subtle);
     border-radius: 0;
     box-shadow: none;
+    display: grid;
+    grid-template-columns: 1.2fr 1.6fr 1fr;
+    align-items: center;
+    gap: 20px;
+    padding: 0 24px;
+    height: var(--player-height);
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.player-footer.player-hidden {
+    transform: translateY(100%);
+    opacity: 0;
+    pointer-events: none;
 }
 
 .player-cover,
@@ -13,6 +27,19 @@
 }
 
 .queue-panel {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    bottom: 106px;
+    width: 360px;
+    max-width: calc(100vw - 32px);
+    z-index: 120;
+    transform: translateX(110%);
+    transition: transform 0.25s ease;
     border-left: 1px solid var(--border-subtle);
     border-radius: 0;
+}
+
+.queue-panel.open {
+    transform: translateX(0);
 }

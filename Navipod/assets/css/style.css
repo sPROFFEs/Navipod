@@ -576,27 +576,6 @@ body {
 }
 
 /* --- PLAYER FOOTER --- */
-.player-footer {
-    grid-area: player;
-    background: rgba(30, 30, 35, 0.85);
-    backdrop-filter: blur(40px);
-    -webkit-backdrop-filter: blur(40px);
-    border: 1px solid var(--glass-border-highlight);
-    border-radius: 20px;
-    display: grid;
-    grid-template-columns: 1fr 2fr 1fr;
-    align-items: center;
-    padding: 0 24px;
-    z-index: 100;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-    transition: transform 0.3s ease, opacity 0.3s ease;
-}
-
-.player-footer.player-hidden {
-    transform: translateY(100%);
-    opacity: 0;
-    pointer-events: none;
-}
 
 .player-left {
     display: flex;
@@ -824,28 +803,6 @@ body {
 }
 
 /* --- QUEUE PANEL --- */
-.queue-panel {
-    position: fixed;
-    top: 16px;
-    right: 16px;
-    bottom: 106px;
-    /* above player */
-    width: 320px;
-    background: rgba(20, 20, 25, 0.95);
-    backdrop-filter: blur(40px);
-    border: 1px solid var(--glass-border);
-    border-radius: 16px;
-    z-index: 90;
-    transform: translateX(120%);
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    display: flex;
-    flex-direction: column;
-    box-shadow: -10px 0 40px rgba(0, 0, 0, 0.5);
-}
-
-.queue-panel.open {
-    transform: translateX(0);
-}
 
 .queue-header {
     padding: 16px;
@@ -1450,20 +1407,6 @@ body {
     margin-bottom: 40px;
 }
 
-.shelf-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 16px;
-}
-
-.shelf-title {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: white;
-    letter-spacing: -0.5px;
-}
-
 .grid-shelf {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -1471,42 +1414,10 @@ body {
 }
 
 /* --- COMPONENTS: CARDS --- */
-.card {
-    background: rgba(255, 255, 255, 0.03);
-    border-radius: 12px;
-    padding: 16px;
-    transition: 0.3s ease;
-    cursor: pointer;
-    border: 1px solid transparent;
-}
-
-.card:hover {
-    background: rgba(255, 255, 255, 0.08);
-    transform: translateY(-5px);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-    border-color: rgba(255, 255, 255, 0.1);
-}
-
 .card-img-container {
-    width: 100%;
-    aspect-ratio: 1;
-    border-radius: 8px;
-    overflow: hidden;
-    margin-bottom: 16px;
     box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
     position: relative;
     border: 1px solid var(--glass-border);
-}
-
-.card-img-container img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transition: 0.3s;
-}
-
-.card:hover .card-img-container img {
-    transform: scale(1.05);
 }
 
 .play-overlay {
@@ -1546,24 +1457,6 @@ body {
 .play-btn-card:hover {
     transform: scale(1);
     background: var(--primary-hover);
-}
-
-.card-title {
-    font-weight: 700;
-    font-size: 1rem;
-    color: white;
-    margin-bottom: 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.card-subtitle {
-    font-size: 0.85rem;
-    color: var(--text-sub);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 /* --- COMPONENTS: TRACK LIST --- */
@@ -1743,114 +1636,7 @@ body {
     align-items: center;
 }
 
-.search-input-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    background: rgba(255, 255, 255, 0.04);
-    backdrop-filter: blur(15px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 50px;
-    padding: 16px 28px;
-    margin-bottom: 32px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-}
-
-.search-input-wrapper:hover {
-    background: rgba(255, 255, 255, 0.07);
-    border-color: rgba(255, 255, 255, 0.15);
-}
-
-.search-input-wrapper:focus-within {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: var(--accent);
-    box-shadow: 0 0 25px rgba(168, 85, 247, 0.15), inset 0 0 10px rgba(168, 85, 247, 0.05);
-    transform: translateY(-2px);
-}
-
-.search-input-wrapper input {
-    width: 100%;
-    border: none;
-    background: transparent;
-    color: white;
-    font-size: 1.15rem;
-    font-weight: 500;
-    outline: none;
-    letter-spacing: -0.2px;
-}
-
-.source-chips {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 32px;
-}
-
-.chip {
-    padding: 10px 22px;
-    border-radius: 30px;
-    background: rgba(255, 255, 255, 0.04);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: var(--text-sub);
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    letter-spacing: 0.3px;
-}
-
-.chip:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-}
-
-.chip.active {
-    background: var(--accent);
-    color: white;
-    border-color: var(--accent);
-    box-shadow: 0 0 20px rgba(168, 85, 247, 0.4);
-    transform: scale(1.05);
-}
-
-.chip.spotify.active {
-    background: #1DB954;
-    color: white;
-    border-color: #1DB954;
-}
-
-.chip.youtube.active {
-    background: #ff0000;
-    color: white;
-    border-color: #ff0000;
-}
-
-.chip.lastfm.active {
-    background: #d51007;
-    color: white;
-    border-color: #d51007;
-}
-
-.chip.musicbrainz.active {
-    background: #BA478F;
-    color: white;
-    border-color: #BA478F;
-}
-
 /* --- COMPONENTS: MODAL & TOAST --- */
-.empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 300px;
-    color: var(--text-sub);
-    gap: 16px;
-    text-align: center;
-}
-
 .toast {
     position: fixed;
     bottom: 120px;
@@ -2599,17 +2385,6 @@ body {
 }
 
 /* --- EMPTY STATES --- */
-.empty-state.glass-panel {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px dashed var(--glass-border);
-}
-
-.empty-icon {
-    width: 64px;
-    height: 64px;
-    color: rgba(255, 255, 255, 0.1);
-    margin-bottom: 16px;
-}
 
 /* --- QUOTA WIDGET --- */
 .quota-widget {
@@ -2657,14 +2432,6 @@ body {
 }
 
 /* --- MUSIC LOADERS --- */
-.music-loader {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    /* Spacing between bars */
-    height: 40px;
-}
 
 .music-bar {
     width: 6px;
