@@ -1,0 +1,18 @@
+.player-footer {
+    background: rgba(21, 24, 27, 0.96);
+    border: 0;
+    border-top: 1px solid var(--border-subtle);
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.player-cover,
+.track-cover-sm,
+.fs-cover {
+    border-radius: var(--radius-sm);
+}
+
+.queue-panel {
+    border-left: 1px solid var(--border-subtle);
+    border-radius: 0;
+}

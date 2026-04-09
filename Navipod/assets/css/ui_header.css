@@ -1,0 +1,43 @@
+.main-view {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 18%), var(--surface-1);
+    border: 0;
+    border-radius: 0;
+}
+
+.top-bar {
+    height: 64px;
+    padding: 0 24px;
+    background: rgba(22, 25, 28, 0.92);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.top-bar-left,
+.header-actions {
+    gap: 12px;
+}
+
+.circle-btn,
+.btn-icon-circle,
+.icon-btn-sm,
+.menu-toggle,
+.sidebar-close {
+    background: var(--surface-2);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-sub);
+    border-radius: var(--radius-sm);
+    box-shadow: none;
+}
+
+.circle-btn:hover,
+.btn-icon-circle:hover,
+.icon-btn-sm:hover,
+.menu-toggle:hover,
+.sidebar-close:hover {
+    background: var(--surface-3);
+    border-color: var(--border-strong);
+    color: var(--text-main);
+}
+
+.view-content {
+    padding: 24px;
+}

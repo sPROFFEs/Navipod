@@ -1,0 +1,126 @@
+.search-input-wrapper,
+.empty-state.glass-panel,
+.modal,
+.queue-panel {
+    background: var(--surface-0);
+    border: 1px solid var(--border-subtle);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: var(--shadow-md);
+}
+
+.search-input-wrapper {
+    border-radius: var(--radius-md);
+}
+
+.search-panel {
+    margin-top: 8px;
+}
+
+.source-chips {
+    gap: 10px;
+    margin-bottom: 22px;
+    flex-wrap: wrap;
+}
+
+.chip {
+    padding: 8px 14px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-0);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-sub);
+    font-size: 0.88rem;
+    font-weight: 500;
+    backdrop-filter: none;
+}
+
+.chip:hover {
+    background: var(--surface-2);
+    color: var(--text-main);
+    box-shadow: none;
+}
+
+.chip.active {
+    background: var(--surface-3);
+    border-color: var(--border-strong);
+    box-shadow: none;
+}
+
+.chip.spotify.active,
+.chip.youtube.active,
+.chip.lastfm.active,
+.chip.musicbrainz.active {
+    border-color: var(--border-strong);
+}
+
+.card {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    padding: 10px;
+}
+
+.card:hover {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: var(--border-subtle);
+    box-shadow: none;
+}
+
+.card-img-container {
+    margin-bottom: 12px;
+    border-radius: var(--radius-sm);
+    box-shadow: none;
+    border: 1px solid var(--border-subtle);
+}
+
+.card-title {
+    font-size: 0.94rem;
+    font-weight: 600;
+}
+
+.card-subtitle {
+    color: var(--text-sub);
+    font-size: 0.8rem;
+}
+
+.track-row {
+    grid-template-columns: 32px 1fr 96px 132px;
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+}
+
+.track-row:hover {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: var(--border-subtle);
+}
+
+.track-row.header {
+    color: var(--text-faint);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.source-badge {
+    border-radius: 6px;
+}
+
+.empty-state {
+    min-height: 260px;
+    border-radius: var(--radius-lg);
+    color: var(--text-sub);
+}
+
+.music-loader {
+    opacity: 0.85;
+}
+
+.empty-icon {
+    color: var(--text-faint);
+}
+
+.update-toast-card {
+    background: var(--surface-0);
+    border: 1px solid var(--border-subtle);
+    box-shadow: var(--shadow-md);
+}

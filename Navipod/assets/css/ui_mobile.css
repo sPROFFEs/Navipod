@@ -1,0 +1,92 @@
+@media (max-width: 768px) {
+    .app-layout {
+        grid-template-columns: 1fr;
+        grid-template-areas: "main";
+        grid-template-rows: minmax(0, 1fr);
+    }
+
+    .app-layout:has(.player-footer:not(.player-hidden)) {
+        grid-template-areas: "main" "player";
+        grid-template-rows: minmax(0, 1fr) auto;
+    }
+
+    .sidebar {
+        border-right: 0;
+    }
+
+    .nav-link {
+        gap: 14px;
+        padding: 12px 14px;
+        margin-bottom: 6px;
+    }
+
+    .nav-link i {
+        width: 18px;
+        height: 18px;
+    }
+
+    .view-content {
+        padding: 18px;
+    }
+
+    .top-bar {
+        padding: 0 12px;
+    }
+
+    .top-bar-left,
+    .header-actions {
+        gap: 8px;
+    }
+
+    .nav-history-btns {
+        display: none;
+    }
+
+    .btn-icon-circle,
+    .circle-btn,
+    .menu-toggle {
+        width: 38px;
+        height: 38px;
+    }
+
+    .user-menu-trigger {
+        gap: 8px;
+        padding: 4px 8px;
+        min-width: 0;
+    }
+
+    .user-name {
+        display: none;
+    }
+
+    .hero-section {
+        padding: 16px 16px 18px;
+        margin: 0 0 18px;
+    }
+
+    .hero-greeting {
+        font-size: 1.3rem;
+        line-height: 1.16;
+    }
+
+    .hero-subtitle {
+        font-size: 0.88rem;
+        line-height: 1.45;
+    }
+
+    .main-view {
+        padding-bottom: 0 !important;
+    }
+
+    .main-view.has-player {
+        padding-bottom: 0 !important;
+    }
+
+    .player-footer.player-hidden {
+        display: none;
+    }
+
+    .player-footer:not(.player-hidden) {
+        display: grid;
+    }
+}
