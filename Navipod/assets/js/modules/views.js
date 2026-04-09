@@ -191,8 +191,9 @@ export async function renderHome(container) {
         console.error("Recs error:", e);
     }
 
+    const username = ui.escHtml(window.USER_DATA?.username || 'User');
     let html = `<section class="hero-section">
-        <h1 class="hero-greeting">${ui.getGreeting()}, ${window.USER_DATA?.username || 'User'}</h1>
+        <h1 class="hero-greeting">Good ${ui.getGreeting()}, <span class="hero-username">${username}</span></h1>
     </section>`;
 
     if (sections && sections.length > 0) {
@@ -418,10 +419,7 @@ export function updatePlayerUIForPreview(track) {
     if (playerArtist) playerArtist.textContent = track.artist || 'Unknown';
     if (playerCover) playerCover.src = track.thumbnail || '/static/img/default_cover.png';
 
-    const footer = document.querySelector('.player-footer');
-    if (footer) footer.classList.remove('player-hidden');
-    const mainView = document.querySelector('.main-view');
-    if (mainView) mainView.classList.add('has-player');
+    player.syncPlayerShellVisibility(track);
 
     const fsTitle = document.getElementById('fs-title');
     const fsArtist = document.getElementById('fs-artist');

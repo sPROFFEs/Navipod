@@ -6,6 +6,7 @@
 import * as state from './state.js';
 import * as ui from './ui.js';
 import * as api from './api.js';
+import * as player from './player.js';
 
 // === RADIO VIEW RENDERER ===
 
@@ -160,11 +161,7 @@ export function playRadioStream(id, name) {
     document.getElementById('player-artist').textContent = 'Live Radio';
     document.getElementById('player-cover').src = '/static/img/default_cover.png';
 
-    const footer = document.querySelector('.player-footer');
-    if (footer) footer.classList.remove('player-hidden');
-
-    const mainView = document.querySelector('.main-view');
-    if (mainView) mainView.classList.add('has-player');
+    player.syncPlayerShellVisibility(state.currentTrack);
 
     const fsTitle = document.getElementById('fs-title');
     const fsArtist = document.getElementById('fs-artist');
@@ -245,10 +242,7 @@ export function playSavedRadio(encodedUrl, name) {
     document.getElementById('player-artist').textContent = 'Saved Radio';
     document.getElementById('player-cover').src = '/static/img/default_cover.png';
 
-    const footer = document.querySelector('.player-footer');
-    if (footer) footer.classList.remove('player-hidden');
-    const mainView = document.querySelector('.main-view');
-    if (mainView) mainView.classList.add('has-player');
+    player.syncPlayerShellVisibility(state.currentTrack);
 
     const fsTitle = document.getElementById('fs-title');
     const fsArtist = document.getElementById('fs-artist');

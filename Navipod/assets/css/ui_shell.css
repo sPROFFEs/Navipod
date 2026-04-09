@@ -164,6 +164,15 @@
     font-size: 1.55rem;
     font-weight: 700;
     letter-spacing: -0.03em;
+    line-height: 1.08;
+    text-wrap: balance;
+}
+
+.hero-username {
+    display: inline-block;
+    color: var(--text-main);
+    padding-bottom: 0.02em;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 .text-accent {
@@ -329,10 +338,28 @@
 @media (max-width: 768px) {
     .app-layout {
         grid-template-columns: 1fr;
+        grid-template-areas: "main";
+        grid-template-rows: minmax(0, 1fr);
+    }
+
+    .app-layout:has(.player-footer:not(.player-hidden)) {
+        grid-template-areas: "main" "player";
+        grid-template-rows: minmax(0, 1fr) auto;
     }
 
     .sidebar {
         border-right: 0;
+    }
+
+    .nav-link {
+        gap: 14px;
+        padding: 12px 14px;
+        margin-bottom: 6px;
+    }
+
+    .nav-link i {
+        width: 18px;
+        height: 18px;
     }
 
     .view-content {
@@ -341,5 +368,22 @@
 
     .top-bar {
         padding: 0 16px;
+    }
+
+    .hero-section {
+        padding: 2px 0 16px;
+    }
+
+    .hero-greeting {
+        font-size: 1.3rem;
+        line-height: 1.16;
+    }
+
+    .player-footer.player-hidden {
+        display: none;
+    }
+
+    .player-footer:not(.player-hidden) {
+        display: grid;
     }
 }

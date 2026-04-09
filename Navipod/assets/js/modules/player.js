@@ -89,11 +89,7 @@ export function updatePlayerUI(track) {
     document.getElementById('player-artist').textContent = track.artist || 'Unknown';
     document.getElementById('player-cover').src = track.thumbnail || '/static/img/default_cover.png';
 
-    const footer = document.querySelector('.player-footer');
-    if (footer) footer.classList.remove('player-hidden');
-
-    const mainView = document.querySelector('.main-view');
-    if (mainView) mainView.classList.add('has-player');
+    syncPlayerShellVisibility(track);
 
     // Restore buttons that may have been hidden by preview mode
     const likeBtn = document.getElementById('player-like-btn');
@@ -135,11 +131,7 @@ export function updatePlayerUIForPreview(track) {
     document.getElementById('player-artist').textContent = track.artist || 'Unknown';
     document.getElementById('player-cover').src = track.thumbnail || '/static/img/default_cover.png';
 
-    const footer = document.querySelector('.player-footer');
-    if (footer) footer.classList.remove('player-hidden');
-
-    const mainView = document.querySelector('.main-view');
-    if (mainView) mainView.classList.add('has-player');
+    syncPlayerShellVisibility(track);
 
     // Hide like button for non-local previews
     const likeBtn = document.getElementById('player-like-btn');
@@ -309,7 +301,10 @@ export async function playNext() {
     }
 
     // 3. Regular Context Queue
-    if (state.contextQueue.length === 0) return;
+    if (state.contextQueue.length === 0) {
+        clearFinishedPlaybackState();
+        return;
+    }
 
     let nextIdx = state.contextIndex + 1;
     if (nextIdx >= state.contextQueue.length) {
@@ -319,6 +314,7 @@ export async function playNext() {
             await fetchRandomTrackAndPlay();
             return;
         } else {
+            clearFinishedPlaybackState();
             return;
         }
     }
@@ -360,12 +356,37 @@ export async function fetchRandomTrackAndPlay() {
 }
 
 
+export function syncPlayerShellVisibility(track = state.currentTrack) {
+    const hasTrack = Boolean(track);
+    const footer = document.querySelector('.player-footer');
+    const mainView = document.querySelector('.main-view');
+
+    if (footer) {
+        footer.classList.toggle('player-hidden', !hasTrack);
+    }
+
+    if (mainView) {
+        mainView.classList.toggle('has-player', hasTrack);
+    }
+}
+
+function clearFinishedPlaybackState() {
+    state.setCurrentTrack(null);
+    state.setIsPlaying(false);
+    syncPlayerShellVisibility(null);
+    ui.updatePlayButton();
+    ui.updateUIProgress(0, 0);
+}
+
+
 // === SETUP PLAYER EVENT LISTENERS ===
 
 export function setupPlayer() {
     const playBtn = document.getElementById('play-pause-btn');
     const progressBar = document.getElementById('progress-bar');
     const volumeBar = document.getElementById('volume-bar');
+
+    syncPlayerShellVisibility();
 
     if (playBtn) {
         playBtn.addEventListener('click', () => {
@@ -377,6 +398,7 @@ export function setupPlayer() {
 
     state.audio.addEventListener('play', () => {
         state.setIsPlaying(true);
+        syncPlayerShellVisibility();
         ui.updatePlayButton();
         state.audio._endHandled = false;
         acquirePlaybackLock();
@@ -387,6 +409,7 @@ export function setupPlayer() {
 
     state.audio.addEventListener('pause', () => {
         state.setIsPlaying(false);
+        syncPlayerShellVisibility();
         ui.updatePlayButton();
         if ('mediaSession' in navigator) {
             navigator.mediaSession.playbackState = 'paused';
@@ -402,6 +425,7 @@ export function setupPlayer() {
             navigator.mediaSession.playbackState = 'none';
         }
         playNext();
+        syncPlayerShellVisibility();
     });
 
     state.audio.addEventListener('timeupdate', () => {
