@@ -49,6 +49,54 @@ def utcnow():
     return datetime.now(timezone.utc)
 
 
+def _normalize_repo_path(path: str | Path | None) -> str:
+    if path is None:
+        return ""
+    normalized = str(path).replace("\\", "/").strip()
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return normalized.lstrip("/")
+
+
+def _path_variants_for_match(path: str | Path | None) -> set[str]:
+    normalized = _normalize_repo_path(path)
+    if not normalized:
+        return set()
+
+    variants = {normalized}
+    nested_prefixes = []
+
+    if COMPOSE_PROJECT_ROOT != REPO_ROOT:
+        nested_prefixes.append(COMPOSE_PROJECT_ROOT.name)
+    if REPO_ROOT.name and REPO_ROOT.name != COMPOSE_PROJECT_ROOT.name:
+        nested_prefixes.append(REPO_ROOT.name)
+
+    for prefix in nested_prefixes:
+        prefix_token = f"{prefix}/"
+        if normalized.startswith(prefix_token):
+            variants.add(normalized[len(prefix_token):])
+
+    return {variant for variant in variants if variant}
+
+
+def normalize_changed_files(changed_files: list[str]) -> list[str]:
+    normalized = []
+    seen = set()
+    for path in changed_files:
+        for variant in sorted(_path_variants_for_match(path), key=len):
+            if variant not in seen:
+                normalized.append(variant)
+                seen.add(variant)
+    return normalized
+
+
+def should_rebuild_for_changed_files(changed_files: list[str]) -> bool:
+    for path in changed_files:
+        if REBUILD_REQUIRED_PATHS.intersection(_path_variants_for_match(path)):
+            return True
+    return False
+
+
 def get_scheduler_timezone_name(system_settings=None):
     tz_name = getattr(system_settings, "autobackup_timezone", None) if system_settings else None
     return tz_name or "UTC"
