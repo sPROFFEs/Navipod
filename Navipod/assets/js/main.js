@@ -17,6 +17,24 @@ import * as downloads from './modules/downloads.js';
 import * as views from './modules/views.js';
 import * as admin from './modules/admin.js';
 
+function initUserMenu() {
+    const userMenu = document.getElementById('user-menu');
+    if (!userMenu || userMenu.dataset.bound === 'true') return;
+    userMenu.dataset.bound = 'true';
+
+    document.addEventListener('click', (event) => {
+        if (!userMenu.hasAttribute('open')) return;
+        if (userMenu.contains(event.target)) return;
+        userMenu.removeAttribute('open');
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        if (!userMenu.hasAttribute('open')) return;
+        userMenu.removeAttribute('open');
+    });
+}
+
 // === EXPOSE FUNCTIONS TO WINDOW FOR HTML ONCLICK HANDLERS ===
 
 // State
@@ -126,6 +144,8 @@ window.onYouTubeIframeAPIReady = () => {
 // === INITIALIZATION ===
 document.addEventListener('DOMContentLoaded', () => {
     console.log('[MAIN] Navipod ES6 Modules Initialized');
+
+    initUserMenu();
 
     // Initialize YouTube API
     player.initYoutubeAPI();
