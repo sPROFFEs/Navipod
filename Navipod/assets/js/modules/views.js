@@ -191,9 +191,9 @@ export async function renderHome(container) {
         console.error("Recs error:", e);
     }
 
-    let html = `<div class="hero-section">
-        <h1 class="hero-greeting">Good ${ui.getGreeting()}, <span class="text-accent">${window.USER_DATA?.username || 'User'}</span></h1>
-    </div>`;
+    let html = `<section class="hero-section">
+        <h1 class="hero-greeting">${ui.getGreeting()}, ${window.USER_DATA?.username || 'User'}</h1>
+    </section>`;
 
     if (sections && sections.length > 0) {
         sections.forEach(s => {
@@ -221,7 +221,7 @@ export async function renderHome(container) {
 
 export function renderSearch(container) {
     container.innerHTML = `
-        <div class="search-input-wrapper glass-panel" style="margin-top: 8px;">
+        <div class="search-input-wrapper glass-panel search-panel">
             <i data-lucide="search" class="search-icon"></i>
             <input type="text" id="search-input" placeholder="What do you want to listen to?" oninput="handleSearch(this.value)">
         </div>

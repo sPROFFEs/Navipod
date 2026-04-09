@@ -1,0 +1,62 @@
+*,
+*::before,
+*::after {
+    transition-property: background-color, border-color, color, opacity, box-shadow;
+    transition-duration: 140ms;
+    transition-timing-function: ease;
+}
+
+.card,
+.nav-link,
+.chip,
+.track-row,
+.btn-icon-circle,
+.circle-btn,
+.icon-btn-sm,
+.menu-toggle,
+.sidebar-close,
+.action-btn,
+.control-btn,
+.play-btn-card,
+.user-menu-trigger,
+.monitor-button,
+.monitor-primary,
+.monitor-secondary,
+.monitor-warning,
+.monitor-danger {
+    transform: none !important;
+}
+
+.gradient-orb,
+.noise-overlay {
+    display: none !important;
+}
+
+.music-loader .music-bar,
+.playing-icon,
+.fs-background,
+.play-overlay {
+    animation-duration: 0.9s;
+}
+
+.play-overlay {
+    transition: opacity 140ms ease, visibility 140ms ease;
+}
+
+.player-footer,
+.queue-panel,
+.fullscreen-player,
+.modal-overlay,
+.update-toast {
+    transition: opacity 180ms ease, visibility 180ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation: none !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}

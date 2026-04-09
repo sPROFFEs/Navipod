@@ -7,9 +7,12 @@
     <title>{{ _('app.title') }} - {% block title %}Home{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/assets/css/style.css?v={{ range(1, 9999) | random }}">
+    <link rel="stylesheet" href="/assets/css/ui_tokens.css?v={{ range(1, 9999) | random }}">
+    <link rel="stylesheet" href="/assets/css/ui_shell.css?v={{ range(1, 9999) | random }}">
+    <link rel="stylesheet" href="/assets/css/ui_motion.css?v={{ range(1, 9999) | random }}">
     <link rel="stylesheet" href="/assets/css/mobile_fixes.css?v={{ range(1, 9999) | random }}">
     <link rel="stylesheet" href="/assets/css/admin_system.css?v={{ range(1, 9999) | random }}">
 
@@ -28,15 +31,6 @@
 </head>
 
 <body>
-    <!-- Noise Overlay -->
-    <div class="noise-overlay"></div>
-
-    <!-- Fluid Orbs Background -->
-    <div class="smoke-container">
-        <div class="gradient-orb orb-1"></div>
-        <div class="gradient-orb orb-2"></div>
-        <div class="gradient-orb orb-3"></div>
-    </div>
     <div class="app-layout">
         <aside class="sidebar" id="sidebar">
             <div class="brand">

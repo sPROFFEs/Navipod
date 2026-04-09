@@ -1,0 +1,38 @@
+:root {
+    --primary: #149a51;
+    --primary-hover: #118547;
+    --accent: #149a51;
+    --background: #111315;
+    --surface-0: #16191c;
+    --surface-1: #1b1f23;
+    --surface-2: #232931;
+    --surface-3: #2a313a;
+    --border-subtle: #2f3640;
+    --border-strong: #434c57;
+    --text-main: #eef2f6;
+    --text-sub: #98a2ad;
+    --text-faint: #737d89;
+    --danger: #c94f4f;
+    --warning: #b7791f;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.24);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.22);
+    --radius-sm: 8px;
+    --radius-md: 10px;
+    --radius-lg: 12px;
+    --sidebar-width: 252px;
+    --player-height: 88px;
+}
+
+* {
+    font-family: "IBM Plex Sans", sans-serif;
+}
+
+body {
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 22%),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+        var(--background);
+    background-size: auto, 24px 24px, 24px 24px, auto;
+    color: var(--text-main);
+}
