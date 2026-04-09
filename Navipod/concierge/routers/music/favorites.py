@@ -217,19 +217,29 @@ async def list_favorites(request: Request, db: Session = Depends(get_db)):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
     try:
-        favorites = db.query(database.UserFavorite).filter(
-            database.UserFavorite.user_id == user.id
-        ).all()
-        
+        favorites = (
+            db.query(
+                database.Track.id.label("track_id"),
+                database.Track.title.label("title"),
+                database.Track.artist.label("artist"),
+                database.Track.album.label("album"),
+                database.UserFavorite.added_at.label("added_at"),
+            )
+            .join(database.Track, database.Track.id == database.UserFavorite.track_id)
+            .filter(database.UserFavorite.user_id == user.id)
+            .order_by(database.UserFavorite.added_at.desc())
+            .all()
+        )
+
         return JSONResponse([{
-            "id": f.track.id,
-            "db_id": f.track.id,
-            "title": f.track.title,
-            "artist": f.track.artist,
-            "album": f.track.album,
-            "thumbnail": f"/api/cover/{f.track.id}",
-            "added_at": str(f.added_at)
-        } for f in favorites if f.track])
+            "id": row.track_id,
+            "db_id": row.track_id,
+            "title": row.title,
+            "artist": row.artist,
+            "album": row.album,
+            "thumbnail": f"/api/cover/{row.track_id}",
+            "added_at": str(row.added_at)
+        } for row in favorites])
     except Exception as e:
         print(f"[FAVORITES] Error: {e}")
         return JSONResponse([])

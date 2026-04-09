@@ -148,30 +148,39 @@ async def downloads_status(request: Request, db: Session = Depends(get_db)):
     jobs = db.query(database.DownloadJob).filter(
         database.DownloadJob.user_id == user.id
     ).order_by(database.DownloadJob.created_at.desc()).limit(10).all()
-    
+
+    target_playlist_ids = {
+        job.target_playlist_id
+        for job in jobs
+        if job.target_playlist_id
+    }
+    legacy_playlist_names = {}
+    if target_playlist_ids:
+        legacy_playlist_names = {
+            row.id: row.name
+            for row in db.query(database.UserPlaylist.id, database.UserPlaylist.name).filter(
+                database.UserPlaylist.id.in_(target_playlist_ids)
+            ).all()
+        }
+
     clean_jobs = []
-    for j in jobs:
+    for job in jobs:
         target = "General"
-        # PRIORITY 1: If a new folder was created, show its name
-        if j.new_playlist_name: 
-            target = f"✨ {j.new_playlist_name}"
-        # PRIORITY 2: If added to existing, look up its name
-        elif j.target_playlist_id:
-            pl = db.query(database.UserPlaylist).filter(
-                database.UserPlaylist.id == j.target_playlist_id
-            ).first()
-            target = f"📂 {pl.name}" if pl else f"Playlist #{j.target_playlist_id}"
-        
-        # Clean filename (remove full path)
-        current_file = os.path.basename(j.current_file) if j.current_file and "/" in j.current_file else j.current_file
+        if job.new_playlist_name:
+            target = f"✨ {job.new_playlist_name}"
+        elif job.target_playlist_id:
+            playlist_name = legacy_playlist_names.get(job.target_playlist_id)
+            target = f"📂 {playlist_name}" if playlist_name else f"Playlist #{job.target_playlist_id}"
+
+        current_file = os.path.basename(job.current_file) if job.current_file and "/" in job.current_file else job.current_file
 
         clean_jobs.append({
-            "id": j.id, 
-            "input_url": j.input_url, 
-            "status": j.status,
-            "progress": j.progress_percent, 
+            "id": job.id,
+            "input_url": job.input_url,
+            "status": job.status,
+            "progress": job.progress_percent,
             "current_file": current_file,
-            "error": j.error_log, 
+            "error": job.error_log,
             "target": target
         })
     return JSONResponse(clean_jobs)
