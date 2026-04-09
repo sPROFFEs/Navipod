@@ -250,10 +250,6 @@
         margin-bottom: 16px;
     }
 
-    .source-chips::-webkit-scrollbar {
-        display: none;
-    }
-
     .chip {
         padding: 8px 16px;
         font-size: 0.8rem;

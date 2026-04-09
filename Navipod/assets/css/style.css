@@ -2903,7 +2903,6 @@ body {
         right: 6px !important;
     }
 
-    /* --- SOURCE CHIPS: scrollable --- */
     /* --- PLAYLIST ACTIONS --- */
     .playlist-actions {
         display: flex;
@@ -2935,13 +2934,11 @@ body {
         margin: 0 !important;
     }
 
-    /* --- SEARCH --- */
     /* --- MODALS: full-width on mobile --- */
     .modal {
         width: 95vw;
         max-width: 95vw;
     }
 
-    /* --- QUEUE PANEL --- */
 }
 
