@@ -945,57 +945,6 @@ body {
         overflow: hidden;
     }
 
-    .app-layout:has(.player-footer:not(.player-hidden)) {
-        /* On mobile, player might hover or be stuck at bottom.
-           If we want it fixed at bottom without affecting scroll,
-           we can use 1fr auto or 1fr var(--player-height).
-           Given the gap was the issue, removing it helps.
-           ensure main content scrolls independently. */
-        grid-template-rows: 1fr var(--player-height);
-    }
-
-    .player-footer {
-        border-radius: 0;
-        border: none;
-        border-top: 1px solid var(--glass-border);
-        background: rgba(10, 10, 15, 0.98);
-        grid-template-columns: 1fr;
-        grid-template-rows: auto auto;
-        height: auto;
-        padding: 16px;
-        gap: 12px;
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-    }
-
-    .player-left {
-        width: 100%;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        min-width: 0;
-    }
-
-    .player-left .track-info {
-        flex: 1 1 auto;
-        min-width: 0;
-        margin-right: 0;
-    }
-
-    #player-like-btn,
-    #player-add-btn {
-        width: 36px;
-        height: 36px;
-        min-width: 36px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        flex: 0 0 36px;
-        padding: 0;
-    }
-
     .player-right {
         display: none;
     }
