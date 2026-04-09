@@ -2,6 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Rebuild trigger for updater validation
+
 # --- CAMBIO AQUÍ: Añadir ffmpeg, nodejs, git y deno (vía curl) ---
 RUN apt-get update && \
     apt-get install -y docker.io docker-compose ffmpeg git unzip nodejs curl ca-certificates gosu && \
