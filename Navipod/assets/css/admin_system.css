@@ -790,6 +790,7 @@
 .admin-field {
     display: grid;
     gap: 8px;
+    min-width: 0;
 }
 
 .admin-field label {
@@ -814,6 +815,7 @@
     border: 0;
     color: var(--admin-text);
     outline: none;
+    min-width: 0;
 }
 
 .admin-toggle {
@@ -1037,6 +1039,18 @@
     justify-content: flex-end;
 }
 
+.admin-result-side .admin-icon-btn.danger {
+    background: rgba(220, 38, 38, 0.12);
+    border-color: rgba(220, 38, 38, 0.32);
+    color: #f87171;
+}
+
+.admin-result-side .admin-icon-btn.danger:hover {
+    background: rgba(220, 38, 38, 0.18);
+    border-color: rgba(248, 113, 113, 0.45);
+    color: #fca5a5;
+}
+
 .admin-source-badge {
     display: inline-flex;
     align-items: center;
@@ -1148,6 +1162,20 @@
         grid-template-columns: 1fr;
     }
 
+    .admin-field {
+        width: 100%;
+    }
+
+    .admin-field > label {
+        margin: 0;
+    }
+
+    .admin-input-wrap,
+    .admin-toggle,
+    .admin-submit {
+        width: 100%;
+    }
+
     .admin-shell-actions,
     .monitor-actions,
     .monitor-panel-header > div:last-child {
@@ -1178,6 +1206,12 @@
     .admin-result-side,
     .admin-row-actions {
         justify-content: flex-start;
+    }
+
+    .admin-result-side .admin-icon-btn.danger {
+        width: 44px;
+        height: 44px;
+        flex: 0 0 44px;
     }
 
     .admin-users-table,
