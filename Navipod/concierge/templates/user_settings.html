@@ -221,6 +221,13 @@
             align-items: center;
             justify-content: center;
             cursor: pointer;
+            padding: 0;
+            overflow: hidden;
+            font-size: 0;
+            line-height: 0;
+            appearance: none;
+            -webkit-appearance: none;
+            flex: 0 0 32px;
             transition: border-color .15s ease, color .15s ease, background-color .15s ease;
         }
         .user-settings-toggle-secret:hover {
@@ -333,6 +340,14 @@
             }
             .user-settings-actions > * {
                 width: 100%;
+            }
+            .user-settings-secret .user-settings-input {
+                padding-right: 48px;
+            }
+            .user-settings-toggle-secret {
+                width: 34px;
+                height: 34px;
+                flex-basis: 34px;
             }
         }
     </style>
