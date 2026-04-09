@@ -193,7 +193,9 @@ export async function renderHome(container) {
 
     const username = ui.escHtml(window.USER_DATA?.username || 'User');
     let html = `<section class="hero-section">
+        <div class="hero-kicker">Your library, tuned for right now</div>
         <h1 class="hero-greeting">Good ${ui.getGreeting()}, <span class="hero-username">${username}</span></h1>
+        <p class="hero-subtitle">Pick up where you left off, jump into recommendations, or queue something better.</p>
     </section>`;
 
     if (sections && sections.length > 0) {
