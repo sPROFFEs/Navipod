@@ -30,16 +30,26 @@
     position: fixed;
     top: 16px;
     right: 16px;
-    bottom: 106px;
+    bottom: calc(var(--player-height) + 16px);
     width: 360px;
     max-width: calc(100vw - 32px);
+    max-height: calc(100vh - var(--player-height) - 32px);
     z-index: 120;
     transform: translateX(110%);
     transition: transform 0.25s ease;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: rgba(21, 24, 27, 0.96);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid var(--border-subtle);
     border-left: 1px solid var(--border-subtle);
     border-radius: 0;
+    pointer-events: none;
 }
 
 .queue-panel.open {
     transform: translateX(0);
+    pointer-events: auto;
 }

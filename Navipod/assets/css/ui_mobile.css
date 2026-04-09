@@ -29,6 +29,10 @@
         padding: 18px;
     }
 
+    .main-view.has-player .view-content {
+        padding-bottom: 148px;
+    }
+
     .top-bar {
         padding: 0 12px;
     }
@@ -189,6 +193,7 @@
         transform: translate(-50%, -46%);
         opacity: 0;
         overflow: hidden;
+        background: rgba(21, 24, 27, 0.98);
     }
 
     .queue-panel.open {
@@ -335,10 +340,15 @@
     .fullscreen-player .queue-panel {
         width: min(420px, calc(100vw - 24px));
         max-width: calc(100vw - 24px);
+        max-height: min(68vh, 620px);
     }
 }
 
 @media (max-width: 480px) {
+    .main-view.has-player .view-content {
+        padding-bottom: 140px;
+    }
+
     .grid-shelf > .card {
         flex: 0 0 120px;
         min-width: 120px;
@@ -368,6 +378,13 @@
     .player-footer {
         padding: 10px 12px 8px;
         gap: 8px 10px;
+    }
+
+    .queue-panel,
+    .fullscreen-player .queue-panel {
+        width: calc(100vw - 16px);
+        max-width: calc(100vw - 16px);
+        max-height: min(72vh, 600px);
     }
 
     .player-controls {
