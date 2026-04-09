@@ -47,11 +47,18 @@ def _read_release_version():
     return "v0.0.0"
 
 
+def _get_revision_since_version_bump(ref: str = "HEAD"):
+    version_commit = _run_git(["log", "-n", "1", "--format=%H", ref, "--", str(VERSION_FILE.name)], fallback=None)
+    if not version_commit:
+        return _run_git(["rev-list", "--count", ref], fallback="unknown")
+    return _run_git(["rev-list", "--count", f"{version_commit}..{ref}"], fallback="unknown")
+
+
 def get_build_info():
     commit = os.getenv("APP_COMMIT") or _run_git(["rev-parse", "--short", "HEAD"], fallback="unknown")
     branch = os.getenv("APP_CHANNEL") or _run_git(["branch", "--show-current"], fallback=settings.UPDATE_SOURCE_BRANCH)
     build_date = os.getenv("APP_BUILD_DATE") or _run_git(["log", "-1", "--format=%cI"], fallback="unknown")
-    revision = os.getenv("APP_REVISION") or _run_git(["rev-list", "--count", "HEAD"], fallback="unknown")
+    revision = os.getenv("APP_REVISION") or _get_revision_since_version_bump("HEAD")
     release_version = _read_release_version()
     version = f"{release_version}+r{revision}" if revision != "unknown" else release_version
     return {

@@ -16,7 +16,7 @@ import httpx
 
 import database
 import ops_core as ops
-from build_info_service import get_build_info
+from build_info_service import get_build_info, _get_revision_since_version_bump
 from job_service import acquire_lock, create_admin_job, get_active_operation_lock, get_admin_job, get_recent_admin_jobs, release_lock, update_admin_job_progress
 
 COMPOSE_UPDATE_TIMEOUT_SECONDS = 1000
@@ -170,17 +170,15 @@ async def _get_remote_release_version():
         return None
 
 
-def _build_remote_version_display(current: dict, remote_release_version: str | None, behind_count: int, remote_commit: str):
+def _build_remote_version_display(current: dict, remote_ref: str | None, remote_release_version: str | None, remote_commit: str):
     release_version = remote_release_version or current.get("release_version") or "v0.0.0"
-    local_revision = current.get("revision")
-    try:
-        local_revision_num = int(local_revision)
-    except Exception:
-        local_revision_num = None
-    if local_revision_num is not None:
-        remote_revision = local_revision_num + int(max(behind_count, 0))
-        return f"{release_version}+r{remote_revision}"
-    return f"{release_version} ({remote_commit})"
+    if remote_ref:
+        remote_revision = _get_revision_since_version_bump(remote_ref)
+        if remote_revision != "unknown":
+            return f"{release_version}+r{remote_revision}"
+    if remote_commit and remote_commit != "unknown":
+        return f"{release_version} ({remote_commit})"
+    return release_version
 
 
 def _get_update_details_via_fetch(local_full_commit: str, current: dict):
@@ -213,7 +211,7 @@ def _get_update_details_via_fetch(local_full_commit: str, current: dict):
             "commit": remote_commit,
             "full_commit": remote_full_commit,
             "release_version": remote_release_version,
-            "version": _build_remote_version_display(current, remote_release_version, behind_count, remote_commit),
+            "version": _build_remote_version_display(current, ops.UPDATE_TRACKING_REMOTE, remote_release_version, remote_commit),
         },
         "ahead_count": ahead_count,
         "behind_count": behind_count,
@@ -249,7 +247,7 @@ async def _get_update_check_payload():
                 "commit": remote_short,
                 "full_commit": remote_sha,
                 "release_version": remote_release_version,
-                "version": _build_remote_version_display(current, remote_release_version, behind_count, remote_short),
+                "version": _build_remote_version_display(current, None, remote_release_version, remote_short),
             },
             "ahead_count": 0,
             "behind_count": behind_count,
