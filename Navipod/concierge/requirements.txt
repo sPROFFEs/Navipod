@@ -22,3 +22,4 @@ pydantic-settings
 slowapi
 PyYAML
 pytest
+# Rebuild trigger for updater validation
