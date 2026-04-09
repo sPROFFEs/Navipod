@@ -41,7 +41,7 @@ def _truncate_log_text(value, limit: int = 700):
     return text[: limit - 3] + "..."
 
 
-def _log_command_result(job_id: int, label: str, result):
+def _log_command_result(job_id: int, label: str, result, *, include_command_on_success: bool = False, include_output_on_success: bool = False):
     if isinstance(result, dict):
         ok = bool(result.get("ok"))
         command = result.get("command")
@@ -58,11 +58,11 @@ def _log_command_result(job_id: int, label: str, result):
     status_label = "succeeded" if ok else "failed"
     suffix = f" (exit {returncode})" if returncode is not None else ""
     update_admin_job_progress(job_id, message=f"{label} {status_label}{suffix}")
-    if command:
+    if command and (not ok or include_command_on_success):
         update_admin_job_progress(job_id, message=f"{label} command: {command}")
-    if stdout:
+    if stdout and (not ok or include_output_on_success):
         update_admin_job_progress(job_id, message=f"{label} stdout: {stdout}")
-    if stderr:
+    if stderr and (not ok or include_output_on_success):
         update_admin_job_progress(job_id, message=f"{label} stderr: {stderr}")
 
 
@@ -361,9 +361,27 @@ def _run_check_update_job(job_id: int, triggered_by: str | None):
 def _run_compose_update(job_id: int, changed_files: list[str]):
     services = [svc.strip() for svc in ops.settings.UPDATE_MANAGED_SERVICES.split() if svc.strip()]
     rebuild_required = any(path in ops.REBUILD_REQUIRED_PATHS for path in changed_files)
-    update_admin_job_progress(job_id, message=f"Recreating services: {' '.join(services)}", phase="recreate", progress=85, status="running", extra={"changed_files": changed_files[:100], "rebuild_required": rebuild_required})
+    compose_args = ["up", "-d"]
+    compose_phase = "build" if rebuild_required else "recreate"
+    compose_progress = 80 if rebuild_required else 85
+    compose_message = (
+        f"Building updated images and recreating services: {' '.join(services)}"
+        if rebuild_required
+        else f"Recreating services without image rebuild: {' '.join(services)}"
+    )
+    if rebuild_required:
+        compose_args.append("--build")
+    compose_args.extend(["--remove-orphans", *services])
+    update_admin_job_progress(
+        job_id,
+        message=compose_message,
+        phase=compose_phase,
+        progress=compose_progress,
+        status="running",
+        extra={"changed_files": changed_files[:100], "rebuild_required": rebuild_required},
+    )
     completed = ops._run_compose_command(
-        ["up", "-d", "--build", "--remove-orphans", *services],
+        compose_args,
         check=False,
         timeout_seconds=COMPOSE_UPDATE_TIMEOUT_SECONDS,
     )
@@ -371,15 +389,15 @@ def _run_compose_update(job_id: int, changed_files: list[str]):
     if completed.returncode != 0:
         raise RuntimeError((completed.stderr or completed.stdout or "docker compose up failed").strip())
 
-    update_admin_job_progress(job_id, message="Services recreated. Waiting for restarted services to become healthy", phase="health", progress=90, status="running")
+    update_admin_job_progress(job_id, message="Services restarted. Waiting for health check", phase="health", progress=90, status="running")
     health_result = _run_post_update_health_check()
     if health_result.get("ok"):
-        update_admin_job_progress(job_id, message=f"Health check succeeded via {health_result.get('url')} ({health_result.get('status_code')})", phase="cleanup", progress=95, status="running")
+        update_admin_job_progress(job_id, message="Health check passed", phase="cleanup", progress=95, status="running")
     else:
         update_admin_job_progress(job_id, message=f"Health check failed: {health_result.get('error', 'unknown error')}", phase="health", progress=95, status="running")
         raise RuntimeError(f"health check failed: {health_result.get('error', 'unknown error')}")
 
-    update_admin_job_progress(job_id, message="Pruning dangling Docker images and builder cache", phase="cleanup", progress=97, status="running")
+    update_admin_job_progress(job_id, message="Cleaning Docker cache", phase="cleanup", progress=97, status="running")
     try:
         image_prune = subprocess.run(
             ["docker", "image", "prune", "-f"],

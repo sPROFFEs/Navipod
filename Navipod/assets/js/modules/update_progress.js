@@ -7,6 +7,46 @@ function escapeHtml(value) {
         .replaceAll("'", '&#39;');
 }
 
+function getPhaseLabel(phase, details = {}) {
+    const rebuildRequired = !!details.rebuild_required;
+    const labels = {
+        queued: 'Queued',
+        check: 'Checking updates',
+        backup: 'Creating backup',
+        fetch: 'Fetching remote revision',
+        workspace: 'Updating workspace',
+        migrate: 'Running migrations',
+        build: rebuildRequired ? 'Building images' : 'Preparing services',
+        recreate: rebuildRequired ? 'Restarting services' : 'Recreating services',
+        health: 'Waiting for health check',
+        cleanup: 'Cleaning up',
+        done: 'Completed',
+        error: 'Failed'
+    };
+    return labels[phase] || phase || 'Queued';
+}
+
+function getFriendlyMessage(data) {
+    const phase = data.details?.phase || 'queued';
+    const rebuildRequired = !!data.details?.rebuild_required;
+    if (data.status === 'failed') {
+        return data.message || 'Update failed';
+    }
+    if (phase === 'build' && rebuildRequired) {
+        return 'Building updated containers. This can take several minutes.';
+    }
+    if (phase === 'recreate' && !rebuildRequired) {
+        return 'Restarting services without rebuilding images.';
+    }
+    if (phase === 'health') {
+        return 'Waiting for restarted services to become available.';
+    }
+    if (phase === 'cleanup') {
+        return 'Finalizing update and cleaning temporary Docker data.';
+    }
+    return data.message || 'Waiting...';
+}
+
 export function initUpdateProgress(root = document) {
     const shell = root.querySelector('[data-update-job-id]');
     if (!shell || shell.dataset.initialized === 'true') return;
@@ -50,8 +90,8 @@ export function initUpdateProgress(root = document) {
         const progressValue = data.status === 'completed' ? 100 : (data.details?.progress || 0);
         if (progressLabel) progressLabel.textContent = `${progressValue}%`;
         if (progressBar) progressBar.style.width = `${progressValue}%`;
-        if (phaseNode) phaseNode.textContent = data.details?.phase || 'queued';
-        if (messageNode) messageNode.textContent = data.message || 'Waiting...';
+        if (phaseNode) phaseNode.textContent = getPhaseLabel(data.details?.phase, data.details);
+        if (messageNode) messageNode.textContent = getFriendlyMessage(data);
         renderLogItems(data.details?.logs || []);
 
         if (data.status === 'completed' && !redirectScheduled) {
@@ -64,9 +104,9 @@ export function initUpdateProgress(root = document) {
 
     function renderReconnectState() {
         if (!lastJobData || terminalStates.has(lastJobData.status)) return;
-        if (!['recreate', 'cleanup', 'health'].includes(lastJobData.details?.phase || '')) return;
+        if (!['build', 'recreate', 'cleanup', 'health'].includes(lastJobData.details?.phase || '')) return;
         if (messageNode) messageNode.textContent = 'Waiting for services to come back after restart...';
-        if (phaseNode) phaseNode.textContent = lastJobData.details?.phase || 'recreate';
+        if (phaseNode) phaseNode.textContent = getPhaseLabel(lastJobData.details?.phase, lastJobData.details);
         const progressValue = Math.max(lastJobData.details?.progress || 0, 90);
         if (progressLabel) progressLabel.textContent = `${progressValue}%`;
         if (progressBar) progressBar.style.width = `${progressValue}%`;
@@ -112,7 +152,7 @@ export function initUpdateProgress(root = document) {
         if (redirectScheduled) return;
         if (reconnectAttempts < 3) return;
         if (!lastJobData || terminalStates.has(lastJobData.status)) return;
-        if (!['recreate', 'health', 'cleanup'].includes(lastJobData.details?.phase || '')) return;
+        if (!['build', 'recreate', 'health', 'cleanup'].includes(lastJobData.details?.phase || '')) return;
         try {
             const res = await fetch('/admin/system', {
                 credentials: 'same-origin',
