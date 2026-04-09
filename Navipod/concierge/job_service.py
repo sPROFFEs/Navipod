@@ -7,7 +7,7 @@ import database
 
 ADMIN_JOB_RETENTION_LIMIT = 200
 GLOBAL_OPERATION_LOCK = "admin-global-operation"
-LOCK_TIMEOUT_MINUTES = 30
+LOCK_TIMEOUT_MINUTES = 120
 
 
 def utcnow():

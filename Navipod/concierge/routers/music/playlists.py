@@ -5,8 +5,8 @@ import os
 import asyncio
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy.orm import Session, aliased
+from sqlalchemy import func, select
 from pydantic import BaseModel as PydanticBaseModel
 import httpx
 
@@ -66,6 +66,70 @@ def get_playlist_thumbnail(db: Session, playlist_id: int) -> str:
     if first_item and first_item.track:
         return f"/api/cover/{first_item.track.id}"
     return "/static/img/default_cover.png"
+
+
+def fetch_playlist_summaries(db: Session, viewer_id: int | None = None, *, owner_id: int | None = None, public_only: bool = False):
+    count_subquery = (
+        db.query(
+            database.PlaylistItem.playlist_id.label("playlist_id"),
+            func.count(database.PlaylistItem.id).label("track_count"),
+        )
+        .group_by(database.PlaylistItem.playlist_id)
+        .subquery()
+    )
+
+    source_playlist = aliased(database.Playlist)
+    source_owner = aliased(database.User)
+    thumbnail_track_id = (
+        select(database.PlaylistItem.track_id)
+        .where(database.PlaylistItem.playlist_id == database.Playlist.id)
+        .order_by(database.PlaylistItem.position.asc(), database.PlaylistItem.id.asc())
+        .limit(1)
+        .scalar_subquery()
+    )
+
+    query = (
+        db.query(
+            database.Playlist.id.label("id"),
+            database.Playlist.name.label("name"),
+            database.Playlist.owner_id.label("owner_id"),
+            database.Playlist.is_public.label("is_public"),
+            database.Playlist.source_playlist_id.label("source_playlist_id"),
+            database.User.username.label("owner_username"),
+            source_owner.username.label("source_owner_username"),
+            func.coalesce(count_subquery.c.track_count, 0).label("track_count"),
+            thumbnail_track_id.label("thumbnail_track_id"),
+        )
+        .join(database.User, database.User.id == database.Playlist.owner_id)
+        .outerjoin(source_playlist, source_playlist.id == database.Playlist.source_playlist_id)
+        .outerjoin(source_owner, source_owner.id == source_playlist.owner_id)
+        .outerjoin(count_subquery, count_subquery.c.playlist_id == database.Playlist.id)
+    )
+
+    if owner_id is not None:
+        query = query.filter(database.Playlist.owner_id == owner_id)
+    if public_only:
+        query = query.filter(database.Playlist.is_public == True)
+
+    summaries = []
+    for row in query.order_by(database.Playlist.id.desc()).all():
+        if not row.name or row.name.lower() in SYSTEM_PLAYLIST_NAMES:
+            continue
+        owner_username = row.owner_username or "Unknown"
+        source_owner_username = row.source_owner_username or owner_username
+        summaries.append({
+            "id": row.id,
+            "name": row.name,
+            "track_count": int(row.track_count or 0),
+            "thumbnail": f"/api/cover/{row.thumbnail_track_id}" if row.thumbnail_track_id else "/static/img/default_cover.png",
+            "is_public": bool(row.is_public),
+            "source_playlist_id": row.source_playlist_id,
+            "owner_username": owner_username,
+            "source_owner_username": source_owner_username,
+            "is_owner": viewer_id == row.owner_id if viewer_id is not None else False,
+            "is_editable": row.source_playlist_id is None and viewer_id == row.owner_id if viewer_id is not None else False,
+        })
+    return summaries
 
 
 def serialize_playlist_summary(db: Session, playlist, viewer_id: int | None = None):
@@ -253,15 +317,7 @@ async def list_playlists(request: Request, db: Session = Depends(get_db)):
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-    playlists = db.query(database.Playlist).filter(database.Playlist.owner_id == user.id).all()
-    
-    filtered = [
-        serialize_playlist_summary(db, p, viewer_id=user.id)
-        for p in playlists
-        if p.name.lower() not in SYSTEM_PLAYLIST_NAMES
-    ]
-
-    return JSONResponse(filtered)
+    return JSONResponse(fetch_playlist_summaries(db, viewer_id=user.id, owner_id=user.id))
 
 
 @router.get("/api/public/playlists")
@@ -271,16 +327,7 @@ async def list_public_playlists(request: Request, db: Session = Depends(get_db))
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-    playlists = db.query(database.Playlist).filter(
-        database.Playlist.is_public == True
-    ).order_by(database.Playlist.id.desc()).all()
-
-    response = [
-        serialize_playlist_summary(db, p, viewer_id=user.id)
-        for p in playlists
-        if p.name.lower() not in SYSTEM_PLAYLIST_NAMES
-    ]
-    return JSONResponse(response)
+    return JSONResponse(fetch_playlist_summaries(db, viewer_id=user.id, public_only=True))
 
 
 @router.post("/api/playlists")
