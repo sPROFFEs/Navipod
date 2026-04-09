@@ -39,7 +39,7 @@ This repository has two levels:
 - Unified search across local tracks, YouTube, Spotify, Last.fm, and MusicBrainz
 - Shared download pool with deduplication and metadata enrichment
 - Recommendation feeds backed by local history and remote providers
-- Admin panel with system monitor, pool quota controls, and maintenance tools
+- Admin panel with user management, system monitor, backups, in-app update flow, and maintenance tools
 - Subsonic-compatible endpoints for mobile clients and remote playback
 
 ## Features
@@ -48,9 +48,10 @@ This repository has two levels:
 - Shared global music pool with deduplication
 - Remote search across local library, YouTube, Spotify, Last.fm, and MusicBrainz
 - Download queue with YouTube and Spotify-oriented fallback logic
+- Download history pruning that keeps active jobs and trims old finished entries automatically
 - Recommendations from Spotify, YouTube, Last.fm, MusicBrainz, and local history
 - Cover enrichment with provider fallbacks and persistent cache
-- Admin panel for users, system monitor, RAM/cache tools, and pool size limits
+- Admin panel for users, system monitor, RAM/cache tools, pool size limits, rotating backups, and update checks
 - Subsonic-compatible access for mobile players such as Amperfy, Tempo, Symfonium, and similar apps
 
 ## Architecture
@@ -138,6 +139,22 @@ Important notes:
 - The admin System Monitor now manages two rotating backup slots: `current` and `previous`.
 - `BACKUP_ROOT` is the path seen by the `concierge` container, not the host path. Leave `/saas-data/backups` unless you know exactly why you need a different container-internal mount path.
 - `APP_SOURCE_ROOT` is the repository root mounted inside the `concierge` container. It is used for build metadata and the upcoming update manager.
+
+## Admin Utilities
+
+Navipod includes several admin-side utilities that are easy to miss if you only read the deployment steps.
+
+- `Admin > User Management`: create users, reset passwords, delete non-owner users, and inspect library duplicates
+- `Admin > Library Management`: search tracks globally and remove broken or redundant entries
+- `System Monitor > Updates`: check GitHub `main`, see pending commits, and apply updates from inside the UI
+- `System Monitor > Backups`: manage rotating `current` and `previous` backup slots and restore them from the UI
+- `System Monitor > Operations`: change the shared pool limit, purge storage residue, and flush Linux page cache
+- admin login triggers a silent update refresh so the web UI can surface an update notification without manually opening the monitor
+
+Version semantics:
+- `Release version` comes from the `VERSION` file
+- `Revision` is the number of commits within the current release line
+- changing `VERSION` resets the revision counter for the next release line
 
 ### 3. Run the setup script
 
@@ -376,6 +393,17 @@ cd Navipod
 docker compose up -d --build
 ```
 
+You can also update from the web UI:
+- open `Admin > System Monitor`
+- run `Check for Updates`
+- use `Apply Update`
+
+The in-app updater:
+- creates a backup before applying changes
+- runs schema migrations
+- rebuilds containers only when the update actually touches rebuild-triggering paths
+- recreates services, runs health checks, and prunes Docker cache afterward
+
 ## Backup and Restore
 
 Back up at least:
@@ -455,6 +483,19 @@ Check:
 - the backend container started successfully
 - `docker compose logs -f concierge` does not show docker permission errors
 
+### Updates do not appear in the admin toast
+
+Check:
+- you are logged in as an admin user
+- the backend can reach the configured GitHub repository
+- `System Monitor > Updates` shows a recent `Last checked` timestamp
+- `docker compose logs -f concierge` does not show update-check failures
+
+Notes:
+- admin login triggers a background refresh of update state
+- the toast polls briefly after load to catch that background refresh
+- if the repository is unreachable, no toast will appear because there is no fresh remote state to show
+
 ### Permission problems in `/opt/saas-data`
 
 If you manually created the directories with restrictive ownership, the container may fail to write cache, database, or user files.
@@ -507,17 +548,3 @@ In short:
 - offering it to third parties as a paid or hosted service is not allowed
 
 The full binding terms are in [LICENSE](C:\Users\user\Documents\Navipod\LICENSE).
-
-Updater test note: this line is a documentation-only change used to generate a safe test revision for the in-app update flow.
-
-Updater test marker: 2026-04-08T2026-04-08T14:31:24.0256531+02:00
-
-Updater test marker 2: 2026-04-08T2026-04-08T14:38:15.6320749+02:00
-
-Updater test marker 3: 2026-04-09T2026-04-09T08:46:03.1289934+02:00
-
-Updater test marker 4: 2026-04-09T2026-04-09T09:22:25.3036166+02:00
-
-Updater test marker 5: 2026-04-09T2026-04-09T09:47:01.7275318+02:00
-
-Updater test marker 6: 2026-04-09T2026-04-09T09:48:07.6338141+02:00
