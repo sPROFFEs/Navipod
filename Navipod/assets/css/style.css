@@ -2893,44 +2893,6 @@ body {
         display: none;
     }
 
-    .grid-shelf>.card {
-        flex: 0 0 140px;
-        min-width: 140px;
-        scroll-snap-align: start;
-    }
-
-    /* --- CARDS: Compact --- */
-    .card {
-        padding: 10px;
-        border-radius: 10px;
-    }
-
-    .card-img-container {
-        margin-bottom: 10px;
-        border-radius: 6px;
-    }
-
-    .card-title {
-        font-size: 0.85rem;
-    }
-
-    .card-subtitle {
-        font-size: 0.75rem;
-    }
-
-    .play-overlay {
-        visibility: visible;
-        opacity: 0;
-    }
-
-    .card.active-mobile .play-overlay {
-        opacity: 1;
-    }
-
-    .play-btn-card {
-        width: 36px;
-        height: 36px;
-    }
 
     /* Source icon overlay on cards — smaller on mobile */
     .card-img-container>div[style*="position:absolute"] {
@@ -2942,25 +2904,6 @@ body {
     }
 
     /* --- SOURCE CHIPS: scrollable --- */
-    .source-chips {
-        overflow-x: auto;
-        flex-wrap: nowrap;
-        scrollbar-width: none;
-        padding-bottom: 4px;
-        margin-bottom: 16px;
-    }
-
-    .source-chips::-webkit-scrollbar {
-        display: none;
-    }
-
-    .chip {
-        padding: 8px 16px;
-        font-size: 0.8rem;
-        white-space: nowrap;
-        flex-shrink: 0;
-    }
-
     /* --- PLAYLIST ACTIONS --- */
     .playlist-actions {
         display: flex;
@@ -2993,16 +2936,6 @@ body {
     }
 
     /* --- SEARCH --- */
-    .search-input-wrapper {
-        padding: 12px 18px;
-        margin-bottom: 16px;
-        border-radius: 40px;
-    }
-
-    .search-input-wrapper input {
-        font-size: 1rem;
-    }
-
     /* --- MODALS: full-width on mobile --- */
     .modal {
         width: 95vw;
@@ -3010,37 +2943,5 @@ body {
     }
 
     /* --- QUEUE PANEL --- */
-    .queue-panel {
-        width: 100%;
-        max-width: 100%;
-    }
 }
 
-/* Small phones (≤480px) — extra compact */
-@media (max-width: 480px) {
-    .grid-shelf>.card {
-        flex: 0 0 120px;
-        min-width: 120px;
-    }
-
-    .card {
-        padding: 8px;
-    }
-
-    .card-title {
-        font-size: 0.8rem;
-    }
-
-    .card-subtitle {
-        font-size: 0.7rem;
-    }
-
-    .search-input-wrapper {
-        padding: 10px 14px;
-    }
-
-    .chip {
-        padding: 6px 12px;
-        font-size: 0.75rem;
-    }
-}
