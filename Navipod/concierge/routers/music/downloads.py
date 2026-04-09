@@ -18,6 +18,9 @@ from .core import get_db, get_current_user_safe
 
 router = APIRouter()
 
+DOWNLOAD_JOB_HISTORY_LIMIT = 100
+TERMINAL_DOWNLOAD_STATUSES = ("completed", "finished", "failed", "error")
+
 
 # --- PYDANTIC MODELS ---
 
@@ -82,6 +85,24 @@ async def run_download_in_background(job_id: int, user_id: int):
         bg_db.close()
 
 
+def _prune_terminal_download_jobs(db: Session, user_id: int, keep: int = DOWNLOAD_JOB_HISTORY_LIMIT):
+    terminal_jobs = db.query(database.DownloadJob.id).filter(
+        database.DownloadJob.user_id == user_id,
+        database.DownloadJob.status.in_(TERMINAL_DOWNLOAD_STATUSES)
+    ).order_by(database.DownloadJob.created_at.desc(), database.DownloadJob.id.desc()).all()
+
+    stale_ids = [row.id for row in terminal_jobs[keep:]]
+    if not stale_ids:
+        return 0
+
+    deleted = db.query(database.DownloadJob).filter(
+        database.DownloadJob.user_id == user_id,
+        database.DownloadJob.id.in_(stale_ids)
+    ).delete(synchronize_session=False)
+    db.commit()
+    return deleted
+
+
 # --- ENDPOINTS ---
 
 @router.post("/api/download")
@@ -95,6 +116,8 @@ async def trigger_download(
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    _prune_terminal_download_jobs(db, user.id)
     
     # Pre-check global pool quota for immediate feedback
     pool_usage = manager.get_pool_status(db)
@@ -144,6 +167,8 @@ async def downloads_status(request: Request, db: Session = Depends(get_db)):
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse([])
+
+    _prune_terminal_download_jobs(db, user.id)
 
     jobs = db.query(database.DownloadJob).filter(
         database.DownloadJob.user_id == user.id
@@ -198,6 +223,8 @@ async def start_download(
     user = get_current_user_safe(db, request)
     if not user:
         return RedirectResponse("/login")
+
+    _prune_terminal_download_jobs(db, user.id)
     
     playlist_mode = is_playlist.lower() == "true"
     
@@ -242,6 +269,8 @@ async def list_download_jobs(request: Request, db: Session = Depends(get_db)):
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    _prune_terminal_download_jobs(db, user.id)
     
     jobs = db.query(database.DownloadJob).filter(
         database.DownloadJob.user_id == user.id
