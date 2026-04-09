@@ -335,7 +335,7 @@ async def login(request: Request, username: str = Form(...), password: str = For
     )
     if user.is_admin:
         try:
-            operations_service.queue_silent_update_refresh_if_stale(max_age_hours=24)
+            operations_service.queue_silent_update_refresh_if_stale(force=True)
         except Exception:
             pass
     return response

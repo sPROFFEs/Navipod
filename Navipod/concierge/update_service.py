@@ -557,10 +557,10 @@ def run_silent_update_refresh():
         db.close()
 
 
-def queue_silent_update_refresh_if_stale(max_age_hours: int = 24):
+def queue_silent_update_refresh_if_stale(max_age_hours: int = 24, force: bool = False):
     db = database.SessionLocal()
     try:
-        if not is_update_state_stale(db, max_age_hours=max_age_hours):
+        if not force and not is_update_state_stale(db, max_age_hours=max_age_hours):
             return False
         if get_active_operation_lock(db):
             return False
