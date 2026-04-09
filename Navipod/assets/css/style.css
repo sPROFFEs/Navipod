@@ -118,8 +118,6 @@ body {
     /* Default: no player visible */
     grid-template-areas: "sidebar main" "player player";
     height: 100vh;
-    padding: 16px;
-    gap: 16px;
     position: relative;
     z-index: 1;
 }
@@ -143,18 +141,9 @@ body {
     grid-area: sidebar;
     display: flex;
     flex-direction: column;
-    padding: 24px 16px;
-    background: var(--glass-bg);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    border: 1px solid var(--glass-border);
-    border-radius: 20px;
     overflow-y: auto;
     overflow-x: hidden;
     max-height: 100vh;
-    /* Custom scrollbar for WebKit */
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .sidebar::-webkit-scrollbar {
@@ -166,7 +155,6 @@ body {
 }
 
 .sidebar::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.15);
     border-radius: 3px;
 }
 
@@ -178,61 +166,35 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 24px 12px 16px 12px;
-    /* Adjusted padding to fill more width and add breathing room */
-    margin-bottom: 8px;
-    /* Clean, premium header without borders */
 }
 
 .brand-group {
     display: flex;
     align-items: center;
-    gap: 14px;
-    /* Slightly larger gap */
     text-decoration: none;
     color: inherit;
 }
 
 .brand img {
-    width: 42px;
-    /* Larger icon */
-    height: 42px;
-    border-radius: 10px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
     object-fit: cover;
 }
 
 .brand span {
-    font-size: 1.4rem;
-    /* Larger font size */
-    font-weight: 800;
-    /* Extra bold for premium feel */
     color: white;
-    letter-spacing: -0.5px;
 }
 
 .sidebar-close {
     display: none;
-    background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: var(--text-sub);
     cursor: pointer;
     width: 44px;
-    /* Larger touch target */
     height: 44px;
-    border-radius: 12px;
-    /* Softer radius */
     align-items: center;
     justify-content: center;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .sidebar-close:hover {
-    background: rgba(255, 255, 255, 0.1);
     color: white;
-    border-color: rgba(255, 255, 255, 0.2);
-    transform: none;
-    /* Removed rotation for cleaner feel, or keep if liked? User said "ugly button" so maybe simple is better */
 }
 
 .sidebar-close:active {
@@ -408,31 +370,20 @@ body {
 /* --- MAIN VIEW --- */
 .main-view {
     grid-area: main;
-    background: var(--glass-bg);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    border: 1px solid var(--glass-border);
-    border-radius: 20px;
     overflow: hidden;
-    /* Header is inside */
     display: flex;
     flex-direction: column;
 }
 
 .top-bar {
-    height: 70px;
-    padding: 0 32px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: rgba(255, 255, 255, 0.02);
-    border-bottom: 1px solid var(--glass-border);
 }
 
 .top-bar-left {
     display: flex;
     align-items: center;
-    gap: 16px;
 }
 
 .menu-toggle {
@@ -452,7 +403,6 @@ body {
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: rgba(0, 0, 0, 0.3);
     border: none;
     color: white;
     cursor: pointer;
@@ -464,15 +414,12 @@ body {
 .header-actions {
     display: flex;
     align-items: center;
-    gap: 16px;
 }
 
 .btn-icon-circle {
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--glass-border);
     color: white;
     display: flex;
     align-items: center;
@@ -483,7 +430,6 @@ body {
 }
 
 .btn-icon-circle:hover {
-    background: rgba(255, 255, 255, 0.1);
     transform: scale(1.05);
 }
 
@@ -2380,40 +2326,10 @@ body {
 
 
 /* --- HERO & SECTIONS --- */
-.hero-section {
-    padding: 24px 0 40px;
-    background: radial-gradient(circle at top left, rgba(168, 85, 247, 0.15), transparent 60%);
-    margin: -32px -32px 32px -32px;
-    /* Bleed to edges of container */
-    padding-left: 32px;
-}
-
 .shelf-section {
     margin-bottom: 48px;
     padding-left: 8px;
     /* Slightly offset for balance */
-}
-
-.shelf-header {
-    margin-bottom: 20px;
-}
-
-.shelf-title {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: white;
-    letter-spacing: -0.5px;
-}
-
-.hero-greeting {
-    font-size: 3rem;
-    font-weight: 800;
-    letter-spacing: -1px;
-    color: white;
-}
-
-.text-accent {
-    color: var(--accent);
 }
 
 .section-subtitle {
@@ -3019,39 +2935,6 @@ body {
         height: 64px !important;
     }
 
-    /* Playlist / Track List Mobile Optimizations */
-    .track-row {
-        grid-template-columns: 40px 1fr auto;
-        padding-right: 8px;
-        /* Reduce padding */
-    }
-
-    /* Hide Source Column (3rd child) on mobile */
-    .track-row>div:nth-child(3) {
-        display: none;
-    }
-
-    /* Hide Header Row */
-    .track-row.header {
-        display: none;
-    }
-
-    /* Reduce gap in track-main */
-    .track-main {
-        gap: 8px;
-    }
-
-    /* Ensure actions don't overflow */
-    .action-btns {
-        gap: 4px;
-    }
-
-    .action-btn {
-        width: 32px;
-        height: 32px;
-        padding: 4px;
-    }
-
     /* Playlist Header Mobile Optimizations */
     .playlist-header-section {
         flex-direction: column;
@@ -3274,27 +3157,9 @@ body {
         left: 0;
     }
 
-    .main-view {
-        padding: 12px;
-        padding-bottom: 140px;
-    }
-
-    /* --- HERO --- */
-    .hero-section {
-        padding: 16px 0;
-    }
-
-    .hero-greeting {
-        font-size: 1.4rem !important;
-    }
-
     /* --- SHELVES: Horizontal scroll (Spotify-style) --- */
     .shelf-section {
         margin-bottom: 24px;
-    }
-
-    .shelf-title {
-        font-size: 1.15rem;
     }
 
     .grid-shelf {
@@ -3422,76 +3287,6 @@ body {
         font-size: 1rem;
     }
 
-    /* --- TRACK LIST: compact --- */
-    .track-row {
-        grid-template-columns: 30px 1fr 60px auto;
-        padding: 8px 10px;
-        gap: 4px;
-    }
-
-    .track-row.header {
-        display: none;
-    }
-
-    .track-cover-sm {
-        width: 36px;
-        height: 36px;
-    }
-
-    .track-name-sm {
-        font-size: 0.85rem;
-    }
-
-    .track-artist-sm {
-        font-size: 0.7rem;
-    }
-
-    .source-badge {
-        font-size: 0.55rem;
-        padding: 3px 6px;
-    }
-
-    .action-btns {
-        opacity: 1;
-        gap: 4px;
-    }
-
-    .action-btn {
-        width: 28px;
-        height: 28px;
-    }
-
-    /* --- PLAYER FOOTER: Mobile --- */
-    .player-footer {
-        padding: 8px 12px;
-    }
-
-    .player-info {
-        gap: 10px;
-    }
-
-    .player-cover {
-        width: 40px;
-        height: 40px;
-    }
-
-    .player-title {
-        font-size: 0.85rem;
-    }
-
-    .player-artist {
-        font-size: 0.7rem;
-    }
-
-    .player-controls-compact .control-btn {
-        width: 32px;
-        height: 32px;
-    }
-
-    .volume-section {
-        display: none;
-    }
-
     /* --- MODALS: full-width on mobile --- */
     .modal {
         width: 95vw;
@@ -3507,11 +3302,6 @@ body {
 
 /* Small phones (≤480px) — extra compact */
 @media (max-width: 480px) {
-    .main-view {
-        padding: 8px;
-        padding-bottom: 130px;
-    }
-
     .grid-shelf>.card {
         flex: 0 0 120px;
         min-width: 120px;
@@ -3527,22 +3317,6 @@ body {
 
     .card-subtitle {
         font-size: 0.7rem;
-    }
-
-    .shelf-title {
-        font-size: 1rem;
-    }
-
-    .hero-greeting {
-        font-size: 1.2rem !important;
-    }
-
-    .track-row {
-        grid-template-columns: 24px 1fr auto;
-    }
-
-    .source-badge {
-        display: none;
     }
 
     .search-input-wrapper {
