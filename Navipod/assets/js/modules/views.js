@@ -273,7 +273,7 @@ export async function renderLibrary(container) {
                 </button>
             </div>
             ${playlistList.length > 0
-                ? `<div class="grid-shelf">${playlistList.map(createPlaylistCard).join('')}</div>`
+                ? `<div class="grid-shelf playlist-mobile-list">${playlistList.map(createPlaylistCard).join('')}</div>`
                 : `<div class="empty-state glass-panel"><p>No playlists yet. Create one and stop hiding your library in the sidebar.</p></div>`}
         </section>`;
     lucide.createIcons();
@@ -327,8 +327,10 @@ export function createPlaylistCard(pl) {
         <div class="card-img-container playlist-card-bg">
             ${hasThumb ? `<img src="${thumb}" class="card-img" onerror="this.src='/static/img/default_cover.png'">` : `<i data-lucide="list-music" class="playlist-icon-large"></i>`}
         </div>
-        <div class="card-title">${ui.escHtml(pl.name)}</div>
-        <div class="card-subtitle">${ownerLine}${pl.track_count} tracks - ${visibilityLabel}</div>
+        <div class="playlist-card-copy">
+            <div class="card-title">${ui.escHtml(pl.name)}</div>
+            <div class="card-subtitle">${ownerLine}${pl.track_count} tracks - ${visibilityLabel}</div>
+        </div>
     </div>`;
 }
 

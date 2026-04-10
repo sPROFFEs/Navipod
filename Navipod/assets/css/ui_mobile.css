@@ -48,6 +48,44 @@
     gap: 12px;
 }
 
+.playlist-mobile-list {
+    display: grid;
+    gap: 10px;
+}
+
+.playlist-mobile-list > .card {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-0);
+}
+
+.playlist-mobile-list > .card .card-img-container {
+    width: 56px;
+    height: 56px;
+    aspect-ratio: auto;
+    margin-bottom: 0;
+}
+
+.playlist-mobile-list > .card .playlist-card-copy {
+    min-width: 0;
+}
+
+.playlist-mobile-list > .card .card-title,
+.playlist-mobile-list > .card .card-subtitle {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.playlist-mobile-list > .card .card-title {
+    margin-bottom: 3px;
+}
+
     .view-content {
         padding: 18px;
     }

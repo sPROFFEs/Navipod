@@ -121,7 +121,7 @@ export async function renderPublicPlaylists(container) {
             <p class="playlist-stats">Browse read-only playlists shared by other users and create your own synced copy.</p>
         </div>
         ${publicPlaylists.length > 0
-            ? `<div class="grid-shelf">${publicPlaylists.map(window.createPlaylistCard).join('')}</div>`
+            ? `<div class="grid-shelf playlist-mobile-list">${publicPlaylists.map(window.createPlaylistCard).join('')}</div>`
             : '<div class="empty-state glass-panel"><p>No public playlists yet.</p></div>'}`;
     lucide.createIcons();
 }
