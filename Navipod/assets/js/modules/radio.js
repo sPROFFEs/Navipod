@@ -12,13 +12,19 @@ import * as player from './player.js';
 
 export async function renderRadio(container) {
     container.innerHTML = `
-        <h1 class="section-title">Radio Explorer</h1>
+        <section class="collection-shell">
+        <div class="collection-header collection-header-stack">
+            <div>
+                <h1 class="section-title">Discover Radios</h1>
+                <p class="section-subtitle">Explore Radio Garden and save only the stations you actually care about.</p>
+            </div>
+        </div>
         <p class="section-subtitle">Dial: <span id="radio-dial" class="text-accent">${state.currentRadioHub.toUpperCase()}</span></p>
 
         <h2 class="shelf-title" style="margin-bottom: 16px;">Editorial Playlists</h2>
         <div id="radio-playlists" class="grid-shelf"></div>
 
-        <h2 class="shelf-title" style="margin: 32px 0 16px 0;">Discover Radios</h2>
+        <h2 class="shelf-title" style="margin: 32px 0 16px 0;">Search Stations</h2>
         <div class="search-bar-row">
             <div class="search-input-wrapper glass-panel" style="margin:0; flex:1;">
                 <i data-lucide="radio" class="search-icon"></i>
@@ -27,11 +33,58 @@ export async function renderRadio(container) {
             <button onclick="executeRadioSearch()" class="btn-primary">Search</button>
         </div>
 
-        <div id="radio-results" style="margin-top: 24px;"></div>`;
+        <div id="radio-results" style="margin-top: 24px;"></div>
+        </section>`;
     lucide.createIcons();
 
     loadRadioPlaylists();
     executeRadioSearch();
+}
+
+
+export async function renderSavedRadios(container) {
+    let radios = [];
+    try {
+        const res = await fetch(`${state.API}/radio/list`);
+        radios = await res.json();
+        if (!res.ok) throw new Error(radios.error || `HTTP ${res.status}`);
+    } catch (e) {
+        container.innerHTML = `<div class="empty-state glass-panel"><p>Failed to load your radios.</p></div>`;
+        return;
+    }
+
+    container.innerHTML = `
+        <section class="collection-shell">
+            <div class="collection-header collection-header-stack">
+                <div>
+                    <h1 class="section-title">Your Radios</h1>
+                    <p class="section-subtitle">Saved stations with proper room to play or remove them, instead of burying them in the sidebar.</p>
+                </div>
+            </div>
+            ${radios.length > 0
+                ? `<div class="saved-radio-list">
+                    ${radios.map(r => {
+                        const radioName = ui.escHtml(r.name || 'Saved Radio');
+                        const radioNameJs = String(r.name || 'Saved Radio').replace(/'/g, "\\'");
+                        const radioIdJs = String(r.id || '').replace(/'/g, "\\'");
+                        return `
+                            <div class="saved-radio-row">
+                                <button class="saved-radio-main" onclick="playSavedRadio('${encodeURIComponent(r.streamUrl || '')}', '${radioNameJs}', '${radioIdJs}')">
+                                    <span class="saved-radio-icon"><i data-lucide="radio"></i></span>
+                                    <span class="saved-radio-copy">
+                                        <span class="saved-radio-name">${radioName}</span>
+                                        <span class="saved-radio-meta">Saved station</span>
+                                    </span>
+                                </button>
+                                <button class="action-btn-danger" onclick="showDeleteRadioModal('${radioIdJs}', '${radioNameJs}')" title="Remove radio">
+                                    <i data-lucide="trash-2"></i>
+                                </button>
+                            </div>`;
+                    }).join('')}
+                </div>`
+                : `<div class="empty-state glass-panel"><p>No saved radios yet. Use Discover Radios and keep only the stations worth keeping.</p></div>`}
+        </section>`;
+    lucide.createIcons();
 }
 
 
@@ -189,7 +242,11 @@ export async function injectRadioToNavidrome(id, name) {
         const data = await res.json();
         if (data.status === 'success') {
             ui.showToast(`${name} added to Navidrome!`, 'success');
-            loadSidebarRadios();
+            if (window.refreshRecentActivity) window.refreshRecentActivity();
+            if (state.currentViewName === 'your_radios') {
+                const container = document.getElementById('view-container');
+                if (container) renderSavedRadios(container);
+            }
         } else {
             ui.showToast(data.error || "Failed to add radio", "error");
         }
@@ -202,38 +259,15 @@ export async function injectRadioToNavidrome(id, name) {
 // === SIDEBAR RADIOS ===
 
 export async function loadSidebarRadios() {
-    const container = document.getElementById('sidebar-radios');
-    if (!container) return;
-
-    try {
-        const res = await fetch(`${state.API}/radio/list`);
-        const radios = await res.json();
-
-        if (!radios || radios.length === 0) {
-            container.innerHTML = '<div class="playlist-item" style="color:#666; font-size:0.8rem;"><i data-lucide="radio" style="width:14px;height:14px;"></i> No saved radios</div>';
-        } else {
-            container.innerHTML = radios.map(r => `
-                <div class="playlist-item" onclick="playSavedRadio('${encodeURIComponent(r.streamUrl)}', '${ui.escHtml(r.name)}')">
-                    <div class="playlist-content">
-                        <i data-lucide="radio"></i> 
-                        <span class="truncate">${ui.escHtml(r.name)}</span>
-                    </div>
-                    <button class="delete-btn-sm" onclick="event.stopPropagation(); showDeleteRadioModal('${r.id}', '${ui.escHtml(r.name)}')">
-                        <i data-lucide="trash-2"></i>
-                    </button>
-                </div>
-            `).join('');
-        }
-        lucide.createIcons();
-    } catch (e) {
-        container.innerHTML = '<div class="playlist-item" style="color:#e74c3c; font-size:0.8rem;">Error loading radios</div>';
+    if (window.refreshRecentActivity) {
+        await window.refreshRecentActivity();
     }
 }
 
 
 // === PLAY SAVED RADIO ===
 
-export function playSavedRadio(encodedUrl, name) {
+export async function playSavedRadio(encodedUrl, name, radioId = '') {
     const proxyUrl = `/api/proxy/radio?url=${encodedUrl}`;
 
     state.setCurrentTrack({ title: name, artist: 'Saved Radio', thumbnail: '/static/img/default_cover.png', is_radio: true });
@@ -262,6 +296,23 @@ export function playSavedRadio(encodedUrl, name) {
         ui.showToast(`Error playing ${name}. The stream might be offline.`, 'error');
     });
     ui.showToast(`Playing Saved Radio: ${name}`, 'success');
+
+    if (radioId) {
+        try {
+            await fetch(`${state.API}/recent-activity/radio`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    radio_id: String(radioId),
+                    name: String(name || ''),
+                    stream_url: decodeURIComponent(encodedUrl || '')
+                })
+            });
+            if (window.refreshRecentActivity) window.refreshRecentActivity();
+        } catch (e) {
+            console.error("[RADIO] Recent track failed:", e);
+        }
+    }
 }
 
 
@@ -272,8 +323,13 @@ export async function deleteSavedRadio(id, name) {
     try {
         const res = await fetch(`${state.API}/radio/${id}`, { method: 'DELETE' });
         if (res.ok) {
+            await fetch(`${state.API}/recent-activity/radio/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => null);
             ui.showToast("Radio removed", "success");
-            loadSidebarRadios();
+            if (window.refreshRecentActivity) window.refreshRecentActivity();
+            if (state.currentViewName === 'your_radios') {
+                const container = document.getElementById('view-container');
+                if (container) renderSavedRadios(container);
+            }
         } else {
             const err = await res.json();
             ui.showToast(err.error || "Failed to remove radio", "error");

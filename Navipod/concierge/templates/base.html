@@ -55,28 +55,20 @@
                 <div class="nav-link" onclick="loadView('search')">
                     <i data-lucide="search"></i> {{ _('menu.search') }}
                 </div>
-                <div class="nav-link" onclick="loadView('public')">
-                    <i data-lucide="globe"></i> Public
-                </div>
-                <div class="nav-link" onclick="loadView('radio')">
-                    <i data-lucide="radio"></i> {{ _('menu.radio') }}
+                <div class="nav-link" onclick="loadView('library')">
+                    <i data-lucide="list-music"></i> Library
                 </div>
                 <div class="nav-link" onclick="loadView('favorites')">
                     <i data-lucide="heart"></i> {{ _('menu.liked') }}
                 </div>
-            </nav>
-
-            <div class="nav-divider"></div>
-
-            <nav class="nav-menu">
-                <div class="nav-section-header">
-                    <span class="nav-section-title">{{ _('menu.library') }}</span>
-                    <button class="icon-btn-sm" onclick="showCreatePlaylistModal()" title="Create Playlist">
-                        <i data-lucide="plus"></i>
-                    </button>
+                <div class="nav-link" onclick="loadView('public')">
+                    <i data-lucide="globe"></i> Public
                 </div>
-                <div id="sidebar-playlists">
-                    <!-- Playlists injected by JS -->
+                <div class="nav-link" onclick="loadView('discover_radios')">
+                    <i data-lucide="radio"></i> Discover Radios
+                </div>
+                <div class="nav-link" onclick="loadView('your_radios')">
+                    <i data-lucide="broadcast"></i> Your Radios
                 </div>
             </nav>
 
@@ -84,10 +76,19 @@
 
             <nav class="nav-menu">
                 <div class="nav-section-header">
-                    <span class="nav-section-title">{{ _('menu.saved_radios') }}</span>
+                    <span class="nav-section-title">Recently Opened</span>
                 </div>
-                <div id="sidebar-radios">
-                    <!-- Radios injected by JS -->
+                <div class="recent-sidebar-group">
+                    <div class="recent-sidebar-label">Playlists</div>
+                    <div id="sidebar-recent-playlists">
+                        <!-- Recent playlists injected by JS -->
+                    </div>
+                </div>
+                <div class="recent-sidebar-group">
+                    <div class="recent-sidebar-label">Radios</div>
+                    <div id="sidebar-recent-radios">
+                        <!-- Recent radios injected by JS -->
+                    </div>
                 </div>
             </nav>
 

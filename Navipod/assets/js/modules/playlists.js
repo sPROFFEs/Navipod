@@ -272,6 +272,7 @@ export async function createPlaylist(trackIdToAdd = null) {
             if (window.renderSidebarPlaylists) window.renderSidebarPlaylists();
             ui.closeModal();
             ui.showToast("Playlist created!", "success");
+            if (state.currentViewName === 'library' && window.loadView) window.loadView('library');
             if (trackIdToAdd) await addToPlaylist(pl.id, trackIdToAdd);
         }
     } catch (e) {
@@ -330,9 +331,11 @@ export async function deletePlaylist(playlistId) {
     try {
         const res = await fetch(`${state.API}/playlists/${playlistId}`, { method: 'DELETE' });
         if (res.ok) {
+            await fetch(`${state.API}/recent-activity/playlist/${playlistId}`, { method: 'DELETE' }).catch(() => null);
             const playlists = state.userPlaylists.filter(p => p.id !== playlistId);
             state.setUserPlaylists(playlists);
             if (window.renderSidebarPlaylists) window.renderSidebarPlaylists();
+            if (window.refreshRecentActivity) window.refreshRecentActivity();
             if (window.loadView) window.loadView('home');
             ui.showToast("Playlist deleted", "success");
         }
@@ -383,7 +386,7 @@ export async function togglePlaylistPublic(playlistId, shouldBePublic) {
             return;
         }
 
-        await loadUserData();
+        if (window.loadUserData) await window.loadUserData();
         if (window.loadView) window.loadView('playlist', playlistId);
         ui.showToast(data.is_public ? "Playlist is now public" : "Playlist is now private", "success");
     } catch (e) {
@@ -402,7 +405,7 @@ export async function copyPublicPlaylist(sourcePlaylistId) {
             return;
         }
 
-        await loadUserData();
+        if (window.loadUserData) await window.loadUserData();
         if (window.loadView) window.loadView('playlist', data.id);
         ui.showToast(data.status === 'copied' ? "Playlist copied to your library" : "Playlist copy synced", "success");
     } catch (e) {

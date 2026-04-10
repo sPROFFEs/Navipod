@@ -73,6 +73,7 @@ window.renderRadio = radio.renderRadio;
 window.loadRadioPlaylists = radio.loadRadioPlaylists;
 window.loadRadioPlaylist = radio.loadRadioPlaylist;
 window.executeRadioSearch = radio.executeRadioSearch;
+window.renderSavedRadios = radio.renderSavedRadios;
 window.playRadioStream = radio.playRadioStream;
 window.injectRadioToNavidrome = radio.injectRadioToNavidrome;
 window.loadSidebarRadios = radio.loadSidebarRadios;
@@ -120,6 +121,7 @@ window.createTrackRow = views.createTrackRow;
 window.handleCardClick = views.handleCardClick;
 window.playPreview = views.playPreview;
 window.renderSidebarPlaylists = views.renderSidebarPlaylists;
+window.refreshRecentActivity = views.refreshRecentActivity;
 window.loadUserData = views.loadUserData;
 
 // Admin

@@ -72,6 +72,7 @@ function initUserSettingsView(container) {
 export async function loadView(view, param = null) {
     const container = document.getElementById('view-container');
     if (!container) return;
+    if (view === 'radio') view = 'discover_radios';
 
     container.innerHTML = `
     <div class="empty-state">
@@ -93,11 +94,16 @@ export async function loadView(view, param = null) {
         state.setCurrentViewName(view);
 
         if (view === 'home') await renderHome(container);
+        else if (view === 'library') await renderLibrary(container);
         else if (view === 'search') renderSearch(container);
         else if (view === 'public') await playlists.renderPublicPlaylists(container);
-        else if (view === 'radio') await radio.renderRadio(container);
+        else if (view === 'discover_radios') await radio.renderRadio(container);
+        else if (view === 'your_radios') await radio.renderSavedRadios(container);
         else if (view === 'favorites') await favorites.renderFavorites(container);
-        else if (view === 'playlist') await playlists.renderPlaylist(container, param);
+        else if (view === 'playlist') {
+            await playlists.renderPlaylist(container, param);
+            await trackRecentPlaylist(param);
+        }
         else if (view === 'settings_admin') await renderExternalView(container, '/admin/');
         else if (view === 'system_monitor') await renderExternalView(container, '/admin/system');
         else if (view === 'settings_user') await renderExternalView(container, '/user/settings');
@@ -240,6 +246,39 @@ export function renderSearch(container) {
     lucide.createIcons();
     document.getElementById('search-input')?.focus();
     search.executeSearch("");
+}
+
+
+export async function renderLibrary(container) {
+    let playlistList = [];
+    try {
+        const res = await fetch(`${state.API}/playlists`);
+        playlistList = await res.json();
+        if (!res.ok) throw new Error(playlistList.error || `HTTP ${res.status}`);
+        state.setUserPlaylists(playlistList);
+        renderSidebarRecents();
+    } catch (e) {
+        container.innerHTML = `<div class="empty-state glass-panel"><p>Failed to load your library.</p></div>`;
+        return;
+    }
+
+    container.innerHTML = `
+        <section class="collection-shell">
+            <div class="collection-header">
+                <div>
+                    <h1 class="section-title">Library</h1>
+                    <p class="section-subtitle">Your playlists live here. The sidebar stays small and the list gets room to breathe.</p>
+                </div>
+                <button class="btn-primary" onclick="showCreatePlaylistModal()">
+                    <i data-lucide="plus"></i>
+                    <span>New Playlist</span>
+                </button>
+            </div>
+            ${playlistList.length > 0
+                ? `<div class="grid-shelf">${playlistList.map(createPlaylistCard).join('')}</div>`
+                : `<div class="empty-state glass-panel"><p>No playlists yet. Create one and stop hiding your library in the sidebar.</p></div>`}
+        </section>`;
+    lucide.createIcons();
 }
 
 
@@ -464,29 +503,81 @@ export function restorePlayerUIForLocal() {
 
 // === SIDEBAR RENDERING ===
 
-export function renderSidebarPlaylists() {
-    const container = document.getElementById('sidebar-playlists');
-    if (!container) return;
+export function renderSidebarRecents() {
+    const playlistContainer = document.getElementById('sidebar-recent-playlists');
+    const radioContainer = document.getElementById('sidebar-recent-radios');
 
-    if (state.userPlaylists.length === 0) {
-        container.innerHTML = '<div class="playlist-item empty" style="color:#666; font-size:0.8rem;"><i data-lucide="list-music" style="width:14px;height:14px;"></i> No playlists yet</div>';
-    } else {
-        container.innerHTML = state.userPlaylists.map(pl => {
-            const thumb = pl.thumbnail || '/static/img/default_cover.png';
-            const hasThumb = pl.thumbnail && !pl.thumbnail.includes('default');
-            const playlistIcon = pl.source_playlist_id ? 'refresh-cw' : (pl.is_public ? 'globe' : 'list-music');
-            return `
-            <div class="playlist-item" onclick="loadView('playlist', ${pl.id})">
-                <div class="sidebar-playlist-thumb">
-                    ${hasThumb
-                    ? `<img src="${thumb}" onerror="this.src='/static/img/default_cover.png'">`
-                    : `<i data-lucide="${playlistIcon}"></i>`}
-                </div>
-                <span>${ui.escHtml(pl.name)}</span>
-            </div>
-        `}).join('');
+    if (playlistContainer) {
+        playlistContainer.innerHTML = state.recentPlaylists.length > 0
+            ? state.recentPlaylists.map(pl => {
+                const thumb = pl.thumbnail || '/static/img/default_cover.png';
+                const hasThumb = pl.thumbnail && !pl.thumbnail.includes('default');
+                const playlistIcon = pl.source_playlist_id ? 'refresh-cw' : (pl.is_public ? 'globe' : 'list-music');
+                return `
+                    <div class="playlist-item" onclick="loadView('playlist', ${pl.id})">
+                        <div class="sidebar-playlist-thumb">
+                            ${hasThumb
+                                ? `<img src="${thumb}" onerror="this.src='/static/img/default_cover.png'">`
+                                : `<i data-lucide="${playlistIcon}"></i>`}
+                        </div>
+                        <span class="truncate">${ui.escHtml(pl.name)}</span>
+                    </div>`;
+            }).join('')
+            : '<div class="playlist-item empty recent-empty">No recent playlists</div>';
     }
+
+    if (radioContainer) {
+        radioContainer.innerHTML = state.recentRadios.length > 0
+            ? state.recentRadios.map(radioItem => {
+                const radioName = ui.escHtml(radioItem.name || 'Saved Radio');
+                const radioNameJs = String(radioItem.name || 'Saved Radio').replace(/'/g, "\\'");
+                const radioIdJs = String(radioItem.id || '').replace(/'/g, "\\'");
+                return `
+                    <div class="playlist-item radio-item" onclick="playSavedRadio('${encodeURIComponent(radioItem.streamUrl || '')}', '${radioNameJs}', '${radioIdJs}')">
+                        <div class="sidebar-playlist-thumb">
+                            <i data-lucide="radio"></i>
+                        </div>
+                        <span class="truncate">${radioName}</span>
+                    </div>`;
+            }).join('')
+            : '<div class="playlist-item empty recent-empty">No recent radios</div>';
+    }
+
     lucide.createIcons();
+}
+
+
+export function renderSidebarPlaylists() {
+    renderSidebarRecents();
+}
+
+
+export async function refreshRecentActivity() {
+    try {
+        const res = await fetch(`${state.API}/recent-activity`);
+        if (!res.ok) return;
+        const data = await res.json();
+        state.setRecentPlaylists(Array.isArray(data.playlists) ? data.playlists : []);
+        state.setRecentRadios(Array.isArray(data.radios) ? data.radios : []);
+        renderSidebarRecents();
+    } catch (e) {
+        console.error("Failed to refresh recent activity:", e);
+    }
+}
+
+
+export async function trackRecentPlaylist(playlistId) {
+    if (!playlistId) return;
+    try {
+        await fetch(`${state.API}/recent-activity/playlist`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ playlist_id: Number(playlistId) })
+        });
+        await refreshRecentActivity();
+    } catch (e) {
+        console.error("Failed to track recent playlist:", e);
+    }
 }
 
 
@@ -494,18 +585,21 @@ export function renderSidebarPlaylists() {
 
 export async function loadUserData() {
     try {
-        const [favsRes, playlistsRes] = await Promise.all([
+        const [favsRes, playlistsRes, recentsRes] = await Promise.all([
             fetch(`${state.API}/favorites`),
-            fetch(`${state.API}/playlists`)
+            fetch(`${state.API}/playlists`),
+            fetch(`${state.API}/recent-activity`)
         ]);
         const favs = await favsRes.json();
         const pls = await playlistsRes.json();
+        const recents = recentsRes.ok ? await recentsRes.json() : { playlists: [], radios: [] };
 
         state.setUserFavorites(new Set(favs.map(f => f.id)));
         state.setUserPlaylists(pls);
+        state.setRecentPlaylists(Array.isArray(recents.playlists) ? recents.playlists : []);
+        state.setRecentRadios(Array.isArray(recents.radios) ? recents.radios : []);
 
-        renderSidebarPlaylists();
-        if (window.loadSidebarRadios) window.loadSidebarRadios();
+        renderSidebarRecents();
 
         startHeartbeatSync();
     } catch (e) {
@@ -535,7 +629,7 @@ export async function checkSyncState() {
             const plsRes = await fetch(`${state.API}/playlists`);
             if (plsRes.ok) {
                 state.setUserPlaylists(await plsRes.json());
-                renderSidebarPlaylists();
+                await refreshRecentActivity();
             }
 
             ui.updateFullscreenPlayButton();

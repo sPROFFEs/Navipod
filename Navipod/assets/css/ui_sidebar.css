@@ -90,9 +90,27 @@
     font-weight: 600;
 }
 
-#sidebar-playlists,
-#sidebar-radios {
-    max-height: 22vh;
+.recent-sidebar-group + .recent-sidebar-group {
+    margin-top: 12px;
+}
+
+.recent-sidebar-label {
+    margin: 0 0 6px 12px;
+    color: var(--text-faint);
+    font-size: 0.76rem;
+    font-weight: 600;
+}
+
+#sidebar-recent-playlists,
+#sidebar-recent-radios {
+    display: grid;
+    gap: 4px;
+}
+
+.recent-empty {
+    padding: 9px 12px;
+    color: var(--text-faint);
+    font-size: 0.8rem;
 }
 
 .quota-widget {

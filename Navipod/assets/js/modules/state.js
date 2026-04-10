@@ -20,6 +20,8 @@ export let currentSource = 'all';
 // === USER DATA ===
 export let userFavorites = new Set();
 export let userPlaylists = [];
+export let recentPlaylists = [];
+export let recentRadios = [];
 
 // === QUEUE SYSTEM ===
 export let userQueue = [];           // Explicitly queued by user (High Priority)
@@ -63,6 +65,8 @@ export function setSearchDebounce(val) { searchDebounce = val; }
 export function setCurrentSource(val) { currentSource = val; }
 export function setUserFavorites(val) { userFavorites = val; }
 export function setUserPlaylists(val) { userPlaylists = val; }
+export function setRecentPlaylists(val) { recentPlaylists = val; }
+export function setRecentRadios(val) { recentRadios = val; }
 export function setUserQueue(val) { userQueue = val; }
 export function setContextQueue(val) { contextQueue = val; }
 export function setContextIndex(val) { contextIndex = val; }

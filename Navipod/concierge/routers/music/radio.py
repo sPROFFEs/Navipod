@@ -24,6 +24,30 @@ RG_HEADERS = {
 }
 
 
+async def fetch_saved_radios_for_user(user):
+    target_ip = manager.get_or_spawn_container(user.username)
+    url = f"http://{target_ip}:4533/{user.username}/rest/getInternetRadioStations"
+    params = {
+        "u": user.username,
+        "p": "enc:000000",
+        "v": "1.16.1",
+        "c": "navipod-concierge",
+        "f": "json"
+    }
+    headers = {"x-navidrome-user": user.username}
+
+    async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
+        resp = await client.get(url, params=params, headers=headers)
+        if resp.status_code != 200:
+            raise RuntimeError(f"Navidrome error: {resp.status_code}")
+
+        data = resp.json()
+        stations = data.get("subsonic-response", {}).get("internetRadioStations", {}).get("internetRadioStation", [])
+        if isinstance(stations, dict):
+            stations = [stations]
+        return stations
+
+
 # --- HTML VIEW ---
 
 @router.get("/radio")
@@ -202,27 +226,7 @@ async def get_saved_radios(request: Request, db: Session = Depends(get_db)):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
     
     try:
-        target_ip = manager.get_or_spawn_container(user.username)
-        url = f"http://{target_ip}:4533/{user.username}/rest/getInternetRadioStations"
-        params = {
-            "u": user.username, 
-            "p": "enc:000000", 
-            "v": "1.16.1", 
-            "c": "navipod-concierge", 
-            "f": "json"
-        }
-        headers = {"x-navidrome-user": user.username}
-        
-        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
-            resp = await client.get(url, params=params, headers=headers)
-            if resp.status_code == 200:
-                data = resp.json()
-                stations = data.get("subsonic-response", {}).get("internetRadioStations", {}).get("internetRadioStation", [])
-                if isinstance(stations, dict):
-                    stations = [stations]
-                return JSONResponse(stations)
-            else:
-                return JSONResponse({"error": f"Navidrome error: {resp.status_code}"}, status_code=resp.status_code)
+        return JSONResponse(await fetch_saved_radios_for_user(user))
     except Exception as e:
         print(f"[RADIO-LIST] Error: {e}")
         return JSONResponse([], status_code=500)
