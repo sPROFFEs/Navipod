@@ -16,7 +16,6 @@ export async function renderRadio(container) {
         <div class="collection-header collection-header-stack">
             <div>
                 <h1 class="section-title">Discover Radios</h1>
-                <p class="section-subtitle">Explore Radio Garden and save only the stations you actually care about.</p>
             </div>
         </div>
         <p class="section-subtitle">Dial: <span id="radio-dial" class="text-accent">${state.currentRadioHub.toUpperCase()}</span></p>
@@ -58,7 +57,6 @@ export async function renderSavedRadios(container) {
             <div class="collection-header collection-header-stack">
                 <div>
                     <h1 class="section-title">Your Radios</h1>
-                    <p class="section-subtitle">Saved stations with proper room to play or remove them, instead of burying them in the sidebar.</p>
                 </div>
             </div>
             ${radios.length > 0

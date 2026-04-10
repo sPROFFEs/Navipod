@@ -201,7 +201,6 @@ export async function renderHome(container) {
     let html = `<section class="hero-section">
         <div class="hero-kicker">Your library, tuned for right now</div>
         <h1 class="hero-greeting">Good ${ui.getGreeting()}, <span class="hero-username">${username}</span></h1>
-        <p class="hero-subtitle">Pick up where you left off, jump into recommendations, or queue something better.</p>
     </section>`;
 
     if (sections && sections.length > 0) {
@@ -267,7 +266,6 @@ export async function renderLibrary(container) {
             <div class="collection-header">
                 <div>
                     <h1 class="section-title">Library</h1>
-                    <p class="section-subtitle">Your playlists live here. The sidebar stays small and the list gets room to breathe.</p>
                 </div>
                 <button class="btn-primary" onclick="showCreatePlaylistModal()">
                     <i data-lucide="plus"></i>
