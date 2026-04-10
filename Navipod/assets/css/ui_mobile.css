@@ -50,7 +50,12 @@
 
 .playlist-mobile-list {
     display: grid;
+    grid-template-columns: 1fr;
     gap: 10px;
+    overflow: visible;
+    overflow-x: visible;
+    padding-bottom: 0;
+    scroll-snap-type: none;
 }
 
 .playlist-mobile-list > .card {
@@ -62,6 +67,10 @@
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
     background: var(--surface-0);
+    width: 100%;
+    min-width: 0;
+    flex: initial;
+    scroll-snap-align: unset;
 }
 
 .playlist-mobile-list > .card .card-img-container {
