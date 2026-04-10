@@ -37,10 +37,24 @@ export async function renderPlaylist(container, playlistId) {
     const ownerLabel = data.owner_username ? `By ${ui.escHtml(data.owner_username)}` : '';
     const sourceBadge = isSyncedCopy ? '<span class="source-badge musicbrainz" style="margin-left:8px;">Synced copy</span>' : '';
     const visibilityBadge = isPublic ? '<span class="source-badge spotify" style="margin-left:8px;">Public</span>' : '<span class="source-badge local" style="margin-left:8px;">Private</span>';
+    const safePlaylistName = ui.escHtml(data.name || 'Playlist').replace(/'/g, "\\'");
     const ownerControls = isOwner && isEditable ? `
-        <button class="icon-btn-sm" onclick="showEditPlaylistModal(${playlistId}, '${ui.escHtml(data.name || 'Playlist')}')" title="Edit Name">
+        <button class="icon-btn-sm" onclick="showEditPlaylistModal(${playlistId}, '${safePlaylistName}')" title="Edit Name">
             <i data-lucide="pencil" width="16"></i>
         </button>` : '';
+    const coverControls = isOwner ? `
+        <div class="playlist-cover-actions">
+            <button class="icon-btn-sm" onclick="openPlaylistCoverUpload(${playlistId})" title="Upload cover">
+                <i data-lucide="image-plus" width="16"></i>
+            </button>
+            <button class="icon-btn-sm" onclick="showPlaylistCoverTrackModal(${playlistId})" title="Choose track cover">
+                <i data-lucide="disc-3" width="16"></i>
+            </button>
+            <button class="icon-btn-sm" onclick="resetPlaylistCover(${playlistId})" title="Use automatic cover">
+                <i data-lucide="rotate-ccw" width="16"></i>
+            </button>
+            <input type="file" id="playlist-cover-input-${playlistId}" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none" onchange="handlePlaylistCoverUpload(${playlistId}, this)">
+        </div>` : '';
     const publishButton = isOwner && !isSyncedCopy ? `
         <button onclick="togglePlaylistPublic(${playlistId}, ${isPublic ? 'false' : 'true'})" class="btn-secondary-lg playlist-action-btn" title="${isPublic ? 'Make Private' : 'Make Public'}" aria-label="${isPublic ? 'Make Private' : 'Make Public'}">
             <i data-lucide="${isPublic ? 'lock' : 'globe'}" width="20" height="20"></i>
@@ -71,6 +85,7 @@ export async function renderPlaylist(container, playlistId) {
         <div class="playlist-header-section">
             <div class="playlist-cover-large">
                 ${hasThumb ? `<img src="${thumb}" onerror="this.src='/static/img/default_cover.png'">` : `<i data-lucide="list-music"></i>`}
+                ${coverControls}
             </div>
             <div class="playlist-info">
                 <p class="playlist-type">Playlist</p>
@@ -101,6 +116,111 @@ export async function renderPlaylist(container, playlistId) {
             ? `<div class="track-list">${state.currentViewList.map((t, i) => window.createTrackRow ? window.createTrackRow({ ...t, is_local: true, source: 'local' }, i, isEditable ? playlistId : null) : '').join('')}</div>`
             : '<div class="empty-state glass-panel"><p>This playlist is empty.</p></div>'}`;
     lucide.createIcons();
+}
+
+
+export function openPlaylistCoverUpload(playlistId) {
+    document.getElementById(`playlist-cover-input-${playlistId}`)?.click();
+}
+
+
+export async function handlePlaylistCoverUpload(playlistId, input) {
+    const file = input?.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('cover_file', file);
+
+    try {
+        const res = await fetch(`${state.API}/playlists/${playlistId}/cover/upload`, {
+            method: 'POST',
+            body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            ui.showToast(data.error || 'Failed to update cover', 'error');
+            return;
+        }
+        ui.showToast('Playlist cover updated', 'success');
+        if (window.loadUserData) await window.loadUserData();
+        if (window.loadView) window.loadView('playlist', playlistId);
+    } catch (e) {
+        ui.showToast('Failed to update cover', 'error');
+    } finally {
+        if (input) input.value = '';
+    }
+}
+
+
+export function showPlaylistCoverTrackModal(playlistId) {
+    const tracks = state.currentViewList || [];
+    if (!tracks.length) {
+        ui.showToast('Playlist is empty', 'error');
+        return;
+    }
+
+    const items = tracks.map(track => `
+        <button class="modal-playlist-item" onclick="setPlaylistCoverFromTrack(${playlistId}, ${track.id})">
+            <div class="modal-playlist-thumb">
+                <img src="${track.thumbnail || '/static/img/default_cover.png'}" onerror="this.src='/static/img/default_cover.png'" alt="">
+            </div>
+            <div class="modal-playlist-info">
+                <span class="modal-playlist-name">${ui.escHtml(track.title || 'Unknown')}</span>
+                <span class="modal-playlist-count">${ui.escHtml(track.artist || 'Unknown')}</span>
+            </div>
+            <i data-lucide="check-circle" class="modal-playlist-add-icon"></i>
+        </button>`).join('');
+
+    const html = `<div class="modal-overlay" onclick="closeModal()">
+        <div class="modal modal-playlist" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2><i data-lucide="disc-3"></i> Choose Cover Track</h2>
+                <button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-list">${items}</div>
+        </div>
+    </div>`;
+    document.getElementById('modal-container').innerHTML = html;
+    lucide.createIcons();
+}
+
+
+export async function setPlaylistCoverFromTrack(playlistId, trackId) {
+    try {
+        const res = await fetch(`${state.API}/playlists/${playlistId}/cover/track`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ track_id: trackId }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            ui.showToast(data.error || 'Failed to update cover', 'error');
+            return;
+        }
+        ui.closeModal();
+        ui.showToast('Playlist cover updated', 'success');
+        if (window.loadUserData) await window.loadUserData();
+        if (window.loadView) window.loadView('playlist', playlistId);
+    } catch (e) {
+        ui.showToast('Failed to update cover', 'error');
+    }
+}
+
+
+export async function resetPlaylistCover(playlistId) {
+    try {
+        const res = await fetch(`${state.API}/playlists/${playlistId}/cover`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) {
+            ui.showToast(data.error || 'Failed to reset cover', 'error');
+            return;
+        }
+        ui.showToast('Playlist cover reset', 'success');
+        if (window.loadUserData) await window.loadUserData();
+        if (window.loadView) window.loadView('playlist', playlistId);
+    } catch (e) {
+        ui.showToast('Failed to reset cover', 'error');
+    }
 }
 
 

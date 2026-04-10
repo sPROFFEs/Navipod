@@ -38,6 +38,17 @@
         line-height: 0 !important;
     }
 
+    .playlist-cover-actions {
+        right: 10px;
+        bottom: 10px;
+        gap: 6px;
+    }
+
+    .playlist-cover-actions .icon-btn-sm {
+        width: 38px;
+        height: 38px;
+    }
+
     .playlist-action-btn i,
     .playlist-action-btn svg {
         width: 20px;

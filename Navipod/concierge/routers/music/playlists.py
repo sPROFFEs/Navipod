@@ -3,12 +3,15 @@ Playlist management and Navidrome sync.
 """
 import os
 import asyncio
-from fastapi import APIRouter, Request, Depends
-from fastapi.responses import JSONResponse
+import io
+import uuid
+from fastapi import APIRouter, Request, Depends, UploadFile, File
+from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy import func, select
 from pydantic import BaseModel as PydanticBaseModel
 import httpx
+from PIL import Image
 
 import database
 import manager
@@ -39,7 +42,19 @@ class PublishPlaylistRequest(PydanticBaseModel):
     is_public: bool
 
 
+class PlaylistCoverTrackRequest(PydanticBaseModel):
+    track_id: int
+
+
 SYSTEM_PLAYLIST_NAMES = {"music", "pool", "users", "podcasts", "downloads"}
+ALLOWED_PLAYLIST_COVER_TYPES = {
+    "image/jpeg": [b"\xff\xd8\xff"],
+    "image/png": [b"\x89PNG"],
+    "image/webp": [b"RIFF"],
+    "image/gif": [b"GIF87a", b"GIF89a"],
+}
+MAX_PLAYLIST_COVER_SIZE = 5 * 1024 * 1024
+PLAYLIST_COVER_SIZE = (640, 640)
 
 
 # --- PLAYLIST ACCESS HELPERS ---
@@ -59,9 +74,37 @@ def playlist_is_editable_by_user(playlist, user) -> bool:
     return playlist.owner_id == user.id and playlist.source_playlist_id is None
 
 
-def get_playlist_thumbnail(db: Session, playlist_id: int) -> str:
+def _playlist_cover_dir(username: str) -> str:
+    cover_dir = f"{settings.MUSIC_ROOT}/{username}/playlists/.covers"
+    os.makedirs(cover_dir, mode=0o777, exist_ok=True)
+    return cover_dir
+
+
+def _playlist_cover_url(playlist_id: int) -> str:
+    return f"/api/playlists/{playlist_id}/cover"
+
+
+def _validate_playlist_cover_bytes(file_content: bytes, content_type: str) -> bool:
+    if content_type not in ALLOWED_PLAYLIST_COVER_TYPES:
+        return False
+    return any(file_content[:len(pattern)] == pattern for pattern in ALLOWED_PLAYLIST_COVER_TYPES[content_type])
+
+
+def _remove_playlist_cover_file(playlist) -> None:
+    if playlist.cover_path and os.path.exists(playlist.cover_path):
+        try:
+            os.remove(playlist.cover_path)
+        except Exception as e:
+            print(f"[PLAYLIST-COVER] Error removing cover file: {e}")
+
+
+def get_playlist_thumbnail(db: Session, playlist) -> str:
+    if playlist.cover_path:
+        return _playlist_cover_url(playlist.id)
+    if playlist.cover_track_id:
+        return f"/api/cover/{playlist.cover_track_id}"
     first_item = db.query(database.PlaylistItem).filter(
-        database.PlaylistItem.playlist_id == playlist_id
+        database.PlaylistItem.playlist_id == playlist.id
     ).order_by(database.PlaylistItem.position).first()
     if first_item and first_item.track:
         return f"/api/cover/{first_item.track.id}"
@@ -95,10 +138,11 @@ def fetch_playlist_summaries(db: Session, viewer_id: int | None = None, *, owner
             database.Playlist.owner_id.label("owner_id"),
             database.Playlist.is_public.label("is_public"),
             database.Playlist.source_playlist_id.label("source_playlist_id"),
+            database.Playlist.cover_path.label("cover_path"),
+            database.Playlist.cover_track_id.label("cover_track_id"),
             database.User.username.label("owner_username"),
             source_owner.username.label("source_owner_username"),
             func.coalesce(count_subquery.c.track_count, 0).label("track_count"),
-            thumbnail_track_id.label("thumbnail_track_id"),
         )
         .join(database.User, database.User.id == database.Playlist.owner_id)
         .outerjoin(source_playlist, source_playlist.id == database.Playlist.source_playlist_id)
@@ -121,7 +165,7 @@ def fetch_playlist_summaries(db: Session, viewer_id: int | None = None, *, owner
             "id": row.id,
             "name": row.name,
             "track_count": int(row.track_count or 0),
-            "thumbnail": f"/api/cover/{row.thumbnail_track_id}" if row.thumbnail_track_id else "/static/img/default_cover.png",
+            "thumbnail": _playlist_cover_url(row.id) if (row.cover_path or row.cover_track_id or int(row.track_count or 0) > 0) else "/static/img/default_cover.png",
             "is_public": bool(row.is_public),
             "source_playlist_id": row.source_playlist_id,
             "owner_username": owner_username,
@@ -146,7 +190,7 @@ def serialize_playlist_summary(db: Session, playlist, viewer_id: int | None = No
         "id": playlist.id,
         "name": playlist.name,
         "track_count": len(playlist.items),
-        "thumbnail": get_playlist_thumbnail(db, playlist.id),
+        "thumbnail": get_playlist_thumbnail(db, playlist),
         "is_public": bool(playlist.is_public),
         "source_playlist_id": playlist.source_playlist_id,
         "owner_username": owner_name,
@@ -472,7 +516,7 @@ async def get_playlist(playlist_id: int, request: Request, db: Session = Depends
         source_playlist_exists = source_playlist is not None
         source_playlist_public = bool(source_playlist and source_playlist.is_public)
 
-    thumbnail = "/static/img/default_cover.png"
+    thumbnail = get_playlist_thumbnail(db, playlist)
     tracks = []
     for item in sorted(playlist.items, key=lambda x: x.position):
         t = item.track
@@ -501,7 +545,143 @@ async def get_playlist(playlist_id: int, request: Request, db: Session = Depends
         "is_owner": playlist.owner_id == user.id,
         "is_editable": playlist_is_editable_by_user(playlist, user),
         "is_read_only": not playlist_is_editable_by_user(playlist, user),
+        "cover_track_id": playlist.cover_track_id,
+        "has_custom_cover": bool(playlist.cover_path),
     })
+
+
+@router.get("/api/playlists/{playlist_id}/cover")
+async def get_playlist_cover(playlist_id: int, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_safe(db, request)
+    if not user:
+        return RedirectResponse("/static/img/default_cover.png")
+
+    playlist = get_playlist_or_404(db, playlist_id, user)
+    if not playlist:
+        return RedirectResponse("/static/img/default_cover.png")
+
+    if playlist.cover_path and os.path.exists(playlist.cover_path):
+        return FileResponse(
+            playlist.cover_path,
+            media_type="image/webp",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+
+    if playlist.cover_track_id:
+        return RedirectResponse(f"/api/cover/{playlist.cover_track_id}")
+
+    first_item = db.query(database.PlaylistItem).filter(
+        database.PlaylistItem.playlist_id == playlist.id
+    ).order_by(database.PlaylistItem.position).first()
+    if first_item and first_item.track:
+        return RedirectResponse(f"/api/cover/{first_item.track.id}")
+
+    return RedirectResponse("/static/img/default_cover.png")
+
+
+@router.post("/api/playlists/{playlist_id}/cover/upload")
+async def upload_playlist_cover(
+    playlist_id: int,
+    request: Request,
+    cover_file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    playlist = db.query(database.Playlist).filter(
+        database.Playlist.id == playlist_id,
+        database.Playlist.owner_id == user.id,
+    ).first()
+    if not playlist:
+        return JSONResponse({"error": "Playlist not found"}, status_code=404)
+
+    content = await cover_file.read()
+    if len(content) > MAX_PLAYLIST_COVER_SIZE:
+        return JSONResponse({"error": f"Image too large. Max size: {MAX_PLAYLIST_COVER_SIZE // (1024 * 1024)}MB"}, status_code=400)
+
+    filename = cover_file.filename or ""
+    ext = filename.lower().split(".")[-1] if "." in filename else ""
+    if ext not in {"jpg", "jpeg", "png", "webp", "gif"}:
+        return JSONResponse({"error": "Invalid file type. Allowed: JPG, PNG, WEBP, GIF"}, status_code=400)
+
+    content_type = cover_file.content_type or ""
+    if not _validate_playlist_cover_bytes(content, content_type):
+        return JSONResponse({"error": "File content does not match declared type"}, status_code=400)
+
+    try:
+        img = Image.open(io.BytesIO(content))
+        img = img.convert("RGB")
+        img.thumbnail(PLAYLIST_COVER_SIZE, Image.Resampling.LANCZOS)
+    except Exception:
+        return JSONResponse({"error": "Invalid or corrupt image"}, status_code=400)
+
+    cover_dir = _playlist_cover_dir(user.username)
+    cover_filename = f"playlist_{playlist.id}_{uuid.uuid4().hex[:10]}.webp"
+    cover_path = os.path.join(cover_dir, cover_filename)
+
+    _remove_playlist_cover_file(playlist)
+    img.save(cover_path, "WEBP", quality=86)
+    playlist.cover_path = cover_path
+    playlist.cover_track_id = None
+    db.commit()
+
+    return JSONResponse({"status": "ok", "thumbnail": _playlist_cover_url(playlist.id)})
+
+
+@router.post("/api/playlists/{playlist_id}/cover/track")
+async def set_playlist_cover_from_track(
+    playlist_id: int,
+    payload: PlaylistCoverTrackRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    playlist = db.query(database.Playlist).filter(
+        database.Playlist.id == playlist_id,
+        database.Playlist.owner_id == user.id,
+    ).first()
+    if not playlist:
+        return JSONResponse({"error": "Playlist not found"}, status_code=404)
+
+    item = db.query(database.PlaylistItem).filter(
+        database.PlaylistItem.playlist_id == playlist.id,
+        database.PlaylistItem.track_id == payload.track_id,
+    ).first()
+    if not item:
+        return JSONResponse({"error": "Track is not part of this playlist"}, status_code=400)
+
+    _remove_playlist_cover_file(playlist)
+    playlist.cover_path = None
+    playlist.cover_track_id = payload.track_id
+    db.commit()
+
+    return JSONResponse({"status": "ok", "thumbnail": _playlist_cover_url(playlist.id)})
+
+
+@router.delete("/api/playlists/{playlist_id}/cover")
+async def reset_playlist_cover(playlist_id: int, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    playlist = db.query(database.Playlist).filter(
+        database.Playlist.id == playlist_id,
+        database.Playlist.owner_id == user.id,
+    ).first()
+    if not playlist:
+        return JSONResponse({"error": "Playlist not found"}, status_code=404)
+
+    _remove_playlist_cover_file(playlist)
+    playlist.cover_path = None
+    playlist.cover_track_id = None
+    db.commit()
+
+    return JSONResponse({"status": "ok", "thumbnail": _playlist_cover_url(playlist.id)})
 
 
 @router.post("/api/playlists/{playlist_id}/add")
@@ -615,6 +795,7 @@ async def delete_playlist(playlist_id: int, request: Request, db: Session = Depe
             os.remove(playlist.m3u_path)
         except Exception as e:
             print(f"[PLAYLIST-DEL] Error removing file: {e}")
+    _remove_playlist_cover_file(playlist)
 
     # Explicit Sync: Clean remote playlist immediately
     await clean_remote_playlist(user.username, playlist.name)

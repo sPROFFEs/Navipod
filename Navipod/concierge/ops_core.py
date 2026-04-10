@@ -568,6 +568,14 @@ def _migration_009_tracks_fts(conn):
         pass
 
 
+def _migration_010_playlist_cover_fields(conn):
+    columns = {row[1] for row in conn.execute(text("PRAGMA table_info(playlists)")).fetchall()}
+    if "cover_path" not in columns:
+        conn.execute(text("ALTER TABLE playlists ADD COLUMN cover_path TEXT"))
+    if "cover_track_id" not in columns:
+        conn.execute(text("ALTER TABLE playlists ADD COLUMN cover_track_id INTEGER"))
+
+
 MIGRATIONS = [
     ("000_base_schema", _migration_000_base_schema),
     ("001_tracks_library_columns", _migration_001_tracks_library_columns),
@@ -579,6 +587,7 @@ MIGRATIONS = [
     ("007_system_settings_timezone", _migration_007_system_settings_timezone),
     ("008_system_settings_update_state", _migration_008_system_settings_update_state),
     ("009_tracks_fts", _migration_009_tracks_fts),
+    ("010_playlist_cover_fields", _migration_010_playlist_cover_fields),
 ]
 
 

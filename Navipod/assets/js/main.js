@@ -104,6 +104,11 @@ window.playPlaylistInOrder = playlists.playPlaylistInOrder;
 window.playPlaylistInOrder = playlists.playPlaylistInOrder;
 window.playPlaylistShuffle = playlists.playPlaylistShuffle;
 window.showRemoveFromPlaylistModal = playlists.showRemoveFromPlaylistModal;
+window.openPlaylistCoverUpload = playlists.openPlaylistCoverUpload;
+window.handlePlaylistCoverUpload = playlists.handlePlaylistCoverUpload;
+window.showPlaylistCoverTrackModal = playlists.showPlaylistCoverTrackModal;
+window.setPlaylistCoverFromTrack = playlists.setPlaylistCoverFromTrack;
+window.resetPlaylistCover = playlists.resetPlaylistCover;
 
 // Downloads
 window.openDownloadsModal = downloads.openDownloadsModal;
@@ -148,6 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('[MAIN] Navipod ES6 Modules Initialized');
 
     initUserMenu();
+    views.initSpaHistory();
 
     // Initialize YouTube API
     player.initYoutubeAPI();
@@ -161,7 +167,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load initial view
     // Load initial view only if we are on the root path
     if (window.location.pathname === '/' || window.location.pathname === '/index.html') {
-        views.loadView('home');
+        views.loadView('home', null, { replaceHistory: true });
+    } else if (window.location.pathname === '/portal') {
+        views.loadView('home', null, { replaceHistory: true });
     } else {
         // If we are on a different page (e.g. /admin/system), we just set the view state without rendering
         // logic to highlight sidebar can be added here if needed

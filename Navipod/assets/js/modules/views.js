@@ -69,10 +69,27 @@ function initUserSettingsView(container) {
 
 // === VIEW ROUTING ===
 
-export async function loadView(view, param = null) {
+function _canTrackSpaHistory(view) {
+    return !['settings_admin', 'system_monitor', 'settings_user', 'help'].includes(view);
+}
+
+
+function _pushSpaHistory(view, param = null, replace = false) {
+    if (!_canTrackSpaHistory(view)) return;
+    const statePayload = { navipodView: view, navipodParam: param };
+    if (replace) {
+        window.history.replaceState(statePayload, '');
+    } else {
+        window.history.pushState(statePayload, '');
+    }
+}
+
+
+export async function loadView(view, param = null, options = {}) {
     const container = document.getElementById('view-container');
     if (!container) return;
     if (view === 'radio') view = 'discover_radios';
+    const { pushHistory = true, replaceHistory = false } = options;
 
     container.innerHTML = `
     <div class="empty-state">
@@ -92,6 +109,9 @@ export async function loadView(view, param = null) {
 
     try {
         state.setCurrentViewName(view);
+        if (pushHistory) {
+            _pushSpaHistory(view, param, replaceHistory);
+        }
 
         if (view === 'home') await renderHome(container);
         else if (view === 'library') await renderLibrary(container);
@@ -174,6 +194,23 @@ export async function renderExternalView(container, url) {
         console.error("External view load failed", e);
         container.innerHTML = `<div class="empty-state">Failed to load content.<br><a href="${url}" style="color:var(--accent);">Open directly</a></div>`;
     }
+}
+
+
+export function initSpaHistory() {
+    if (window.__navipodSpaHistoryBound) return;
+    window.__navipodSpaHistoryBound = true;
+
+    window.addEventListener('popstate', (event) => {
+        const historyState = event.state;
+        if (historyState?.navipodView) {
+            loadView(historyState.navipodView, historyState.navipodParam ?? null, { pushHistory: false });
+            return;
+        }
+        if (window.location.pathname === '/portal' || window.location.pathname === '/' || window.location.pathname === '/index.html') {
+            loadView('home', null, { pushHistory: false });
+        }
+    });
 }
 
 document.body.addEventListener('htmx:afterSwap', (event) => {

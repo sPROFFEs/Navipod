@@ -192,6 +192,8 @@ class Playlist(Base):
     is_public = Column(Boolean, default=False, nullable=False)
     source_playlist_id = Column(Integer, nullable=True, index=True)
     m3u_path = Column(String, nullable=True)
+    cover_path = Column(String, nullable=True)
+    cover_track_id = Column(Integer, ForeignKey("tracks.id"), nullable=True)
 
     owner = relationship("User", back_populates="new_playlists")
     items = relationship("PlaylistItem", back_populates="playlist", cascade="all, delete-orphan")
