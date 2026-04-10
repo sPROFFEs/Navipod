@@ -49,13 +49,15 @@
 }
 
 .playlist-mobile-list {
-    display: grid;
+    display: grid !important;
     grid-template-columns: 1fr;
     gap: 10px;
-    overflow: visible;
-    overflow-x: visible;
+    overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
     padding-bottom: 0;
-    scroll-snap-type: none;
+    scroll-snap-type: none !important;
+    width: 100%;
 }
 
 .playlist-mobile-list > .card {
@@ -69,8 +71,9 @@
     background: var(--surface-0);
     width: 100%;
     min-width: 0;
-    flex: initial;
-    scroll-snap-align: unset;
+    max-width: 100%;
+    flex: 0 0 auto !important;
+    scroll-snap-align: unset !important;
 }
 
 .playlist-mobile-list > .card .card-img-container {
@@ -500,5 +503,34 @@
     .track-list .action-btn-danger {
         width: 26px;
         height: 26px;
+    }
+}
+
+@media (max-width: 768px) {
+    .grid-shelf.playlist-mobile-list {
+        display: grid !important;
+        grid-template-columns: 1fr !important;
+        width: 100% !important;
+        overflow: visible !important;
+        overflow-x: visible !important;
+        overflow-y: visible !important;
+        scroll-snap-type: none !important;
+        padding-right: 0 !important;
+    }
+
+    .grid-shelf.playlist-mobile-list > .card {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        flex: 0 0 auto !important;
+        scroll-snap-align: unset !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .grid-shelf.playlist-mobile-list > .card {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
     }
 }
