@@ -9,6 +9,7 @@ import * as api from './api.js';
 
 // Background playback lock reference
 let _wakeLock = null;
+let _activeListenSession = null;
 
 // Acquire a Web Lock to prevent Android Chrome from suspending the tab
 async function acquirePlaybackLock() {
@@ -156,6 +157,8 @@ export function updatePlayerUIForPreview(track) {
 export function playTrack(track) {
     if (!track) return;
 
+    finalizeListenSession('track_switch');
+
     // Stop YouTube preview if playing
     if (state.ytPlayer && state.ytPlayer.stopVideo) state.ytPlayer.stopVideo();
 
@@ -175,6 +178,7 @@ export function playTrack(track) {
     if (window.renderQueue) window.renderQueue();
 
     if (track.db_id) {
+        beginListenSession(track);
         state.audio.src = `/api/stream/${track.db_id}`;
         state.audio.load();
         state.audio.play().then(() => {
@@ -247,6 +251,7 @@ export async function playPreview(data) {
     state.setCurrentTrack(track);
     updatePlayerUIForPreview(track);
 
+    finalizeListenSession('preview_switch');
     // Stop current audio
     state.audio.pause();
     state.audio.src = '';
@@ -383,6 +388,7 @@ function hasUpcomingTrack() {
 }
 
 function clearFinishedPlaybackState() {
+    finalizeListenSession('finished');
     state.setCurrentTrack(null);
     state.setIsPlaying(false);
     releasePlaybackLock();
@@ -392,6 +398,69 @@ function clearFinishedPlaybackState() {
     syncPlayerShellVisibility(null);
     ui.updatePlayButton();
     ui.updateUIProgress(0, 0);
+}
+
+function currentContextPayload() {
+    return {
+        contextType: state.currentViewName || 'home',
+        contextKey: state.currentTrack?.mix_key ? String(state.currentTrack.mix_key) : '',
+    };
+}
+
+function beginListenSession(track) {
+    if (!track?.db_id) {
+        _activeListenSession = null;
+        return;
+    }
+
+    const { contextType, contextKey } = currentContextPayload();
+    _activeListenSession = {
+        trackId: Number(track.db_id),
+        durationSeconds: Number(track.duration || 0),
+        maxPositionSeconds: 0,
+        contextType,
+        contextKey,
+    };
+}
+
+function updateListenProgress() {
+    if (!_activeListenSession) return;
+    const currentTime = Number(state.audio.currentTime || 0);
+    if (Number.isFinite(currentTime) && currentTime > _activeListenSession.maxPositionSeconds) {
+        _activeListenSession.maxPositionSeconds = currentTime;
+    }
+}
+
+function finalizeListenSession(reason = 'stopped') {
+    if (!_activeListenSession) return;
+
+    updateListenProgress();
+
+    const session = _activeListenSession;
+    _activeListenSession = null;
+
+    const playedSeconds = Math.max(0, Number(session.maxPositionSeconds || 0));
+    const durationSeconds = Number.isFinite(state.audio.duration) && state.audio.duration > 0
+        ? Number(state.audio.duration)
+        : Number(session.durationSeconds || 0);
+    const completed = durationSeconds > 0
+        ? playedSeconds >= Math.max(durationSeconds * 0.85, durationSeconds - 8)
+        : reason === 'ended';
+    const skippedEarly = !completed && playedSeconds > 0 && playedSeconds < Math.min(30, durationSeconds || 30);
+
+    if (playedSeconds < 8 && !completed && !skippedEarly) {
+        return;
+    }
+
+    api.recordListenEvent({
+        track_id: session.trackId,
+        played_seconds: playedSeconds,
+        duration_seconds: durationSeconds || null,
+        completed,
+        skipped_early: skippedEarly,
+        context_type: session.contextType || '',
+        context_key: session.contextKey || '',
+    });
 }
 
 
@@ -427,6 +496,7 @@ export function setupPlayer() {
         state.setIsPlaying(false);
         syncPlayerShellVisibility();
         ui.updatePlayButton();
+        updateListenProgress();
         if ('mediaSession' in navigator) {
             navigator.mediaSession.playbackState = 'paused';
         }
@@ -436,6 +506,7 @@ export function setupPlayer() {
         state.setIsPlaying(false);
         ui.updatePlayButton();
         state.audio._endHandled = true;
+        finalizeListenSession('ended');
         if ('mediaSession' in navigator) {
             navigator.mediaSession.playbackState = hasUpcomingTrack() ? 'playing' : 'none';
         }
@@ -444,6 +515,7 @@ export function setupPlayer() {
     });
 
     state.audio.addEventListener('timeupdate', () => {
+        updateListenProgress();
         ui.updateUIProgress(state.audio.currentTime, state.audio.duration);
 
         if (state.audio.duration && state.audio.currentTime >= state.audio.duration - 0.5) {
@@ -458,7 +530,10 @@ export function setupPlayer() {
         }
     });
 
-    state.audio.addEventListener('error', () => ui.showToast("Audio error", "error"));
+    state.audio.addEventListener('error', () => {
+        finalizeListenSession('error');
+        ui.showToast("Audio error", "error");
+    });
 
     if (progressBar) {
         ui.setupDraggable(progressBar, (pct, isDragging) => {
@@ -520,5 +595,9 @@ export function setupPlayer() {
                 navigator.mediaSession.playbackState = state.audio.paused ? 'paused' : 'playing';
             }
         }
+    });
+
+    window.addEventListener('pagehide', () => {
+        finalizeListenSession('pagehide');
     });
 }

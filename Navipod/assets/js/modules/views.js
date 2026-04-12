@@ -104,7 +104,8 @@ export async function loadView(view, param = null, options = {}) {
     lucide.createIcons();
 
     document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-    const link = document.querySelector(`.nav-link[onclick*="'${view}'"]`);
+    const navView = view === 'mix' ? 'home' : view;
+    const link = document.querySelector(`.nav-link[onclick*="'${navView}'"]`);
     if (link) link.classList.add('active');
 
     try {
@@ -115,6 +116,7 @@ export async function loadView(view, param = null, options = {}) {
 
         if (view === 'home') await renderHome(container);
         else if (view === 'library') await renderLibrary(container);
+        else if (view === 'mix') await renderMix(container, param);
         else if (view === 'search') renderSearch(container);
         else if (view === 'public') await playlists.renderPublicPlaylists(container);
         else if (view === 'discover_radios') await radio.renderRadio(container);
@@ -226,10 +228,16 @@ document.body.addEventListener('htmx:afterSwap', (event) => {
 
 export async function renderHome(container) {
     let sections = [];
+    let mixes = [];
     state.setCurrentViewList([]);
 
     try {
-        sections = await (await fetch(`${state.API}/recommendations`)).json();
+        const [recommendations, personalizedMixes] = await Promise.all([
+            api.fetchRecommendations(),
+            api.fetchMixes(),
+        ]);
+        sections = recommendations;
+        mixes = personalizedMixes;
     } catch (e) {
         console.error("Recs error:", e);
     }
@@ -239,6 +247,16 @@ export async function renderHome(container) {
         <div class="hero-kicker">Your library, tuned for right now</div>
         <h1 class="hero-greeting">Good ${ui.getGreeting()}, <span class="hero-username">${username}</span></h1>
     </section>`;
+
+    if (mixes && mixes.length > 0) {
+        html += `
+            <div class="shelf-section">
+                <div class="shelf-header">
+                    <h2 class="shelf-title">Your Mixes</h2>
+                </div>
+                <div class="grid-shelf">${mixes.map(createMixCard).join('')}</div>
+            </div>`;
+    }
 
     if (sections && sections.length > 0) {
         sections.forEach(s => {
@@ -282,6 +300,58 @@ export function renderSearch(container) {
     lucide.createIcons();
     document.getElementById('search-input')?.focus();
     search.executeSearch("");
+}
+
+
+export async function renderMix(container, mixKey) {
+    const mix = await api.fetchMixDetail(mixKey);
+    if (!mix || mix.error) {
+        container.innerHTML = `<div class="empty-state glass-panel"><p>Mix not available.</p></div>`;
+        return;
+    }
+
+    const tracks = (mix.items || []).map(item => ({
+        ...item,
+        id: item.db_id || item.id,
+        db_id: item.db_id || item.id,
+        mix_key: mix.key,
+        is_local: true,
+        source: 'local',
+    }));
+    state.setCurrentViewList(tracks);
+
+    container.innerHTML = `
+        <div class="playlist-header-section">
+            <div class="playlist-cover-large">
+                <img src="${mix.thumbnail || '/static/img/default_cover.png'}" onerror="this.src='/static/img/default_cover.png'">
+            </div>
+            <div class="playlist-info">
+                <p class="playlist-type">Personal Mix</p>
+                <div class="playlist-title-row">
+                    <h1 class="playlist-title">${ui.escHtml(mix.title || 'Mix')}</h1>
+                </div>
+                <p class="playlist-stats">${mix.track_count || tracks.length} songs from your local library</p>
+                <div class="playlist-actions">
+                    ${tracks.length > 0 ? `
+                    <button onclick="playPlaylistInOrder()" class="btn-primary-lg playlist-action-btn" title="Play" aria-label="Play">
+                        <i data-lucide="play" width="20" height="20"></i>
+                        <span class="playlist-btn-label">Play</span>
+                    </button>
+                    <button onclick="playPlaylistShuffle()" class="btn-secondary-lg playlist-action-btn" title="Shuffle" aria-label="Shuffle">
+                        <i data-lucide="shuffle" width="20" height="20"></i>
+                        <span class="playlist-btn-label">Shuffle</span>
+                    </button>` : ''}
+                    <button onclick="showSaveMixModal('${ui.escHtml(mix.key).replace(/'/g, "\\'")}', '${ui.escHtml(mix.title || 'Mix').replace(/'/g, "\\'")}')" class="btn-secondary-lg playlist-action-btn" title="Save as playlist" aria-label="Save as playlist">
+                        <i data-lucide="save" width="20" height="20"></i>
+                        <span class="playlist-btn-label">Save as Playlist</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        ${tracks.length > 0
+            ? `<div class="track-list">${tracks.map((t, i) => createTrackRow(t, i, null)).join('')}</div>`
+            : '<div class="empty-state glass-panel"><p>This mix is empty.</p></div>'}`;
+    lucide.createIcons();
 }
 
 
@@ -367,6 +437,19 @@ export function createPlaylistCard(pl) {
         <div class="playlist-card-copy">
             <div class="card-title">${ui.escHtml(pl.name)}</div>
             <div class="card-subtitle">${ownerLine}${pl.track_count} tracks - ${visibilityLabel}</div>
+        </div>
+    </div>`;
+}
+
+export function createMixCard(mix) {
+    const thumb = mix.thumbnail || '/static/img/default_cover.png';
+    return `<div class="card glass-hover" onclick="loadView('mix', '${ui.escHtml(mix.key).replace(/'/g, "\\'")}')">
+        <div class="card-img-container playlist-card-bg">
+            <img src="${thumb}" class="card-img" onerror="this.src='/static/img/default_cover.png'">
+        </div>
+        <div class="playlist-card-copy">
+            <div class="card-title">${ui.escHtml(mix.title || 'Mix')}</div>
+            <div class="card-subtitle">${mix.track_count || 0} tracks</div>
         </div>
     </div>`;
 }
@@ -642,6 +725,52 @@ export async function loadUserData() {
     } catch (e) {
         console.error("Failed to load user data:", e);
     }
+}
+
+
+export function showSaveMixModal(mixKey, mixTitle) {
+    const defaultName = ui.escHtml(mixTitle || 'New Mix').replace(/'/g, '&#39;');
+    const html = `<div class="modal-overlay" onclick="closeModal()">
+        <div class="modal modal-playlist" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2><i data-lucide="save"></i> Save Mix as Playlist</h2>
+                <button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body">
+                <label class="settings-label" for="mix-save-name">Playlist Name</label>
+                <input id="mix-save-name" class="settings-input" type="text" value="${defaultName}" maxlength="120">
+                <div class="playlist-actions" style="margin-top:16px;">
+                    <button class="btn-primary-lg playlist-action-btn" onclick="saveMixAsPlaylistAction('${mixKey}')">
+                        <i data-lucide="save" width="18" height="18"></i>
+                        <span class="playlist-btn-label">Save</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>`;
+    document.getElementById('modal-container').innerHTML = html;
+    lucide.createIcons();
+}
+
+
+export async function saveMixAsPlaylistAction(mixKey) {
+    const input = document.getElementById('mix-save-name');
+    const name = (input?.value || '').trim();
+    if (!name) {
+        ui.showToast('Playlist name is required', 'error');
+        return;
+    }
+
+    const saved = await api.saveMixAsPlaylist(mixKey, name);
+    if (!saved) {
+        ui.showToast('Failed to save mix', 'error');
+        return;
+    }
+
+    ui.closeModal();
+    ui.showToast('Mix saved as playlist', 'success');
+    await loadUserData();
+    loadView('playlist', saved.id);
 }
 
 

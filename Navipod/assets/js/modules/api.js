@@ -332,6 +332,54 @@ export async function fetchRecommendations() {
     return [];
 }
 
+export async function fetchMixes() {
+    try {
+        const res = await fetch(`${state.API}/mixes`);
+        if (res.ok) return await res.json();
+    } catch (e) {
+        console.error('[MIXES] Fetch error:', e);
+    }
+    return [];
+}
+
+export async function fetchMixDetail(mixKey) {
+    try {
+        const res = await fetch(`${state.API}/mixes/${encodeURIComponent(mixKey)}`);
+        if (res.ok) return await res.json();
+    } catch (e) {
+        console.error('[MIX] Detail error:', e);
+    }
+    return null;
+}
+
+export async function saveMixAsPlaylist(mixKey, name) {
+    try {
+        const res = await fetch(`${state.API}/mixes/${encodeURIComponent(mixKey)}/save`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+        if (res.ok) return await res.json();
+    } catch (e) {
+        console.error('[MIX] Save error:', e);
+    }
+    return null;
+}
+
+export function recordListenEvent(payload) {
+    try {
+        const body = JSON.stringify(payload);
+        fetch(`${state.API}/activity/listen`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body,
+            keepalive: true,
+        }).catch(() => {});
+    } catch (e) {
+        console.error('[ACTIVITY] Listen tracking error:', e);
+    }
+}
+
 export async function fetchRandomTrack() {
     try {
         const res = await fetch(`${state.API}/random-track`);

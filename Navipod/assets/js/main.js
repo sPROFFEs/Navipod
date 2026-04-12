@@ -121,6 +121,7 @@ window.executeDownload = downloads.executeDownload;
 // Views
 window.loadView = views.loadView;
 window.createCard = views.createCard;
+window.createMixCard = views.createMixCard;
 window.createPlaylistCard = views.createPlaylistCard;
 window.createTrackRow = views.createTrackRow;
 window.handleCardClick = views.handleCardClick;
@@ -128,6 +129,8 @@ window.playPreview = views.playPreview;
 window.renderSidebarPlaylists = views.renderSidebarPlaylists;
 window.refreshRecentActivity = views.refreshRecentActivity;
 window.loadUserData = views.loadUserData;
+window.showSaveMixModal = views.showSaveMixModal;
+window.saveMixAsPlaylistAction = views.saveMixAsPlaylistAction;
 
 // Admin
 window.toggleReset = admin.toggleReset;

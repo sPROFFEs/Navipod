@@ -12,6 +12,7 @@ from pathlib import Path
 
 import database
 import ops_core as ops
+from personalization_service import MIX_CACHE_NAME, USER_ACTIVITY_DB_NAME
 from build_info_service import format_bytes, format_datetime_for_display, get_build_info
 from job_service import acquire_lock, create_admin_job, release_lock, update_admin_job, update_admin_job_progress
 
@@ -83,6 +84,13 @@ def get_backup_state(db):
 
 def _build_backup_manifest(triggered_by: str | None, mode: str):
     build_info = get_build_info()
+    personalization_files = []
+    users_root = Path("/saas-data/users")
+    if users_root.exists():
+        for cache_file in users_root.glob(f"*/cache/{USER_ACTIVITY_DB_NAME}"):
+            personalization_files.append(str(cache_file))
+        for mix_cache in users_root.glob(f"*/cache/{MIX_CACHE_NAME}"):
+            personalization_files.append(str(mix_cache))
     return {
         "created_at": ops.utcnow().isoformat(),
         "triggered_by": triggered_by,
@@ -90,6 +98,7 @@ def _build_backup_manifest(triggered_by: str | None, mode: str):
         "build": build_info,
         "db_file": ops.DB_FILE_PATH,
         "env_file": ops.ENV_FILE_PATH if os.path.exists(ops.ENV_FILE_PATH) else None,
+        "personalization_files": personalization_files,
     }
 
 
@@ -131,6 +140,18 @@ def _write_backup_zip(target_path: Path, manifest: dict):
         zf.write(temp_db_path, arcname="concierge.db")
         if os.path.exists(ops.ENV_FILE_PATH):
             zf.write(ops.ENV_FILE_PATH, arcname=".env")
+        users_root = Path("/saas-data/users")
+        if users_root.exists():
+            for user_dir in users_root.iterdir():
+                if not user_dir.is_dir():
+                    continue
+                cache_dir = user_dir / "cache"
+                if not cache_dir.exists():
+                    continue
+                for filename in (USER_ACTIVITY_DB_NAME, MIX_CACHE_NAME):
+                    candidate = cache_dir / filename
+                    if candidate.exists():
+                        zf.write(candidate, arcname=f"users/{user_dir.name}/cache/{filename}")
         zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
 
     try:
@@ -204,6 +225,7 @@ def run_restore_job(job_id: int, slot: str, triggered_by: str | None):
 
         restored_db = extract_dir / "concierge.db"
         restored_env = extract_dir / ".env"
+        restored_users_root = extract_dir / "users"
         if not restored_db.exists():
             raise RuntimeError("Backup archive does not contain concierge.db")
 
@@ -211,6 +233,12 @@ def run_restore_job(job_id: int, slot: str, triggered_by: str | None):
         shutil.copy2(restored_db, ops.DB_FILE_PATH)
         if restored_env.exists():
             shutil.copy2(restored_env, ops.ENV_FILE_PATH)
+        if restored_users_root.exists():
+            for cache_file in restored_users_root.glob("*/cache/*"):
+                relative = cache_file.relative_to(restored_users_root)
+                target = Path("/saas-data/users") / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(cache_file, target)
 
         update_admin_job(job_id, status="completed", message=f"{slot.title()} backup restored. Restart recommended to reload configuration.", details={"slot": slot, "restart_required": True, "triggered_by": triggered_by}, finished=True)
     except Exception as e:
