@@ -59,6 +59,7 @@
     font-size: 0.92rem;
     font-weight: 500;
     color: var(--text-sub);
+    border: 1px solid transparent;
 }
 
 .nav-link:hover,
@@ -72,6 +73,7 @@
     background: var(--surface-2);
     border: 1px solid var(--border-strong);
     color: var(--text-main);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
 }
 
 .nav-link.active i {
