@@ -49,7 +49,9 @@ This repository has two levels:
 - Remote search across local library, YouTube, Spotify, Last.fm, and MusicBrainz
 - Download queue with YouTube and Spotify-oriented fallback logic
 - Download history pruning that keeps active jobs and trims old finished entries automatically
+- Per-user local activity tracking in `user_activity.db` with cached personalized mixes
 - Recommendations from Spotify, YouTube, Last.fm, MusicBrainz, and local history
+- Four local-library personal mixes in Home: `Repeat Mix`, `Deep Cuts Mix`, `Favorites Mix`, and `Rediscovery Mix`
 - Cover enrichment with provider fallbacks and persistent cache
 - Admin panel for users, system monitor, RAM/cache tools, pool size limits, rotating backups, and update checks
 - Subsonic-compatible access for mobile players such as Amperfy, Tempo, Symfonium, and similar apps
@@ -68,6 +70,8 @@ Important persistent paths:
 - `/opt/saas-data/concierge.db`: main application database
 - `/opt/saas-data/cache/`: metadata, cover, recommendations, and token caches
 - `/opt/saas-data/users/`: per-user music and Navidrome data
+- `/opt/saas-data/users/<username>/cache/user_activity.db`: per-user playback activity store
+- `/opt/saas-data/users/<username>/cache/personalized_mixes.json`: cached personal mixes served to Home
 - `/opt/saas-data/pool/`: shared music pool
 
 ## Requirements
@@ -166,6 +170,7 @@ chmod +x setup.sh
 What the script does:
 - checks Docker and Compose availability
 - creates `/opt/saas-data`
+- creates `/opt/saas-data/cache`, `/opt/saas-data/users`, `/opt/saas-data/pool`, and `/opt/saas-data/backups`
 - creates `.env` from `.env.example` if needed
 - builds and starts the stack
 - optionally creates the first admin user
@@ -403,6 +408,22 @@ The in-app updater:
 - runs schema migrations
 - rebuilds containers only when the update actually touches rebuild-triggering paths
 - recreates services, runs health checks, and prunes Docker cache afterward
+
+## Personal Mixes
+
+Navipod can generate local-library personal mixes without relying on remote playback providers.
+
+- `Repeat Mix`: your most replayed tracks, weighted by favorites and recent full listens
+- `Deep Cuts Mix`: tracks with good history that are not the obvious top repeats
+- `Favorites Mix`: liked songs plus nearby tracks from the same local artists and albums
+- `Rediscovery Mix`: local tracks you used to like but have not played recently
+
+Implementation notes:
+- tracking is currently recorded from playback inside the Navipod web app
+- external Subsonic/Navidrome clients do not yet feed this activity store
+- mixes are cached per user for 12 hours in `personalized_mixes.json`
+- the underlying activity data lives in `user_activity.db`
+- each mix can be saved as a normal personal playlist from the UI
 
 ## Backup and Restore
 
