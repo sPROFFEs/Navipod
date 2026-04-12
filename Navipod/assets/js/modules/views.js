@@ -29,6 +29,25 @@ const SECRET_EYE_OFF_ICON = `
     </svg>
 `;
 
+const MIX_META = {
+    repeat: {
+        summary: 'Your most replayed tracks, weighted by favorites and recent full listens.',
+        short: 'Your most played local tracks',
+    },
+    deep_cuts: {
+        summary: 'Tracks with solid history that are not the obvious top repeats.',
+        short: 'Repeated tracks outside the obvious top',
+    },
+    favorites: {
+        summary: 'Liked songs mixed with tracks from the same artists and albums already in your library.',
+        short: 'Liked songs and their closest local neighbors',
+    },
+    rediscovery: {
+        summary: 'Local tracks you liked before but have not played much lately.',
+        short: 'Older local favorites worth bringing back',
+    },
+};
+
 function renderSecretToggleIcon(button, revealed) {
     const iconTarget = button.querySelector('.secret-toggle-icon');
     if (!iconTarget) return;
@@ -319,6 +338,7 @@ export async function renderMix(container, mixKey) {
         source: 'local',
     }));
     state.setCurrentViewList(tracks);
+    const mixMeta = MIX_META[mix.key] || {};
 
     container.innerHTML = `
         <div class="playlist-header-section">
@@ -330,7 +350,7 @@ export async function renderMix(container, mixKey) {
                 <div class="playlist-title-row">
                     <h1 class="playlist-title">${ui.escHtml(mix.title || 'Mix')}</h1>
                 </div>
-                <p class="playlist-stats">${mix.track_count || tracks.length} songs from your local library</p>
+                <p class="playlist-stats">${mix.track_count || tracks.length} songs · ${ui.escHtml(mixMeta.summary || 'Built from your local library')}</p>
                 <div class="playlist-actions">
                     ${tracks.length > 0 ? `
                     <button onclick="playPlaylistInOrder()" class="btn-primary-lg playlist-action-btn" title="Play" aria-label="Play">
@@ -443,13 +463,14 @@ export function createPlaylistCard(pl) {
 
 export function createMixCard(mix) {
     const thumb = mix.thumbnail || '/static/img/default_cover.png';
+    const mixMeta = MIX_META[mix.key] || {};
     return `<div class="card glass-hover" onclick="loadView('mix', '${ui.escHtml(mix.key).replace(/'/g, "\\'")}')">
         <div class="card-img-container playlist-card-bg">
             <img src="${thumb}" class="card-img" onerror="this.src='/static/img/default_cover.png'">
         </div>
         <div class="playlist-card-copy">
             <div class="card-title">${ui.escHtml(mix.title || 'Mix')}</div>
-            <div class="card-subtitle">${mix.track_count || 0} tracks</div>
+            <div class="card-subtitle">${ui.escHtml(mixMeta.short || `${mix.track_count || 0} tracks`)}</div>
         </div>
     </div>`;
 }
@@ -738,7 +759,7 @@ export function showSaveMixModal(mixKey, mixTitle) {
             </div>
             <div class="modal-body">
                 <label class="settings-label" for="mix-save-name">Playlist Name</label>
-                <input id="mix-save-name" class="settings-input" type="text" value="${defaultName}" maxlength="120">
+                <input id="mix-save-name" class="modal-input" type="text" value="${defaultName}" maxlength="120" placeholder="Choose a playlist name">
                 <div class="playlist-actions" style="margin-top:16px;">
                     <button class="btn-primary-lg playlist-action-btn" onclick="saveMixAsPlaylistAction('${mixKey}')">
                         <i data-lucide="save" width="18" height="18"></i>
@@ -750,6 +771,7 @@ export function showSaveMixModal(mixKey, mixTitle) {
     </div>`;
     document.getElementById('modal-container').innerHTML = html;
     lucide.createIcons();
+    document.getElementById('mix-save-name')?.focus();
 }
 
 
