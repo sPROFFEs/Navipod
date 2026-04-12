@@ -419,8 +419,8 @@ Navipod can generate local-library personal mixes without relying on remote play
 - `Rediscovery Mix`: local tracks you used to like but have not played recently
 
 Implementation notes:
-- tracking is currently recorded from playback inside the Navipod web app
-- external Subsonic/Navidrome clients do not yet feed this activity store
+- mix learning is currently recorded only from playback inside the Navipod web UI
+- playback through Navidrome itself or external Subsonic clients such as Tempo, Symfonium, or Amperfy does not yet feed this activity store
 - mixes are cached per user for 12 hours in `personalized_mixes.json`
 - the underlying activity data lives in `user_activity.db`
 - each mix can be saved as a normal personal playlist from the UI
