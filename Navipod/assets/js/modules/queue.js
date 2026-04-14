@@ -23,6 +23,7 @@ export function addToQueue(dataOrTrack) {
 
     const queue = [...state.userQueue, track];
     state.setUserQueue(queue);
+    player.persistPlaybackSession();
     ui.showToast(`Added to queue: ${track.title}`, "success");
     renderQueue();
 
@@ -55,6 +56,7 @@ export function toggleShuffle() {
         ui.showToast("Shuffle Off");
     }
 
+    player.persistPlaybackSession();
     ui.updateFullscreenPlayButton();
 }
 
@@ -92,6 +94,7 @@ export function toggleRepeat() {
         else ui.showToast("Repeat Off");
     }
 
+    player.persistPlaybackSession();
     ui.updateFullscreenPlayButton();
 }
 

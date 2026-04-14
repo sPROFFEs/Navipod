@@ -129,6 +129,7 @@ export async function loadView(view, param = null, options = {}) {
 
     try {
         state.setCurrentViewName(view);
+        state.setCurrentViewParam(param);
         if (pushHistory) {
             _pushSpaHistory(view, param, replaceHistory);
         }
@@ -799,7 +800,42 @@ export async function saveMixAsPlaylistAction(mixKey) {
 // === HEARTBEAT SYNC ===
 
 export function startHeartbeatSync() {
-    state.setHeartbeatInterval(setInterval(checkSyncState, 5000));
+    if (state.heartbeatInterval) {
+        clearInterval(state.heartbeatInterval);
+        state.setHeartbeatInterval(null);
+    }
+
+    if (document.visibilityState === 'hidden') return;
+
+    state.setHeartbeatInterval(setInterval(checkSyncState, 30000));
+    checkSyncState();
+}
+
+export function stopHeartbeatSync() {
+    if (!state.heartbeatInterval) return;
+    clearInterval(state.heartbeatInterval);
+    state.setHeartbeatInterval(null);
+}
+
+export function initHeartbeatLifecycle() {
+    if (window.__navipodHeartbeatLifecycleBound) return;
+    window.__navipodHeartbeatLifecycleBound = true;
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            stopHeartbeatSync();
+        } else {
+            startHeartbeatSync();
+        }
+    });
+
+    window.addEventListener('pageshow', () => {
+        startHeartbeatSync();
+    });
+
+    window.addEventListener('pagehide', () => {
+        stopHeartbeatSync();
+    });
 }
 
 export async function checkSyncState() {

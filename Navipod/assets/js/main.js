@@ -167,12 +167,25 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup player controls
     player.setupPlayer();
 
+    // Keep heartbeat quiet while backgrounded
+    views.initHeartbeatLifecycle();
+
+    const restoredSession = player.restorePlaybackSession();
+
     // Load initial view
     // Load initial view only if we are on the root path
     if (window.location.pathname === '/' || window.location.pathname === '/index.html') {
-        views.loadView('home', null, { replaceHistory: true });
+        if (restoredSession?.view && restoredSession.view !== 'home') {
+            views.loadView(restoredSession.view, restoredSession.param ?? null, { replaceHistory: true });
+        } else {
+            views.loadView('home', null, { replaceHistory: true });
+        }
     } else if (window.location.pathname === '/portal') {
-        views.loadView('home', null, { replaceHistory: true });
+        if (restoredSession?.view && restoredSession.view !== 'home') {
+            views.loadView(restoredSession.view, restoredSession.param ?? null, { replaceHistory: true });
+        } else {
+            views.loadView('home', null, { replaceHistory: true });
+        }
     } else {
         // If we are on a different page (e.g. /admin/system), we just set the view state without rendering
         // logic to highlight sidebar can be added here if needed

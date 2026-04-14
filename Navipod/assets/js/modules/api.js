@@ -36,6 +36,10 @@ export async function loadUserData() {
 
 export function startHeartbeatSync() {
     if (state.heartbeatInterval) clearInterval(state.heartbeatInterval);
+    if (document.visibilityState === 'hidden') {
+        state.setHeartbeatInterval(null);
+        return;
+    }
     state.setHeartbeatInterval(setInterval(checkSyncState, 15000));
     checkSyncState();
 }

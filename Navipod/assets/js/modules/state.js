@@ -35,6 +35,7 @@ export let originalContextQueue = []; // Backup for un-shuffle
 
 // === UI STATE ===
 export let currentViewName = 'home'; // Track active view for UI logic
+export let currentViewParam = null;  // Track current view parameter (playlist id, mix key, etc.)
 export let isSidebarOpen = false;
 export let isFullscreenPlayerOpen = false;
 export let lastPrevClickTime = 0;    // For double-click back button logic
@@ -76,6 +77,7 @@ export function setShuffleMode(val) { shuffleMode = val; }
 export function setRepeatMode(val) { repeatMode = val; }
 export function setOriginalContextQueue(val) { originalContextQueue = val; }
 export function setCurrentViewName(val) { currentViewName = val; }
+export function setCurrentViewParam(val) { currentViewParam = val; }
 export function setIsSidebarOpen(val) { isSidebarOpen = val; }
 export function setIsFullscreenPlayerOpen(val) { isFullscreenPlayerOpen = val; }
 export function setLastPrevClickTime(val) { lastPrevClickTime = val; }

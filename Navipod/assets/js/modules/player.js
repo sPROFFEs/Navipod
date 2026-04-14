@@ -10,6 +10,12 @@ import * as api from './api.js';
 // Background playback lock reference
 let _wakeLock = null;
 let _activeListenSession = null;
+let _sessionPersistInterval = null;
+
+const PLAYBACK_SESSION_KEY = 'navipod.playback.session.v1';
+const PLAYBACK_SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const PLAYBACK_AUTO_RESUME_MAX_AGE_MS = 30 * 60 * 1000;
+const PLAYBACK_PROGRESS_SAVE_INTERVAL_MS = 10000;
 
 // Acquire a Web Lock to prevent Android Chrome from suspending the tab
 async function acquirePlaybackLock() {
@@ -34,6 +40,179 @@ function releasePlaybackLock() {
     if (_wakeLock) {
         _wakeLock();
         _wakeLock = null;
+    }
+}
+
+function buildPlaybackSessionSnapshot() {
+    if (!state.currentTrack?.db_id) return null;
+
+    return {
+        savedAt: Date.now(),
+        currentTrack: state.currentTrack,
+        userQueue: state.userQueue,
+        contextQueue: state.contextQueue,
+        originalContextQueue: state.originalContextQueue,
+        contextIndex: state.contextIndex,
+        repeatMode: state.repeatMode,
+        shuffleMode: state.shuffleMode,
+        currentViewName: state.currentViewName,
+        currentViewParam: state.currentViewParam,
+        currentTime: Number(state.audio.currentTime || 0),
+        duration: Number(state.audio.duration || state.currentTrack?.duration || 0),
+        wasPlaying: Boolean(state.isPlaying && !state.audio.paused),
+    };
+}
+
+export function persistPlaybackSession() {
+    try {
+        const snapshot = buildPlaybackSessionSnapshot();
+        if (!snapshot) {
+            localStorage.removeItem(PLAYBACK_SESSION_KEY);
+            return;
+        }
+        localStorage.setItem(PLAYBACK_SESSION_KEY, JSON.stringify(snapshot));
+    } catch (e) {
+        console.warn('[BG-PLAY] Failed to persist playback session:', e);
+    }
+}
+
+function clearPersistedPlaybackSession() {
+    try {
+        localStorage.removeItem(PLAYBACK_SESSION_KEY);
+    } catch (e) {
+        console.warn('[BG-PLAY] Failed to clear playback session:', e);
+    }
+}
+
+function startPlaybackSessionPersistence() {
+    stopPlaybackSessionPersistence();
+    _sessionPersistInterval = window.setInterval(() => {
+        persistPlaybackSession();
+    }, PLAYBACK_PROGRESS_SAVE_INTERVAL_MS);
+}
+
+function stopPlaybackSessionPersistence() {
+    if (_sessionPersistInterval) {
+        clearInterval(_sessionPersistInterval);
+        _sessionPersistInterval = null;
+    }
+}
+
+async function requestPersistentStorage() {
+    try {
+        if (navigator.storage?.persist) {
+            await navigator.storage.persist();
+        }
+    } catch (e) {
+        console.warn('[BG-PLAY] Persistent storage request failed:', e);
+    }
+}
+
+function applyPlaybackModes() {
+    if (state.audio) {
+        state.audio.loop = (state.repeatMode === 'one');
+    }
+}
+
+function syncTransportControlButtons() {
+    const shuffleBtn = document.getElementById('btn-shuffle');
+    const repeatBtn = document.getElementById('btn-repeat');
+
+    if (shuffleBtn) {
+        shuffleBtn.classList.toggle('active-control', state.shuffleMode);
+    }
+
+    if (repeatBtn) {
+        repeatBtn.classList.toggle('active-control', state.repeatMode !== 'off');
+        repeatBtn.innerHTML = state.repeatMode === 'one'
+            ? `<i data-lucide="repeat-1"></i>`
+            : `<i data-lucide="repeat"></i>`;
+    }
+
+    lucide.createIcons();
+}
+
+function clampResumeTime(timeSeconds, durationSeconds) {
+    const current = Number(timeSeconds || 0);
+    const duration = Number(durationSeconds || 0);
+    if (!Number.isFinite(current) || current < 0) return 0;
+    if (!Number.isFinite(duration) || duration <= 0) return current;
+    return Math.min(current, Math.max(0, duration - 1));
+}
+
+export function restorePlaybackSession() {
+    try {
+        const raw = localStorage.getItem(PLAYBACK_SESSION_KEY);
+        if (!raw) return null;
+
+        const snapshot = JSON.parse(raw);
+        if (!snapshot?.currentTrack?.db_id) return null;
+
+        const ageMs = Date.now() - Number(snapshot.savedAt || 0);
+        if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > PLAYBACK_SESSION_MAX_AGE_MS) {
+            clearPersistedPlaybackSession();
+            return null;
+        }
+
+        state.setUserQueue(Array.isArray(snapshot.userQueue) ? snapshot.userQueue : []);
+        state.setContextQueue(Array.isArray(snapshot.contextQueue) ? snapshot.contextQueue : []);
+        state.setOriginalContextQueue(Array.isArray(snapshot.originalContextQueue) ? snapshot.originalContextQueue : []);
+        state.setContextIndex(Number.isInteger(snapshot.contextIndex) ? snapshot.contextIndex : -1);
+        state.setRepeatMode(snapshot.repeatMode || 'off');
+        state.setShuffleMode(Boolean(snapshot.shuffleMode));
+        state.setCurrentTrack(snapshot.currentTrack);
+        state.setCurrentViewName(snapshot.currentViewName || 'home');
+        state.setCurrentViewParam(snapshot.currentViewParam ?? null);
+        state.setIsPlaying(false);
+
+        updatePlayerUI(snapshot.currentTrack);
+        applyPlaybackModes();
+        syncTransportControlButtons();
+        document.title = `${snapshot.currentTrack.title || 'Navipod'} - Navipod`;
+
+        state.audio.src = `/api/stream/${snapshot.currentTrack.db_id}`;
+        state.audio.load();
+
+        const resumeTime = clampResumeTime(snapshot.currentTime, snapshot.duration);
+        const shouldAttemptResume = Boolean(snapshot.wasPlaying) && ageMs <= PLAYBACK_AUTO_RESUME_MAX_AGE_MS;
+
+        const restorePosition = () => {
+            if (resumeTime > 0) {
+                try {
+                    state.audio.currentTime = resumeTime;
+                } catch (e) {
+                    console.warn('[BG-PLAY] Failed to restore playback position:', e);
+                }
+            }
+
+            if (shouldAttemptResume) {
+                state.audio.play().then(() => {
+                    state.setIsPlaying(true);
+                    ui.updatePlayButton();
+                    startPlaybackSessionPersistence();
+                    acquirePlaybackLock();
+                }).catch(() => {
+                    state.setIsPlaying(false);
+                    ui.updatePlayButton();
+                    persistPlaybackSession();
+                });
+            } else {
+                ui.updatePlayButton();
+                persistPlaybackSession();
+            }
+        };
+
+        state.audio.addEventListener('loadedmetadata', restorePosition, { once: true });
+        if (window.renderQueue) window.renderQueue();
+
+        return {
+            view: snapshot.currentViewName || 'home',
+            param: snapshot.currentViewParam ?? null,
+        };
+    } catch (e) {
+        console.warn('[BG-PLAY] Failed to restore playback session:', e);
+        clearPersistedPlaybackSession();
+        return null;
     }
 }
 
@@ -164,6 +343,7 @@ export function playTrack(track) {
 
     state.setCurrentTrack(track);
     updatePlayerUI(track);
+    persistPlaybackSession();
 
     // Highlight in lists
     document.querySelectorAll('.track-row').forEach(row => row.classList.remove('active-track'));
@@ -188,6 +368,8 @@ export function playTrack(track) {
 
             // Acquire Web Lock to prevent tab suspension on Android
             acquirePlaybackLock();
+            startPlaybackSessionPersistence();
+            persistPlaybackSession();
 
             // Media Session API
             if ('mediaSession' in navigator) {
@@ -227,6 +409,7 @@ export function playTrack(track) {
             if (e.name === 'AbortError') return;
             console.error("Playback error:", e);
             ui.showToast("Playback failed", "error");
+            persistPlaybackSession();
         });
     } else if (track.is_radio) {
         // Radio playback handled separately
@@ -392,6 +575,8 @@ function clearFinishedPlaybackState() {
     state.setCurrentTrack(null);
     state.setIsPlaying(false);
     releasePlaybackLock();
+    stopPlaybackSessionPersistence();
+    clearPersistedPlaybackSession();
     if ('mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'none';
     }
@@ -472,6 +657,8 @@ export function setupPlayer() {
     const volumeBar = document.getElementById('volume-bar');
 
     syncPlayerShellVisibility();
+    requestPersistentStorage();
+    applyPlaybackModes();
 
     if (playBtn) {
         playBtn.addEventListener('click', () => {
@@ -487,6 +674,8 @@ export function setupPlayer() {
         ui.updatePlayButton();
         state.audio._endHandled = false;
         acquirePlaybackLock();
+        startPlaybackSessionPersistence();
+        persistPlaybackSession();
         if ('mediaSession' in navigator) {
             navigator.mediaSession.playbackState = 'playing';
         }
@@ -497,6 +686,8 @@ export function setupPlayer() {
         syncPlayerShellVisibility();
         ui.updatePlayButton();
         updateListenProgress();
+        stopPlaybackSessionPersistence();
+        persistPlaybackSession();
         if ('mediaSession' in navigator) {
             navigator.mediaSession.playbackState = 'paused';
         }
@@ -506,6 +697,7 @@ export function setupPlayer() {
         state.setIsPlaying(false);
         ui.updatePlayButton();
         state.audio._endHandled = true;
+        stopPlaybackSessionPersistence();
         finalizeListenSession('ended');
         if ('mediaSession' in navigator) {
             navigator.mediaSession.playbackState = hasUpcomingTrack() ? 'playing' : 'none';
@@ -532,6 +724,8 @@ export function setupPlayer() {
 
     state.audio.addEventListener('error', () => {
         finalizeListenSession('error');
+        stopPlaybackSessionPersistence();
+        persistPlaybackSession();
         ui.showToast("Audio error", "error");
     });
 
@@ -583,6 +777,10 @@ export function setupPlayer() {
     // --- BACKGROUND PLAYBACK: Visibility change handler ---
     // When user returns to the tab, check if the track ended while backgrounded
     document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            persistPlaybackSession();
+            return;
+        }
         if (document.visibilityState === 'visible' && state.currentTrack) {
             // If audio ended while in background, the 'ended' event may not have fired
             if (state.audio.ended && !state.audio._endHandled) {
@@ -598,6 +796,28 @@ export function setupPlayer() {
     });
 
     window.addEventListener('pagehide', () => {
+        persistPlaybackSession();
         finalizeListenSession('pagehide');
+    });
+
+    document.addEventListener('freeze', () => {
+        persistPlaybackSession();
+    });
+
+    document.addEventListener('resume', () => {
+        if (state.currentTrack) {
+            persistPlaybackSession();
+        }
+    });
+
+    window.addEventListener('pageshow', () => {
+        if (state.currentTrack) {
+            ui.updatePlayButton();
+            persistPlaybackSession();
+        }
+    });
+
+    window.addEventListener('beforeunload', () => {
+        persistPlaybackSession();
     });
 }
