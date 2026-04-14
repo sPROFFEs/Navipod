@@ -50,6 +50,10 @@ const MIX_META = {
         summary: 'The most played local tracks across all users, refreshed from shared playback stats.',
         short: 'Top 50 across the whole pool',
     },
+    latest_pool_additions: {
+        summary: 'The 100 most recently added tracks in the shared pool, ordered from newest to oldest.',
+        short: 'Latest 100 added to the server',
+    },
 };
 
 function renderSecretToggleIcon(button, revealed) {

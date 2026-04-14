@@ -28,6 +28,7 @@ COMPLETION_RATIO = 0.85
 EARLY_SKIP_SECONDS = 30
 MIX_TRACK_LIMIT = 50
 TOP_POOL_TRACK_LIMIT = 50
+LATEST_POOL_TRACK_LIMIT = 100
 TOP_REPEAT_EXCLUDE_COUNT = 10
 
 MIX_DEFINITIONS = [
@@ -36,6 +37,7 @@ MIX_DEFINITIONS = [
     ("favorites", "Favorites Mix"),
     ("rediscovery", "Rediscovery Mix"),
     ("top_pool_tracks", "Top Pool Tracks"),
+    ("latest_pool_additions", "Latest Pool Additions"),
 ]
 
 
@@ -829,6 +831,30 @@ def get_top_pool_mix(db: Session, *, force_refresh: bool = False) -> dict[str, A
     return mix
 
 
+def get_latest_pool_additions_mix(db: Session) -> dict[str, Any]:
+    tracks = (
+        db.query(database.Track)
+        .order_by(database.Track.created_at.desc(), database.Track.id.desc())
+        .limit(LATEST_POOL_TRACK_LIMIT)
+        .all()
+    )
+
+    items = [
+        _track_to_item(
+            {
+                "id": int(track.id),
+                "source_id": track.source_id,
+                "title": track.title,
+                "artist": track.artist,
+                "album": track.album,
+                "duration": track.duration,
+            }
+        )
+        for track in tracks
+    ]
+    return _assemble_track_item_mix("latest_pool_additions", "Latest Pool Additions", items)
+
+
 def _generate_mixes(db: Session, user) -> dict[str, Any]:
     ensure_user_activity_db(user.username)
     with _connect(user.username) as conn:
@@ -944,12 +970,26 @@ def get_mix_summaries(db: Session, user, *, force_refresh: bool = False) -> list
                 "thumbnail": top_pool_mix["thumbnail"],
             }
         )
+
+    latest_pool_mix = get_latest_pool_additions_mix(db)
+    if latest_pool_mix.get("items"):
+        mixes.append(
+            {
+                "key": latest_pool_mix["key"],
+                "title": latest_pool_mix["title"],
+                "track_count": latest_pool_mix["track_count"],
+                "thumbnail": latest_pool_mix["thumbnail"],
+            }
+        )
     return mixes
 
 
 def get_mix_detail(db: Session, user, mix_key: str, *, force_refresh: bool = False) -> dict[str, Any] | None:
     if mix_key == "top_pool_tracks":
         mix = get_top_pool_mix(db, force_refresh=force_refresh)
+        return mix if mix.get("items") else None
+    if mix_key == "latest_pool_additions":
+        mix = get_latest_pool_additions_mix(db)
         return mix if mix.get("items") else None
 
     payload = get_personalized_mixes(db, user, force_refresh=force_refresh)
