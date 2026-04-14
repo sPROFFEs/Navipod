@@ -46,6 +46,10 @@ const MIX_META = {
         summary: 'Local tracks you liked before but have not played much lately.',
         short: 'Older local favorites worth bringing back',
     },
+    top_pool_tracks: {
+        summary: 'The most played local tracks across all users, refreshed from shared playback stats.',
+        short: 'Top 50 across the whole pool',
+    },
 };
 
 function renderSecretToggleIcon(button, revealed) {

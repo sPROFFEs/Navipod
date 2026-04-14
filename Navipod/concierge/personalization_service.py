@@ -17,13 +17,17 @@ import database
 USER_ACTIVITY_DB_NAME = "user_activity.db"
 MIX_CACHE_NAME = "personalized_mixes.json"
 LEGACY_RECENT_CACHE_NAME = "recent_activity.json"
+TOP_POOL_CACHE_NAME = "top_pool_tracks.json"
+MIX_CACHE_VERSION = 2
+TOP_POOL_CACHE_VERSION = 1
 MIX_CACHE_TTL_SECONDS = 12 * 3600
 RECENT_ITEMS_LIMIT = 3
 RECENT_HISTORY_LIMIT = 12
 MIN_TRACK_PLAY_SECONDS = 8
 COMPLETION_RATIO = 0.85
 EARLY_SKIP_SECONDS = 30
-MIX_TRACK_LIMIT = 24
+MIX_TRACK_LIMIT = 50
+TOP_POOL_TRACK_LIMIT = 50
 TOP_REPEAT_EXCLUDE_COUNT = 10
 
 MIX_DEFINITIONS = [
@@ -31,6 +35,7 @@ MIX_DEFINITIONS = [
     ("deep_cuts", "Deep Cuts Mix"),
     ("favorites", "Favorites Mix"),
     ("rediscovery", "Rediscovery Mix"),
+    ("top_pool_tracks", "Top Pool Tracks"),
 ]
 
 
@@ -67,6 +72,12 @@ def _user_cache_dir(username: str) -> Path:
     return path
 
 
+def _global_cache_dir() -> Path:
+    path = Path("/saas-data/cache")
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def get_user_activity_db_path(username: str) -> Path:
     return _user_cache_dir(username) / USER_ACTIVITY_DB_NAME
 
@@ -77,6 +88,10 @@ def get_mix_cache_path(username: str) -> Path:
 
 def get_legacy_recent_cache_path(username: str) -> Path:
     return _user_cache_dir(username) / LEGACY_RECENT_CACHE_NAME
+
+
+def get_top_pool_cache_path() -> Path:
+    return _global_cache_dir() / TOP_POOL_CACHE_NAME
 
 
 def _connect(username: str) -> sqlite3.Connection:
@@ -444,6 +459,8 @@ def _load_mix_cache(username: str) -> dict[str, Any] | None:
             payload = json.load(handle)
         if not isinstance(payload, dict):
             return None
+        if int(payload.get("version") or 0) != MIX_CACHE_VERSION:
+            return None
         return payload
     except Exception:
         return None
@@ -451,6 +468,30 @@ def _load_mix_cache(username: str) -> dict[str, Any] | None:
 
 def _write_mix_cache(username: str, payload: dict[str, Any]) -> None:
     path = get_mix_cache_path(username)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, separators=(",", ":"))
+    os.replace(tmp_path, path)
+
+
+def _load_top_pool_cache() -> dict[str, Any] | None:
+    path = get_top_pool_cache_path()
+    if not path.exists():
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        if not isinstance(payload, dict):
+            return None
+        if int(payload.get("version") or 0) != TOP_POOL_CACHE_VERSION:
+            return None
+        return payload
+    except Exception:
+        return None
+
+
+def _write_top_pool_cache(payload: dict[str, Any]) -> None:
+    path = get_top_pool_cache_path()
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     with open(tmp_path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, separators=(",", ":"))
@@ -674,6 +715,120 @@ def _assemble_mix(key: str, title: str, selected: list[dict[str, Any]]) -> dict[
     }
 
 
+def _assemble_track_item_mix(key: str, title: str, items: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "key": key,
+        "title": title,
+        "track_count": len(items),
+        "thumbnail": items[0]["thumbnail"] if items else "/static/img/default_cover.png",
+        "items": items,
+    }
+
+
+def _generate_top_pool_mix(db: Session) -> dict[str, Any]:
+    aggregate: dict[int, dict[str, Any]] = {}
+    usernames = [str(username) for (username,) in db.query(database.User.username).all() if username]
+
+    for username in usernames:
+        activity_path = get_user_activity_db_path(username)
+        if not activity_path.exists():
+            continue
+        try:
+            with sqlite3.connect(str(activity_path)) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    """
+                    SELECT track_id, play_count, completion_count, skip_count, total_played_seconds, last_played_at
+                    FROM track_stats
+                    """
+                ).fetchall()
+        except Exception as e:
+            print(f"[PERSONALIZATION] Failed to read top-pool stats for {username}: {e}")
+            continue
+
+        for row in rows:
+            track_id = int(row["track_id"] or 0)
+            if not track_id:
+                continue
+            bucket = aggregate.setdefault(
+                track_id,
+                {
+                    "play_count": 0,
+                    "completion_count": 0,
+                    "skip_count": 0,
+                    "total_played_seconds": 0.0,
+                    "last_played_at": None,
+                },
+            )
+            bucket["play_count"] += int(row["play_count"] or 0)
+            bucket["completion_count"] += int(row["completion_count"] or 0)
+            bucket["skip_count"] += int(row["skip_count"] or 0)
+            bucket["total_played_seconds"] += float(row["total_played_seconds"] or 0.0)
+
+            row_last_played = row["last_played_at"]
+            if row_last_played and (not bucket["last_played_at"] or str(row_last_played) > str(bucket["last_played_at"])):
+                bucket["last_played_at"] = row_last_played
+
+    if not aggregate:
+        return _assemble_track_item_mix("top_pool_tracks", "Top Pool Tracks", [])
+
+    tracks = db.query(database.Track).filter(database.Track.id.in_(list(aggregate.keys()))).all()
+    ranked_candidates = []
+    for track in tracks:
+        stats = aggregate.get(int(track.id))
+        if not stats:
+            continue
+        ranked_candidates.append(
+            {
+                "track": {
+                    "id": int(track.id),
+                    "source_id": track.source_id,
+                    "title": track.title,
+                    "artist": track.artist,
+                    "album": track.album,
+                    "duration": track.duration,
+                },
+                "play_count": int(stats["play_count"]),
+                "completion_count": int(stats["completion_count"]),
+                "skip_count": int(stats["skip_count"]),
+                "total_played_seconds": float(stats["total_played_seconds"]),
+                "last_played_at": stats["last_played_at"],
+            }
+        )
+
+    ranked_candidates.sort(
+        key=lambda c: (
+            c["play_count"],
+            c["completion_count"],
+            c["total_played_seconds"],
+            c["last_played_at"] or "",
+            -c["skip_count"],
+        ),
+        reverse=True,
+    )
+
+    items = [_track_to_item(candidate["track"]) for candidate in ranked_candidates[:TOP_POOL_TRACK_LIMIT]]
+    return _assemble_track_item_mix("top_pool_tracks", "Top Pool Tracks", items)
+
+
+def get_top_pool_mix(db: Session, *, force_refresh: bool = False) -> dict[str, Any]:
+    cached = None if force_refresh else _load_top_pool_cache()
+    if cached and float(cached.get("expires_at") or 0) > time.time():
+        mix = cached.get("mix")
+        if isinstance(mix, dict):
+            return mix
+
+    mix = _generate_top_pool_mix(db)
+    payload = {
+        "version": TOP_POOL_CACHE_VERSION,
+        "generated_at": _iso_now(),
+        "expires_at": time.time() + MIX_CACHE_TTL_SECONDS,
+        "mix": mix,
+    }
+    _write_top_pool_cache(payload)
+    return mix
+
+
 def _generate_mixes(db: Session, user) -> dict[str, Any]:
     ensure_user_activity_db(user.username)
     with _connect(user.username) as conn:
@@ -750,6 +905,7 @@ def _generate_mixes(db: Session, user) -> dict[str, Any]:
     ]
     now_ts = time.time()
     return {
+        "version": MIX_CACHE_VERSION,
         "generated_at": _iso_now(),
         "expires_at": now_ts + MIX_CACHE_TTL_SECONDS,
         "mixes": mixes,
@@ -768,7 +924,7 @@ def get_personalized_mixes(db: Session, user, *, force_refresh: bool = False) ->
 
 def get_mix_summaries(db: Session, user, *, force_refresh: bool = False) -> list[dict[str, Any]]:
     payload = get_personalized_mixes(db, user, force_refresh=force_refresh)
-    return [
+    mixes = [
         {
             "key": mix["key"],
             "title": mix["title"],
@@ -778,12 +934,26 @@ def get_mix_summaries(db: Session, user, *, force_refresh: bool = False) -> list
         for mix in payload.get("mixes", [])
         if mix.get("items")
     ]
+    top_pool_mix = get_top_pool_mix(db, force_refresh=force_refresh)
+    if top_pool_mix.get("items"):
+        mixes.append(
+            {
+                "key": top_pool_mix["key"],
+                "title": top_pool_mix["title"],
+                "track_count": top_pool_mix["track_count"],
+                "thumbnail": top_pool_mix["thumbnail"],
+            }
+        )
+    return mixes
 
 
 def get_mix_detail(db: Session, user, mix_key: str, *, force_refresh: bool = False) -> dict[str, Any] | None:
+    if mix_key == "top_pool_tracks":
+        mix = get_top_pool_mix(db, force_refresh=force_refresh)
+        return mix if mix.get("items") else None
+
     payload = get_personalized_mixes(db, user, force_refresh=force_refresh)
     for mix in payload.get("mixes", []):
         if mix.get("key") == mix_key and mix.get("items"):
             return mix
     return None
-
