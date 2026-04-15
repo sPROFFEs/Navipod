@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import json
 import os
 import shutil
@@ -26,6 +27,45 @@ HEALTH_CHECK_TIMEOUT_SECONDS = 180
 
 def get_internal_updater_token():
     return hashlib.sha256(f"navipod-updater:{ops.settings.SECRET_KEY}".encode("utf-8")).hexdigest()
+
+
+def get_update_monitor_token(job_id: int) -> str:
+    return hmac.new(
+        ops.settings.SECRET_KEY.encode("utf-8"),
+        f"update-monitor:{job_id}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def get_update_monitor_path(job_id: int) -> str:
+    return f"/updater/jobs/{job_id}?access={get_update_monitor_token(job_id)}"
+
+
+def is_updater_monitor_available(job_id: int) -> bool:
+    try:
+        response = httpx.get(
+            f"http://updater:8090/api/jobs/{job_id}",
+            params={"access": get_update_monitor_token(job_id)},
+            timeout=2.0,
+        )
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
+def _select_services_for_update(changed_files: list[str]) -> tuple[list[str], list[str]]:
+    selected = ["concierge"]
+    deferred = ["updater"]
+
+    if any(ops._path_matches_required_target(path, "nginx.conf") for path in changed_files):
+        selected.append("nginx")
+    if any(ops._path_matches_required_target(path, "docker-compose.yaml") for path in changed_files):
+        if "nginx" not in selected:
+            selected.append("nginx")
+        if "tunnel" not in selected:
+            selected.append("tunnel")
+
+    return selected, deferred
 
 
 def _truncate_log_text(value, limit: int = 700):
@@ -357,7 +397,7 @@ def _run_check_update_job(job_id: int, triggered_by: str | None):
 
 
 def _run_compose_update(job_id: int, changed_files: list[str]):
-    services = [svc.strip() for svc in ops.settings.UPDATE_MANAGED_SERVICES.split() if svc.strip()]
+    services, deferred_services = _select_services_for_update(changed_files)
     normalized_changed_files = ops.normalize_changed_files(changed_files)
     rebuild_targets = ops.matched_rebuild_targets(changed_files)
     rebuild_required = ops.should_rebuild_for_changed_files(changed_files)
@@ -382,12 +422,17 @@ def _run_compose_update(job_id: int, changed_files: list[str]):
             "changed_files": normalized_changed_files[:100],
             "rebuild_required": rebuild_required,
             "rebuild_targets": rebuild_targets,
+            "services": services,
+            "deferred_services": deferred_services,
         },
     )
     if rebuild_targets:
         update_admin_job_progress(job_id, message=f"Rebuild triggered by: {', '.join(rebuild_targets)}")
     else:
         update_admin_job_progress(job_id, message="No rebuild-triggering files detected in update diff")
+    update_admin_job_progress(job_id, message=f"Interactive update will recreate: {', '.join(services)}")
+    if deferred_services:
+        update_admin_job_progress(job_id, message=f"Left running to preserve update UX: {', '.join(deferred_services)}")
     cleaned_before = ops.cleanup_stale_recreate_containers(services)
     if cleaned_before:
         update_admin_job_progress(job_id, message=f"Removed stale recreate containers: {', '.join(cleaned_before)}")

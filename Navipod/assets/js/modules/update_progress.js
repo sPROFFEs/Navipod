@@ -53,6 +53,9 @@ export function initUpdateProgress(root = document) {
     shell.dataset.initialized = 'true';
 
     const jobId = shell.dataset.updateJobId;
+    const jobEndpoint = shell.dataset.jobEndpoint || `/admin/api/system/jobs/${jobId}`;
+    const successUrl = shell.dataset.jobSuccessUrl || '/admin/system?msg=Update applied successfully';
+    const fallbackUrl = shell.dataset.jobFallbackUrl || '';
     const terminalStates = new Set(['completed', 'failed']);
     const statusNode = document.getElementById('job-status');
     const progressLabel = document.getElementById('job-progress-label');
@@ -97,7 +100,7 @@ export function initUpdateProgress(root = document) {
         if (data.status === 'completed' && !redirectScheduled) {
             redirectScheduled = true;
             window.setTimeout(() => {
-                window.location.href = '/admin/system?msg=Update applied successfully';
+                window.location.href = successUrl;
             }, 1200);
         }
     }
@@ -114,7 +117,7 @@ export function initUpdateProgress(root = document) {
 
     async function pollJob() {
         try {
-            const res = await fetch(`/admin/api/system/jobs/${jobId}`, {
+            const res = await fetch(jobEndpoint, {
                 credentials: 'same-origin',
                 cache: 'no-store',
                 headers: { 'Accept': 'application/json' }
@@ -150,17 +153,18 @@ export function initUpdateProgress(root = document) {
 
     async function maybeRedirectToMonitor() {
         if (redirectScheduled) return;
+        if (!fallbackUrl) return;
         if (reconnectAttempts < 3) return;
         if (!lastJobData || terminalStates.has(lastJobData.status)) return;
         if (!['build', 'recreate', 'health', 'cleanup'].includes(lastJobData.details?.phase || '')) return;
         try {
-            const res = await fetch('/admin/system', {
+            const res = await fetch(fallbackUrl, {
                 credentials: 'same-origin',
                 cache: 'no-store',
             });
             if (res.ok) {
                 redirectScheduled = true;
-                window.location.href = '/admin/system?msg=Update progress resumed after restart';
+                window.location.href = `${fallbackUrl}${fallbackUrl.includes('?') ? '&' : '?'}msg=Update progress resumed after restart`;
             }
         } catch (_error) {
             // Keep polling the job endpoint.
