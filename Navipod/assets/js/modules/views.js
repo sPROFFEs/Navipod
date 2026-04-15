@@ -352,7 +352,7 @@ export async function renderMix(container, mixKey) {
     container.innerHTML = `
         <div class="playlist-header-section">
             <div class="playlist-cover-large">
-                <img src="${mix.thumbnail || '/static/img/default_cover.png'}" onerror="this.src='/static/img/default_cover.png'">
+                <img src="${mix.thumbnail || '/static/img/default_cover.png'}" class="mix-cover-img" onerror="this.src='/static/img/default_cover.png'">
             </div>
             <div class="playlist-info">
                 <p class="playlist-type">Personal Mix</p>
@@ -475,7 +475,7 @@ export function createMixCard(mix) {
     const mixMeta = MIX_META[mix.key] || {};
     return `<div class="card glass-hover" onclick="loadView('mix', '${ui.escHtml(mix.key).replace(/'/g, "\\'")}')">
         <div class="card-img-container playlist-card-bg">
-            <img src="${thumb}" class="card-img" onerror="this.src='/static/img/default_cover.png'">
+            <img src="${thumb}" class="card-img mix-cover-img" onerror="this.src='/static/img/default_cover.png'">
         </div>
         <div class="playlist-card-copy">
             <div class="card-title">${ui.escHtml(mix.title || 'Mix')}</div>

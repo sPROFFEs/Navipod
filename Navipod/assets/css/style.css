@@ -2103,6 +2103,11 @@ body {
     object-fit: cover;
 }
 
+.playlist-cover-large img.mix-cover-img {
+    transform: scale(1.035);
+    transform-origin: center center;
+}
+
 .playlist-cover-actions {
     position: absolute;
     right: 12px;

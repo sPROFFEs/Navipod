@@ -40,6 +40,15 @@ MIX_DEFINITIONS = [
     ("latest_pool_additions", "Latest Pool Additions"),
 ]
 
+MIX_THUMBNAILS = {
+    "repeat": "/assets/img/repeat.png",
+    "deep_cuts": "/assets/img/deep.png",
+    "favorites": "/assets/img/fav.png",
+    "rediscovery": "/assets/img/rediscovery.png",
+    "top_pool_tracks": "/assets/img/top.png",
+    "latest_pool_additions": "/assets/img/last.png",
+}
+
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -712,7 +721,7 @@ def _assemble_mix(key: str, title: str, selected: list[dict[str, Any]]) -> dict[
         "key": key,
         "title": title,
         "track_count": len(items),
-        "thumbnail": items[0]["thumbnail"] if items else "/static/img/default_cover.png",
+        "thumbnail": MIX_THUMBNAILS.get(key) or (items[0]["thumbnail"] if items else "/static/img/default_cover.png"),
         "items": items,
     }
 
@@ -722,7 +731,7 @@ def _assemble_track_item_mix(key: str, title: str, items: list[dict[str, Any]]) 
         "key": key,
         "title": title,
         "track_count": len(items),
-        "thumbnail": items[0]["thumbnail"] if items else "/static/img/default_cover.png",
+        "thumbnail": MIX_THUMBNAILS.get(key) or (items[0]["thumbnail"] if items else "/static/img/default_cover.png"),
         "items": items,
     }
 

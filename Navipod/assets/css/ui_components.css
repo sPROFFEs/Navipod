@@ -120,8 +120,17 @@
     transition: transform 0.2s ease;
 }
 
+.card-img-container img.mix-cover-img {
+    transform: scale(1.035);
+    transform-origin: center center;
+}
+
 .card:hover .card-img-container img {
     transform: scale(1.02);
+}
+
+.card:hover .card-img-container img.mix-cover-img {
+    transform: scale(1.05);
 }
 
 .card-title {
