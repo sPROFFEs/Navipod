@@ -32,6 +32,29 @@ class DownloadRequest(BaseModel):
     source: str = None
 
 
+def _infer_source_label(raw_source: str | None, raw_url: str | None) -> str:
+    source = (raw_source or "").strip().lower()
+    if source in {"spotify", "youtube", "musicbrainz", "lastfm", "soundcloud", "audius", "jamendo"}:
+        return source
+
+    url = (raw_url or "").strip().lower()
+    if "spotify.com" in url:
+        return "spotify"
+    if "youtube.com" in url or "youtu.be" in url:
+        return "youtube"
+    if "musicbrainz.org" in url:
+        return "musicbrainz"
+    if "last.fm" in url:
+        return "lastfm"
+    if "soundcloud.com" in url:
+        return "soundcloud"
+    if "audius.co" in url:
+        return "audius"
+    if "jamendo.com" in url:
+        return "jamendo"
+    return "external"
+
+
 async def _resolve_download_url(user, req: DownloadRequest) -> tuple[str, str]:
     """
     Prefer a Spotify track URL for metadata-only sources so the downloader can
@@ -133,6 +156,8 @@ async def trigger_download(
     job = database.DownloadJob(
         user_id=user.id,
         input_url=resolved_url,
+        requested_title=(req.title or "").strip() or None,
+        requested_source=_infer_source_label(req.source, req.url),
         status="pending",
         progress_percent=0.0,
         new_playlist_name=None,  # No default playlist - just add to library
@@ -282,6 +307,8 @@ async def list_download_jobs(request: Request, db: Session = Depends(get_db)):
         "status": j.status,
         "progress": j.progress_percent,
         "filename": j.current_file,
+        "track_title": j.requested_title,
+        "source": j.requested_source,
         "detail": j.current_file,
         "error": j.error_log,
         "created_at": str(j.created_at)

@@ -246,6 +246,8 @@ class DownloadJob(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     input_url = Column(String)
+    requested_title = Column(String, nullable=True)
+    requested_source = Column(String, nullable=True)
     target_playlist_id = Column(Integer, ForeignKey("user_playlists.id"), nullable=True)
     new_playlist_name = Column(String, nullable=True)
     status = Column(String, default="pending")

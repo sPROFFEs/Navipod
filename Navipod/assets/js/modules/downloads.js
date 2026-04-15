@@ -26,6 +26,21 @@ function isDownloadsModalOpen() {
     return !!modal && !modal.classList.contains('hidden');
 }
 
+function formatSourceLabel(source) {
+    const normalized = String(source || '').trim().toLowerCase();
+    const labels = {
+        spotify: 'Spotify',
+        youtube: 'YouTube',
+        musicbrainz: 'MusicBrainz',
+        lastfm: 'Last.fm',
+        soundcloud: 'SoundCloud',
+        audius: 'Audius',
+        jamendo: 'Jamendo',
+        external: 'External URL'
+    };
+    return labels[normalized] || (normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : 'Unknown source');
+}
+
 function ensureDownloadPolling() {
     if (!state.downloadPolling) {
         state.setDownloadPolling(setInterval(refreshJobs, 3000));
@@ -86,11 +101,18 @@ export async function refreshJobs() {
             const statusIcon = uiState.icon;
             const isSpinning = uiState.active ? 'style="animation: spin 2s linear infinite;"' : '';
             const detail = ui.escHtml(j.error || j.detail || j.filename || j.url || '');
+            const title = ui.escHtml(j.track_title || j.filename || j.url || 'Untitled download');
+            const source = ui.escHtml(formatSourceLabel(j.source));
 
             return `
             <div class="job-item">
                 <div class="job-header">
-                    <div class="job-title">${ui.escHtml(j.filename || j.url)}</div>
+                    <div>
+                        <div class="job-title">${title}</div>
+                        <div class="job-detail" style="margin-top:4px; font-size:0.78rem; color: var(--text-sub, #aaa);">
+                            Source: ${source}
+                        </div>
+                    </div>
                     <span class="status-badge ${uiState.badge}">${uiState.label}</span>
                 </div>
                 <div class="job-progress-bg">

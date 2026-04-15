@@ -348,6 +348,11 @@ class DownloadManager:
 
                         identity = track_identity.compute_track_identity(artist, title)
 
+                        display_title = " - ".join(part for part in [artist, title] if part).strip() or title or file_name
+                        if display_title:
+                            job.requested_title = display_title[:200]
+                            self.db.commit()
+
                     except Exception as e:
                         logger.error(f"Metadata error: {e}")
                         continue

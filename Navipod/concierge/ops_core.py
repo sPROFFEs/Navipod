@@ -668,6 +668,14 @@ def _migration_011_track_identity_fields(conn):
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tracks_fingerprint ON tracks(fingerprint)"))
 
 
+def _migration_012_download_job_metadata(conn):
+    columns = {row[1] for row in conn.execute(text("PRAGMA table_info(download_jobs)")).fetchall()}
+    if "requested_title" not in columns:
+        conn.execute(text("ALTER TABLE download_jobs ADD COLUMN requested_title TEXT"))
+    if "requested_source" not in columns:
+        conn.execute(text("ALTER TABLE download_jobs ADD COLUMN requested_source TEXT"))
+
+
 MIGRATIONS = [
     ("000_base_schema", _migration_000_base_schema),
     ("001_tracks_library_columns", _migration_001_tracks_library_columns),
@@ -681,6 +689,7 @@ MIGRATIONS = [
     ("009_tracks_fts", _migration_009_tracks_fts),
     ("010_playlist_cover_fields", _migration_010_playlist_cover_fields),
     ("011_track_identity_fields", _migration_011_track_identity_fields),
+    ("012_download_job_metadata", _migration_012_download_job_metadata),
 ]
 
 
