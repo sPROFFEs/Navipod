@@ -26,3 +26,4 @@ pytest
 # Rebuild trigger for updater validation
 # Rebuild trigger for updater validation v2
 # Rebuild trigger for updater validation v3
+# Rebuild trigger for updater validation v4
