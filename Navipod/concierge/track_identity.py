@@ -1,8 +1,6 @@
 import re
 import unicodedata
 
-from sqlalchemy import or_
-
 import database
 
 
@@ -28,6 +26,14 @@ VERSION_PATTERNS = [
     (r"[\(\[\-]\s*(version|versión).*?[\)\]]?$", "version"),
 ]
 FEAT_PATTERN = re.compile(r"[\(\[]\s*(feat\.?|ft\.?|featuring).*?[\)\]]", re.IGNORECASE)
+PLACEHOLDER_VALUES = {
+    "",
+    "unknown",
+    "unknown artist",
+    "unknown album",
+    "desconocido",
+    "artista desconocido",
+}
 
 
 def extract_source_id_from_url(url: str) -> str | None:
@@ -54,8 +60,38 @@ def normalize_text(text: str) -> str:
 
     text = text.lower().replace("&", " and ")
     text = unicodedata.normalize("NFKD", text)
-    text = "".join(ch for ch in text if not unicodedata.combining(ch))
-    text = re.sub(r"[^a-z0-9\s]", " ", text)
+    preserved_chars = []
+    last_base_char = ""
+    for ch in text:
+        if unicodedata.combining(ch):
+            try:
+                base_name = unicodedata.name(last_base_char)
+            except ValueError:
+                base_name = ""
+            if "LATIN" in base_name:
+                continue
+            preserved_chars.append(ch)
+            continue
+        preserved_chars.append(ch)
+        last_base_char = ch
+
+    text = unicodedata.normalize("NFKC", "".join(preserved_chars))
+
+    cleaned_chars = []
+    for ch in text:
+        if ch.isspace():
+            cleaned_chars.append(" ")
+            continue
+
+        category = unicodedata.category(ch)
+        if category.startswith(("L", "N")):
+            cleaned_chars.append(ch)
+            continue
+
+        if ch in {"-", "_", ".", "/", ":", "'", '"'}:
+            cleaned_chars.append(" ")
+
+    text = "".join(cleaned_chars)
     text = " ".join(text.split())
     return text
 
@@ -80,11 +116,12 @@ def compute_track_identity(artist: str, title: str) -> dict[str, str]:
     clean_title, version_tag = extract_version_tag(title or "")
     artist_norm = normalize_text(artist or "")
     title_norm = normalize_text(clean_title)
+    semantic_ok = is_semantic_identity_valid(artist_norm, title_norm)
     return {
         "artist_norm": artist_norm,
         "title_norm": title_norm,
         "version_tag": version_tag,
-        "fingerprint": f"{artist_norm}::{title_norm}::{version_tag}",
+        "fingerprint": f"{artist_norm}::{title_norm}::{version_tag}" if semantic_ok else None,
     }
 
 
@@ -112,31 +149,51 @@ def find_existing_track(db, *, source_id: str | None = None, file_hash: str | No
     if not effective_fingerprint and (artist or title):
         effective_fingerprint = compute_track_identity(artist or "", title or "")["fingerprint"]
 
-    if effective_fingerprint and effective_fingerprint != "::::original":
+    if effective_fingerprint:
         return db.query(database.Track).filter(database.Track.fingerprint == effective_fingerprint).first()
 
     return None
 
 
-def backfill_missing_track_identities(db, batch_size: int = 500) -> int:
+def is_semantic_identity_valid(artist_norm: str, title_norm: str) -> bool:
+    if not artist_norm or not title_norm:
+        return False
+    if artist_norm in PLACEHOLDER_VALUES or title_norm in PLACEHOLDER_VALUES:
+        return False
+    if len(title_norm) < 2:
+        return False
+    return True
+
+
+def sync_track_identities(db, batch_size: int = 500) -> int:
     updated = 0
+    last_id = 0
 
     while True:
-        tracks = db.query(database.Track).filter(
-            or_(
-                database.Track.artist_norm.is_(None),
-                database.Track.title_norm.is_(None),
-                database.Track.version_tag.is_(None),
-                database.Track.fingerprint.is_(None),
-            )
-        ).limit(batch_size).all()
-
+        tracks = (
+            db.query(database.Track)
+            .filter(database.Track.id > last_id)
+            .order_by(database.Track.id.asc())
+            .limit(batch_size)
+            .all()
+        )
         if not tracks:
             break
 
         for track in tracks:
-            apply_identity_fields(track)
-            updated += 1
+            identity = compute_track_identity(track.artist, track.title)
+            if (
+                track.artist_norm != identity["artist_norm"]
+                or track.title_norm != identity["title_norm"]
+                or track.version_tag != identity["version_tag"]
+                or track.fingerprint != identity["fingerprint"]
+            ):
+                track.artist_norm = identity["artist_norm"]
+                track.title_norm = identity["title_norm"]
+                track.version_tag = identity["version_tag"]
+                track.fingerprint = identity["fingerprint"]
+                updated += 1
+            last_id = track.id
 
         db.commit()
 

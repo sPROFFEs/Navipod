@@ -98,9 +98,9 @@ async def startup_event():
         print(f"[MIGRATIONS] Applied: {', '.join(applied_migrations)}")
     db = database.SessionLocal()
     try:
-        refreshed_identities = track_identity.backfill_missing_track_identities(db)
+        refreshed_identities = track_identity.sync_track_identities(db)
         if refreshed_identities:
-            print(f"[TRACK-IDENTITY] Backfilled {refreshed_identities} tracks.")
+            print(f"[TRACK-IDENTITY] Synced {refreshed_identities} tracks.")
     finally:
         db.close()
     

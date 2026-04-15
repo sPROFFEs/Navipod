@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import os
 import operations_service
+import track_identity
 
 router = APIRouter(prefix="/admin")
 from shared_templates import templates
@@ -538,7 +539,18 @@ async def admin_find_duplicates(db: Session = Depends(get_db), admin: database.U
             tracks = tracks_by_hash.get(file_hash, [])
             _append_duplicate_group(groups_by_members, "file_hash", f"hash:{file_hash[:16]}...", tracks)
 
-    fingerprint_dupes = [row[0] for row in db.query(Track.fingerprint).filter(Track.fingerprint.isnot(None)).group_by(Track.fingerprint).having(func.count() > 1).all()]
+    fingerprint_dupes = [
+        row[0]
+        for row in db.query(Track.fingerprint)
+        .filter(
+            Track.fingerprint.isnot(None),
+            Track.artist_norm.isnot(None),
+            Track.title_norm.isnot(None),
+        )
+        .group_by(Track.fingerprint)
+        .having(func.count() > 1)
+        .all()
+    ]
     if fingerprint_dupes:
         tracks_by_fingerprint = _group_tracks_by_value(
             db.query(Track).filter(Track.fingerprint.in_(fingerprint_dupes)).order_by(Track.fingerprint.asc(), Track.id.asc()).all(),
@@ -546,6 +558,11 @@ async def admin_find_duplicates(db: Session = Depends(get_db), admin: database.U
         )
         for fingerprint in fingerprint_dupes:
             tracks = tracks_by_fingerprint.get(fingerprint, [])
+            if not tracks:
+                continue
+            first_track = tracks[0]
+            if not track_identity.is_semantic_identity_valid(first_track.artist_norm or "", first_track.title_norm or ""):
+                continue
             _append_duplicate_group(groups_by_members, "semantic", f"semantic:{fingerprint}", tracks)
 
     groups = []
