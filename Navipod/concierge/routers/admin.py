@@ -362,15 +362,17 @@ async def update_job_progress_page(job_id: int, request: Request, db: Session = 
     job = operations_service.get_admin_job(db, job_id)
     if not job:
         return RedirectResponse("/admin/system?error=Update job not found", status_code=303)
-    if operations_service.is_updater_monitor_available(job_id):
-        return RedirectResponse(operations_service.get_update_monitor_path(job_id), status_code=303)
     pool_used, pool_limit, pool_pct = manager.get_pool_status(db)
+    updater_monitor_url = operations_service.get_update_monitor_path(job_id)
+    updater_job_endpoint = f"/updater/api/jobs/{job_id}?access={operations_service.get_update_monitor_token(job_id)}"
     return templates.TemplateResponse("update_progress.html", {
         "request": request,
         "job": job,
         "pool": {"used": pool_used, "limit": pool_limit, "percent": pool_pct},
         "username": admin.username,
         "is_admin": True,
+        "updater_monitor_url": updater_monitor_url,
+        "updater_job_endpoint": updater_job_endpoint,
     })
 
 

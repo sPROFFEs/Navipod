@@ -56,6 +56,8 @@ export function initUpdateProgress(root = document) {
     const jobEndpoint = shell.dataset.jobEndpoint || `/admin/api/system/jobs/${jobId}`;
     const successUrl = shell.dataset.jobSuccessUrl || '/admin/system?msg=Update applied successfully';
     const fallbackUrl = shell.dataset.jobFallbackUrl || '';
+    const updaterMonitorUrl = shell.dataset.updaterMonitorUrl || '';
+    const updaterJobEndpoint = shell.dataset.updaterJobEndpoint || '';
     const terminalStates = new Set(['completed', 'failed']);
     const statusNode = document.getElementById('job-status');
     const progressLabel = document.getElementById('job-progress-label');
@@ -115,6 +117,23 @@ export function initUpdateProgress(root = document) {
         if (progressBar) progressBar.style.width = `${progressValue}%`;
     }
 
+    async function maybeHandoffToUpdaterMonitor() {
+        if (!updaterMonitorUrl || !updaterJobEndpoint) return;
+        try {
+            const res = await fetch(updaterJobEndpoint, {
+                credentials: 'same-origin',
+                cache: 'no-store',
+                headers: { 'Accept': 'application/json' }
+            });
+            if (!res.ok) return;
+            const contentType = res.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) return;
+            window.location.replace(updaterMonitorUrl);
+        } catch (_error) {
+            // Stay on the legacy monitor when updater is not publicly reachable.
+        }
+    }
+
     async function pollJob() {
         try {
             const res = await fetch(jobEndpoint, {
@@ -171,5 +190,7 @@ export function initUpdateProgress(root = document) {
         }
     }
 
-    pollJob();
+    maybeHandoffToUpdaterMonitor().finally(() => {
+        pollJob();
+    });
 }

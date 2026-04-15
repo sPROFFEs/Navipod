@@ -5,7 +5,9 @@
      data-update-job-id="{{ job.id }}"
      data-initial-status="{{ job.status }}"
      data-initial-phase="{{ job.details.phase or 'queued' }}"
-     data-initial-progress="{{ job.details.progress or 0 }}">
+     data-initial-progress="{{ job.details.progress or 0 }}"
+     data-updater-monitor-url="{{ updater_monitor_url or '' }}"
+     data-updater-job-endpoint="{{ updater_job_endpoint or '' }}">
     <section class="update-header">
         <div>
             <h1>Job #{{ job.id }}</h1>
