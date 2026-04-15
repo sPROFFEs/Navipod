@@ -438,7 +438,31 @@ def _run_compose_update(job_id: int, changed_files: list[str]):
     if cleaned_before:
         update_admin_job_progress(job_id, message=f"Removed stale recreate containers: {', '.join(cleaned_before)}")
 
-    completed = ops._run_compose_command(compose_args, check=False, timeout_seconds=COMPOSE_UPDATE_TIMEOUT_SECONDS)
+    heartbeat_state = {"last_elapsed": -1}
+
+    def _compose_wait_heartbeat(elapsed_seconds: int):
+        if elapsed_seconds < 30:
+            return
+        minute_bucket = elapsed_seconds // 30
+        if minute_bucket == heartbeat_state["last_elapsed"]:
+            return
+        heartbeat_state["last_elapsed"] = minute_bucket
+        if rebuild_required:
+            progress = min(89, 80 + minute_bucket)
+            message = f"Container build still running after {elapsed_seconds}s. Waiting for Docker to finish rebuilding {' '.join(services)}."
+            phase = "build"
+        else:
+            progress = min(89, 85 + minute_bucket)
+            message = f"Service recreate still running after {elapsed_seconds}s. Waiting for Docker to finish restarting {' '.join(services)}."
+            phase = "recreate"
+        update_admin_job_progress(job_id, message=message, phase=phase, progress=progress, status="running")
+
+    completed = ops._run_compose_command(
+        compose_args,
+        check=False,
+        timeout_seconds=COMPOSE_UPDATE_TIMEOUT_SECONDS,
+        on_wait=_compose_wait_heartbeat,
+    )
     _log_command_result(job_id, "Compose update", completed)
     compose_error = (completed.stderr or completed.stdout or "docker compose up failed").strip()
     if completed.returncode != 0:

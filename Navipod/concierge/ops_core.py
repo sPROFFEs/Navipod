@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -230,7 +231,7 @@ def _build_host_bind_compose_file():
         return Path(tmp.name)
 
 
-def _run_compose_command(args, *, check=True, timeout_seconds: int | None = None):
+def _run_compose_command(args, *, check=True, timeout_seconds: int | None = None, on_wait=None, wait_tick_seconds: int = 15):
     temp_compose_file = _build_host_bind_compose_file()
     compose_file_arg = str(temp_compose_file) if temp_compose_file else "docker-compose.yaml"
     commands_to_try = [
@@ -241,29 +242,49 @@ def _run_compose_command(args, *, check=True, timeout_seconds: int | None = None
     try:
         for cmd in commands_to_try:
             try:
-                completed = subprocess.run(
+                process = subprocess.Popen(
                     cmd,
-                    check=check,
-                    capture_output=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                     text=True,
                     cwd=str(COMPOSE_PROJECT_ROOT),
-                    timeout=timeout_seconds,
                 )
-                return completed
-            except subprocess.TimeoutExpired as e:
-                stderr_extra = e.stderr.decode("utf-8", errors="replace") if isinstance(e.stderr, bytes) else (e.stderr or "")
-                stdout_text = e.stdout.decode("utf-8", errors="replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
-                stderr = f"Command timed out after {timeout_seconds}s"
-                if stderr_extra:
-                    stderr = f"{stderr}: {stderr_extra}"
-                if check:
-                    raise RuntimeError(stderr) from e
-                return subprocess.CompletedProcess(
-                    cmd,
-                    124,
-                    stdout=stdout_text,
-                    stderr=stderr,
-                )
+                started_at = time.monotonic()
+                while True:
+                    elapsed = int(time.monotonic() - started_at)
+                    remaining = None if timeout_seconds is None else max(0, timeout_seconds - elapsed)
+                    communicate_timeout = wait_tick_seconds if remaining is None else min(wait_tick_seconds, max(1, remaining))
+                    try:
+                        stdout_text, stderr_text = process.communicate(timeout=communicate_timeout)
+                        completed = subprocess.CompletedProcess(cmd, process.returncode, stdout=stdout_text, stderr=stderr_text)
+                        if check and completed.returncode != 0:
+                            raise subprocess.CalledProcessError(
+                                completed.returncode,
+                                cmd,
+                                output=stdout_text,
+                                stderr=stderr_text,
+                            )
+                        return completed
+                    except subprocess.TimeoutExpired:
+                        if on_wait:
+                            try:
+                                on_wait(elapsed + communicate_timeout)
+                            except Exception:
+                                pass
+                        if timeout_seconds is not None and (time.monotonic() - started_at) >= timeout_seconds:
+                            process.kill()
+                            stdout_text, stderr_text = process.communicate()
+                            stderr = f"Command timed out after {timeout_seconds}s"
+                            if stderr_text:
+                                stderr = f"{stderr}: {stderr_text}"
+                            if check:
+                                raise RuntimeError(stderr)
+                            return subprocess.CompletedProcess(
+                                cmd,
+                                124,
+                                stdout=stdout_text,
+                                stderr=stderr,
+                            )
             except FileNotFoundError as e:
                 last_error = e
             except subprocess.CalledProcessError as e:
