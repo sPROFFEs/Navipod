@@ -92,11 +92,17 @@ class DownloadManager:
         return any(marker in reason for marker in fatal_markers)
 
     def _has_downloaded_audio(self, folder: str) -> bool:
+        return any(True for _ in self._iter_downloaded_audio_files(folder))
+
+    def _iter_downloaded_audio_files(self, folder: str):
         audio_exts = ('.mp3', '.m4a', '.flac', '.opus', '.ogg', '.wav')
         try:
-            return any(name.lower().endswith(audio_exts) for name in os.listdir(folder))
+            for root, _, files in os.walk(folder):
+                for name in files:
+                    if name.lower().endswith(audio_exts):
+                        yield os.path.join(root, name)
         except Exception:
-            return False
+            return
 
     def _is_youtube_age_gate_error(self, message: str) -> bool:
         reason = (message or "").lower()
@@ -279,11 +285,8 @@ class DownloadManager:
                 self._log(job_id, "Processing metadata and deduplicating...", 90)
                 
                 processed_count = 0
-                for file_name in os.listdir(temp_dir):
-                    if not file_name.lower().endswith(('.mp3', '.m4a', '.flac', '.opus', '.ogg', '.wav')):
-                        continue
-                        
-                    filepath = os.path.join(temp_dir, file_name)
+                for filepath in self._iter_downloaded_audio_files(temp_dir):
+                    file_name = os.path.basename(filepath)
                     
                     # A. Extraer Metadatos y Hash
                     artist = "Unknown Artist"
@@ -450,10 +453,17 @@ class DownloadManager:
     def _handle_spotify_robust(self, url, folder, job_id):
         """
         Lógica mejorada:
-        1. Intento API (Si hay claves) -> Alta velocidad
-        2. Intento Anónimo (Si falla API o no hay claves) -> FIX RATE LIMIT
-        3. Intento Básico (128k) -> Último recurso
+        1. Intento SpotiFLAC -> audio lossless desde proveedor tercero
+        2. Intento spotDL con metadata de Spotify
+        3. Fallback yt-dlp
         """
+        if shutil.which("spotiflac"):
+            self._log(job_id, "SpotiFLAC module mode...", 8)
+            if self._run_spotiflac_cmd(url, folder):
+                return True
+            self._log(job_id, "SpotiFLAC failed. Falling back to spotDL...", 10)
+        else:
+            logger.info("SpotiFLAC command not found. Falling back to spotDL.")
         
         # 1. Intento con Claves (si existen)
         if self.settings.spotify_client_id:
@@ -484,9 +494,42 @@ class DownloadManager:
             return True
 
         if not self._last_download_reason:
-            self._set_last_reason("spotDL failed in API, anonymous, and basic modes, and yt-dlp fallback did not succeed.")
+            self._set_last_reason("SpotiFLAC, spotDL, and yt-dlp Spotify fallbacks all failed.")
         
         return False
+
+    def _run_spotiflac_cmd(self, url, folder):
+        cmd = [
+            "spotiflac",
+            url,
+            folder,
+            "--service",
+            "tidal",
+            "spoti",
+            "qobuz",
+            "amazon",
+        ]
+        try:
+            logger.info(f"SpotiFLAC CMD: {' '.join(cmd)}")
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            stdout, stderr = process.communicate(timeout=2400)
+
+            if process.returncode == 0 and self._has_downloaded_audio(folder):
+                self._set_last_reason("")
+                return True
+
+            combined = ((stderr or "").strip()[-1500:] or (stdout or "").strip()[-1500:] or "").strip()
+            if process.returncode == 0 and not self._has_downloaded_audio(folder):
+                self._set_last_reason("SpotiFLAC finished without producing an audio file.")
+            else:
+                self._set_last_reason(combined or f"SpotiFLAC exited with code {process.returncode}.")
+            if combined:
+                logger.warning(f"SpotiFLAC error: {combined}")
+            return False
+        except Exception as e:
+            self._set_last_reason(f"SpotiFLAC exception: {e}")
+            logger.error(f"SpotiFLAC Ex: {e}")
+            return False
 
     def _build_spotify_ytsearch_query(self, url: str) -> str | None:
         """
