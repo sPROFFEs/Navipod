@@ -177,6 +177,10 @@ class Track(Base):
     filepath = Column(String, unique=True, index=True)
     source_id = Column(String, unique=True, index=True)
     file_hash = Column(String, unique=True, index=True)
+    artist_norm = Column(String, index=True)
+    title_norm = Column(String, index=True)
+    version_tag = Column(String, index=True)
+    fingerprint = Column(String, index=True)
     source_provider = Column(String)
     created_at = Column(DateTime, default=func.now())
 

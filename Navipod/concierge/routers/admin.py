@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request, Depends, Form, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 import database, auth, manager
 import psutil
 import shutil
@@ -400,6 +401,67 @@ async def get_update_notification(db: Session = Depends(get_db), admin: database
 
 # --- ADMIN LIBRARY MANAGEMENT ---
 
+def _serialize_track(track):
+    return {
+        "id": track.id,
+        "title": track.title or "Unknown",
+        "artist": track.artist or "Unknown",
+        "filepath": track.filepath,
+        "source_provider": track.source_provider or "unknown",
+    }
+
+
+def _append_duplicate_group(groups_by_members, reason, reason_key, tracks):
+    member_ids = tuple(sorted(track.id for track in tracks))
+    if len(member_ids) < 2:
+        return
+
+    group = groups_by_members.get(member_ids)
+    if not group:
+        group = {
+            "member_ids": member_ids,
+            "reasons": [],
+            "keys": [],
+            "tracks": [_serialize_track(track) for track in tracks],
+        }
+        groups_by_members[member_ids] = group
+
+    group["reasons"].append(reason)
+    group["keys"].append(reason_key)
+
+
+def _group_tracks_by_value(tracks, attr_name):
+    grouped = {}
+    for track in tracks:
+        grouped.setdefault(getattr(track, attr_name), []).append(track)
+    return grouped
+
+
+def _query_tracks_with_fts(db, raw_query: str, limit: int):
+    normalized = " ".join(token for token in raw_query.strip().split() if token)
+    if not normalized:
+        return []
+
+    try:
+        stmt = text("""
+            SELECT t.id, t.title, t.artist, t.filepath, t.source_provider
+            FROM tracks_fts f
+            JOIN tracks t ON t.id = f.rowid
+            WHERE tracks_fts MATCH :query
+            ORDER BY bm25(tracks_fts)
+            LIMIT :limit
+        """)
+        rows = db.execute(stmt, {"query": normalized, "limit": limit}).fetchall()
+        return [{
+            "id": row.id,
+            "title": row.title or "Unknown",
+            "artist": row.artist or "Unknown",
+            "filepath": row.filepath,
+            "source_provider": row.source_provider or "unknown",
+        } for row in rows]
+    except Exception:
+        return []
+
 @router.get("/api/library/search")
 async def admin_search_library(q: str = "", db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
     """Search all tracks in the Pool (Admin only)"""
@@ -407,21 +469,18 @@ async def admin_search_library(q: str = "", db: Session = Depends(get_db), admin
     from database import Track
     
     if not q:
-        # Return first 50 tracks if no query
-        tracks = db.query(Track).limit(50).all()
+        tracks = db.query(Track).order_by(Track.created_at.desc(), Track.id.desc()).limit(50).all()
+        payload = [_serialize_track(t) for t in tracks]
     else:
-        query = q.lower()
-        tracks = db.query(Track).filter(
-            (Track.title.ilike(f"%{query}%")) | (Track.artist.ilike(f"%{query}%"))
-        ).limit(100).all()
+        payload = _query_tracks_with_fts(db, q, 100)
+        if not payload:
+            query = q.lower()
+            tracks = db.query(Track).filter(
+                (Track.title.ilike(f"%{query}%")) | (Track.artist.ilike(f"%{query}%")) | (Track.album.ilike(f"%{query}%"))
+            ).order_by(Track.created_at.desc(), Track.id.desc()).limit(100).all()
+            payload = [_serialize_track(t) for t in tracks]
     
-    return JSONResponse([{
-        "id": t.id,
-        "title": t.title or "Unknown",
-        "artist": t.artist or "Unknown",
-        "filepath": t.filepath,
-        "source_provider": t.source_provider or "unknown"
-    } for t in tracks])
+    return JSONResponse(payload)
 
 
 @router.delete("/api/library/track/{track_id}")
@@ -452,70 +511,51 @@ async def admin_delete_track(track_id: int, db: Session = Depends(get_db), admin
 
 @router.get("/api/library/duplicates")
 async def admin_find_duplicates(db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
-    """Find duplicate tracks by source_id, file_hash, or title+artist (Admin only)"""
+    """Find duplicate tracks by source_id, file_hash, or semantic fingerprint (Admin only)"""
     from fastapi.responses import JSONResponse
     from database import Track
     from sqlalchemy import func
     
-    duplicates = []
-    existing_track_ids = set()
-    
-    # 1. Find duplicates by source_id
-    source_id_dupes = db.query(Track.source_id).filter(Track.source_id.isnot(None)).group_by(Track.source_id).having(func.count() > 1).all()
-    for (source_id,) in source_id_dupes:
-        tracks = db.query(Track).filter(Track.source_id == source_id).all()
-        duplicates.append({
-            "key": f"source_id:{source_id}",
-            "tracks": [{
-                "id": t.id,
-                "title": t.title or "Unknown",
-                "artist": t.artist or "Unknown",
-                "filepath": t.filepath
-            } for t in tracks]
+    groups_by_members = {}
+
+    source_id_dupes = [row[0] for row in db.query(Track.source_id).filter(Track.source_id.isnot(None)).group_by(Track.source_id).having(func.count() > 1).all()]
+    if source_id_dupes:
+        tracks_by_source_id = _group_tracks_by_value(
+            db.query(Track).filter(Track.source_id.in_(source_id_dupes)).order_by(Track.source_id.asc(), Track.id.asc()).all(),
+            "source_id",
+        )
+        for source_id in source_id_dupes:
+            tracks = tracks_by_source_id.get(source_id, [])
+            _append_duplicate_group(groups_by_members, "source_id", f"source_id:{source_id}", tracks)
+
+    hash_dupes = [row[0] for row in db.query(Track.file_hash).filter(Track.file_hash.isnot(None)).group_by(Track.file_hash).having(func.count() > 1).all()]
+    if hash_dupes:
+        tracks_by_hash = _group_tracks_by_value(
+            db.query(Track).filter(Track.file_hash.in_(hash_dupes)).order_by(Track.file_hash.asc(), Track.id.asc()).all(),
+            "file_hash",
+        )
+        for file_hash in hash_dupes:
+            tracks = tracks_by_hash.get(file_hash, [])
+            _append_duplicate_group(groups_by_members, "file_hash", f"hash:{file_hash[:16]}...", tracks)
+
+    fingerprint_dupes = [row[0] for row in db.query(Track.fingerprint).filter(Track.fingerprint.isnot(None)).group_by(Track.fingerprint).having(func.count() > 1).all()]
+    if fingerprint_dupes:
+        tracks_by_fingerprint = _group_tracks_by_value(
+            db.query(Track).filter(Track.fingerprint.in_(fingerprint_dupes)).order_by(Track.fingerprint.asc(), Track.id.asc()).all(),
+            "fingerprint",
+        )
+        for fingerprint in fingerprint_dupes:
+            tracks = tracks_by_fingerprint.get(fingerprint, [])
+            _append_duplicate_group(groups_by_members, "semantic", f"semantic:{fingerprint}", tracks)
+
+    groups = []
+    for group in groups_by_members.values():
+        display_key = " | ".join(group["keys"])
+        groups.append({
+            "key": display_key,
+            "reasons": group["reasons"],
+            "tracks": group["tracks"],
         })
-        existing_track_ids.update(t.id for t in tracks)
-    
-    # 2. Find duplicates by file_hash
-    hash_dupes = db.query(Track.file_hash).filter(Track.file_hash.isnot(None)).group_by(Track.file_hash).having(func.count() > 1).all()
-    for (file_hash,) in hash_dupes:
-        tracks = db.query(Track).filter(Track.file_hash == file_hash).all()
-        if not any(t.id in existing_track_ids for t in tracks):
-            duplicates.append({
-                "key": f"hash:{file_hash[:16]}...",
-                "tracks": [{
-                    "id": t.id,
-                    "title": t.title or "Unknown",
-                    "artist": t.artist or "Unknown",
-                    "filepath": t.filepath
-                } for t in tracks]
-            })
-            existing_track_ids.update(t.id for t in tracks)
-    
-    # 3. Find duplicates by title + artist (same song name from different sources)
-    title_artist_dupes = db.query(
-        func.lower(Track.title), func.lower(Track.artist)
-    ).filter(
-        Track.title.isnot(None), Track.artist.isnot(None)
-    ).group_by(
-        func.lower(Track.title), func.lower(Track.artist)
-    ).having(func.count() > 1).all()
-    
-    for (title, artist) in title_artist_dupes:
-        tracks = db.query(Track).filter(
-            func.lower(Track.title) == title,
-            func.lower(Track.artist) == artist
-        ).all()
-        # Skip if all tracks already flagged
-        if not any(t.id in existing_track_ids for t in tracks):
-            duplicates.append({
-                "key": f"name:{title} - {artist}",
-                "tracks": [{
-                    "id": t.id,
-                    "title": t.title or "Unknown",
-                    "artist": t.artist or "Unknown",
-                    "filepath": t.filepath
-                } for t in tracks]
-            })
-            existing_track_ids.update(t.id for t in tracks)
-    
-    return JSONResponse({"count": len(duplicates), "groups": duplicates})
+
+    groups.sort(key=lambda item: (-len(item["tracks"]), item["key"]))
+    return JSONResponse({"count": len(groups), "groups": groups})

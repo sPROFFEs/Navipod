@@ -35,6 +35,7 @@ import manager
 import auth
 import database
 import i18n
+import track_identity
 from contextvars import ContextVar
 
 from shared_templates import templates
@@ -95,6 +96,13 @@ async def startup_event():
     applied_migrations = operations_service.apply_schema_migrations()
     if applied_migrations:
         print(f"[MIGRATIONS] Applied: {', '.join(applied_migrations)}")
+    db = database.SessionLocal()
+    try:
+        refreshed_identities = track_identity.backfill_missing_track_identities(db)
+        if refreshed_identities:
+            print(f"[TRACK-IDENTITY] Backfilled {refreshed_identities} tracks.")
+    finally:
+        db.close()
     
     # Start Reaper Background Loop
     asyncio.create_task(reaper_scheduler())

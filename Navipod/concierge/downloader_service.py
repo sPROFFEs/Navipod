@@ -19,6 +19,7 @@ import utils
 import httpx
 import mutagen
 from mutagen.easyid3 import EasyID3
+import track_identity
 try:
     from mutagen.id3 import ID3, APIC
 except ImportError:
@@ -147,27 +148,11 @@ class DownloadManager:
         Extracts a normalized source_id from a URL for deduplication.
         Returns the same format stored in Track.source_id.
         """
-        import re
-        
-        # Clean URL (remove trailing slashes, etc)
-        url = url.strip().rstrip('/')
-        
-        # YouTube - format: youtube:VIDEO_ID
-        # Handles: youtube.com/watch?v=ID, youtu.be/ID, youtube.com/embed/ID, etc
-        yt_match = re.search(r'(?:v=|youtu\.be/|embed/)([a-zA-Z0-9_-]{11})', url)
-        if yt_match:
-            sid = f"youtube:{yt_match.group(1)}"
-            logger.info(f"Extracted YouTube ID: {sid} from {url}")
+        sid = track_identity.extract_source_id_from_url(url)
+        if sid:
+            logger.info(f"Extracted source ID: {sid} from {url}")
             return sid
-        
-        # Spotify - format: spotify:track:TRACK_ID
-        # Handles: open.spotify.com/track/ID
-        sp_match = re.search(r'spotify\.com/track/([a-zA-Z0-9]+)', url)
-        if sp_match:
-            sid = f"spotify:track:{sp_match.group(1)}"
-            logger.info(f"Extracted Spotify ID: {sid} from {url}")
-            return sid
-        
+
         logger.warning(f"Could not extract source_id from URL: {url}")
         return None
 
@@ -305,6 +290,7 @@ class DownloadManager:
                     title = os.path.splitext(file_name)[0]
                     album = "Unknown Album"
                     source_id = None
+                    identity = None
                     
                     try:
                         # Hashing
@@ -357,15 +343,19 @@ class DownloadManager:
                              # Fallback: Hash-based ID
                              source_id = f"local:{file_hash}"
 
+                        identity = track_identity.compute_track_identity(artist, title)
+
                     except Exception as e:
                         logger.error(f"Metadata error: {e}")
                         continue
 
                     # B. Deduplication Check (DB)
-                    track = self.db.query(database.Track).filter(
-                        (database.Track.file_hash == file_hash) | 
-                        (database.Track.source_id == source_id)
-                    ).first()
+                    track = track_identity.find_existing_track(
+                        self.db,
+                        source_id=source_id,
+                        file_hash=file_hash,
+                        fingerprint=identity["fingerprint"] if identity else None,
+                    )
 
                     final_path = ""
                     
@@ -401,6 +391,10 @@ class DownloadManager:
                         track = database.Track(
                             title=title, artist=artist, album=album,
                             source_id=source_id, file_hash=file_hash,
+                            artist_norm=identity["artist_norm"] if identity else None,
+                            title_norm=identity["title_norm"] if identity else None,
+                            version_tag=identity["version_tag"] if identity else None,
+                            fingerprint=identity["fingerprint"] if identity else None,
                             filepath=final_path, source_provider="download"
                         )
                         self.db.add(track)
@@ -463,7 +457,7 @@ class DownloadManager:
         
         # 1. Intento con Claves (si existen)
         if self.settings.spotify_client_id:
-            self._log(job_id, "SpotDL API mode (320k)...", 10)
+            self._log(job_id, "SpotDL metadata mode...", 10)
             if self._run_spotdl_cmd(url, folder, mode="full", use_auth=True):
                 return True
             if self._spotdl_should_bypass_retries():
@@ -472,7 +466,7 @@ class DownloadManager:
             self._log(job_id, "spotDL API failed. Switching to anonymous mode...", 20)
         
         # 2. Intento Anónimo (320k) - AQUÍ ESTÁ EL FIX
-        self._log(job_id, "spotDL anonymous mode (320k)...", 30)
+        self._log(job_id, "spotDL anonymous mode...", 30)
         if self._run_spotdl_cmd(url, folder, mode="full", use_auth=False):
             return True
         if self._spotdl_should_bypass_retries():
@@ -608,7 +602,7 @@ class DownloadManager:
             cmd.extend([
                 "--output", f"{folder}/{{artist}} - {{title}}.{{ext}}",
                 "--format", "mp3",
-                "--bitrate", "320k",
+                "--bitrate", "256k",
                 "--overwrite", "skip",
                 "--print-errors"
             ])

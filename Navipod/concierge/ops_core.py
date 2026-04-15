@@ -576,6 +576,24 @@ def _migration_010_playlist_cover_fields(conn):
         conn.execute(text("ALTER TABLE playlists ADD COLUMN cover_track_id INTEGER"))
 
 
+def _migration_011_track_identity_fields(conn):
+    columns = {row[1] for row in conn.execute(text("PRAGMA table_info(tracks)")).fetchall()}
+    required_columns = {
+        "artist_norm": "TEXT",
+        "title_norm": "TEXT",
+        "version_tag": "TEXT",
+        "fingerprint": "TEXT",
+    }
+    for col_name, col_type in required_columns.items():
+        if col_name not in columns:
+            conn.execute(text(f"ALTER TABLE tracks ADD COLUMN {col_name} {col_type}"))
+
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tracks_artist_norm ON tracks(artist_norm)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tracks_title_norm ON tracks(title_norm)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tracks_version_tag ON tracks(version_tag)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tracks_fingerprint ON tracks(fingerprint)"))
+
+
 MIGRATIONS = [
     ("000_base_schema", _migration_000_base_schema),
     ("001_tracks_library_columns", _migration_001_tracks_library_columns),
@@ -588,6 +606,7 @@ MIGRATIONS = [
     ("008_system_settings_update_state", _migration_008_system_settings_update_state),
     ("009_tracks_fts", _migration_009_tracks_fts),
     ("010_playlist_cover_fields", _migration_010_playlist_cover_fields),
+    ("011_track_identity_fields", _migration_011_track_identity_fields),
 ]
 
 

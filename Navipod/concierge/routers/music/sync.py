@@ -11,6 +11,7 @@ import httpx
 import database
 import spotify_service
 import youtube_service
+import track_identity
 
 from .core import get_db, get_current_user_safe
 from .favorites import schedule_navidrome_sync
@@ -92,17 +93,7 @@ async def check_duplicate(url: str, request: Request, db: Session = Depends(get_
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
     
-    source_id = None
-    
-    # Extract source_id from URL
-    yt_match = re.search(r'(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})', url)
-    if yt_match:
-        source_id = f"youtube:{yt_match.group(1)}"
-    
-    sp_match = re.search(r'spotify\.com/track/([a-zA-Z0-9]+)', url)
-    if sp_match:
-        source_id = f"spotify:track:{sp_match.group(1)}"
-    
+    source_id = track_identity.extract_source_id_from_url(url)
     if not source_id:
         return JSONResponse({"exists": False})
     

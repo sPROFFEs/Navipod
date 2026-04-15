@@ -9,9 +9,9 @@ passlib
 bcrypt==4.0.1
 jinja2
 # --- New Downloader Dependencies ---
-# FIX 2025: yt-dlp[default] incluye el paquete yt-dlp-ejs necesario para resolver firmas de YouTube
-yt-dlp[default]>=2025.1.15
-spotdl>=4.4.0
+# Pinning downloader versions avoids rebuild-to-rebuild regressions in YouTube/Spotify resolution.
+yt-dlp[default]==2026.3.17
+spotdl==4.4.3
 Pillow
 spotipy
 ytmusicapi

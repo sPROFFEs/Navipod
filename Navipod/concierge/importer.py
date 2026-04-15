@@ -7,9 +7,11 @@ from datetime import datetime
 # Import database models
 try:
     from database import SessionLocal, Track, Playlist, PlaylistItem, User
+    import track_identity
 except ImportError:
     # Handle running from different context if needed
     from concierge.database import SessionLocal, Track, Playlist, PlaylistItem, User
+    from concierge import track_identity
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -46,8 +48,30 @@ def process_file(db, filepath, playlist=None):
         file_hash = get_file_hash(filepath)
         filename = os.path.basename(filepath)
         
+        artist = "Unknown Artist"
+        album = "Unknown Album"
+        title = os.path.splitext(filename)[0]
+
+        try:
+            import mutagen
+            audio = mutagen.File(filepath, easy=True)
+            if audio:
+                artist = audio.get('artist', [artist])[0]
+                album = audio.get('album', [album])[0]
+                title = audio.get('title', [title])[0]
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.warning(f"Metadata read error: {e}")
+
+        identity = track_identity.compute_track_identity(artist, title)
+
         # Check if track exists
-        track = db.query(Track).filter_by(file_hash=file_hash).first()
+        track = track_identity.find_existing_track(
+            db,
+            file_hash=file_hash,
+            fingerprint=identity["fingerprint"],
+        )
         
         if track:
             logger.info(f"Duplicate found: {filename} (Hash: {file_hash[:8]}). Linking to existing track.")
@@ -78,23 +102,6 @@ def process_file(db, filepath, playlist=None):
             # Or we assume 'mutagen' is available (since user mentioned it for Phase 2, maybe we use it here too?)
             # I'll rely on basic file info for now or just generic folders if needed.
             
-            artist = "Unknown Artist"
-            album = "Unknown Album"
-            title = os.path.splitext(filename)[0]
-            
-            # Simple metadata extraction heuristic (optional, better to use mutagen if installed)
-            try:
-                import mutagen
-                audio = mutagen.File(filepath, easy=True)
-                if audio:
-                    artist = audio.get('artist', [artist])[0]
-                    album = audio.get('album', [album])[0]
-                    title = audio.get('title', [title])[0]
-            except ImportError:
-                pass # Mutagen might not be installed yet
-            except Exception as e:
-                logger.warning(f"Metadata read error: {e}")
-
             pool_dir = ensure_pool_directory(artist, album)
             new_filename = f"{clean_name(title)}.mp3" # Force .mp3 extension? Or keep original?
             # Keeping original extension is safer
@@ -127,6 +134,10 @@ def process_file(db, filepath, playlist=None):
                 filepath=target_path,
                 source_id=source_id,
                 file_hash=file_hash,
+                artist_norm=identity["artist_norm"],
+                title_norm=identity["title_norm"],
+                version_tag=identity["version_tag"],
+                fingerprint=identity["fingerprint"],
                 source_provider="local",
                 duration=0 # Needs mutagen to get duration
             )
