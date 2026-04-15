@@ -44,9 +44,10 @@ def get_update_monitor_path(job_id: int) -> str:
 def is_updater_monitor_available(job_id: int) -> bool:
     try:
         response = httpx.get(
-            f"http://updater:8090/api/jobs/{job_id}",
+            f"http://nginx/updater/api/jobs/{job_id}",
             params={"access": get_update_monitor_token(job_id)},
             timeout=2.0,
+            follow_redirects=False,
         )
         return response.status_code == 200
     except Exception:
