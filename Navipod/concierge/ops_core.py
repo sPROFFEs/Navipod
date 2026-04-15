@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 from datetime import datetime, timezone, timedelta
@@ -275,6 +276,58 @@ def _run_compose_command(args, *, check=True, timeout_seconds: int | None = None
     finally:
         if temp_compose_file and temp_compose_file.exists():
             temp_compose_file.unlink(missing_ok=True)
+
+
+def _run_docker_command(args, *, check=False, timeout_seconds: int | None = None):
+    return subprocess.run(
+        ["docker", *args],
+        check=check,
+        capture_output=True,
+        text=True,
+        cwd=str(COMPOSE_PROJECT_ROOT),
+        timeout=timeout_seconds,
+    )
+
+
+def cleanup_stale_recreate_containers(services: list[str]) -> list[str]:
+    service_set = {service.strip() for service in services if service and service.strip()}
+    if not service_set:
+        return []
+
+    removed = []
+    try:
+        completed = _run_docker_command(
+            ["ps", "-a", "--format", "{{.ID}}\t{{.Names}}\t{{.Status}}"],
+            timeout_seconds=30,
+        )
+        if completed.returncode != 0:
+            return removed
+
+        for line in (completed.stdout or "").splitlines():
+            parts = line.split("\t", 2)
+            if len(parts) != 3:
+                continue
+
+            container_id, name, status = parts
+            match = re.fullmatch(r"([0-9a-f]{12,})_(.+)", name.strip())
+            if not match:
+                continue
+
+            service_name = match.group(2)
+            normalized_service = service_name.removeprefix("navipod_")
+            if service_name not in service_set and normalized_service not in service_set:
+                continue
+
+            if status.lower().startswith("up "):
+                continue
+
+            rm_result = _run_docker_command(["rm", "-f", container_id], timeout_seconds=30)
+            if rm_result.returncode == 0:
+                removed.append(name.strip())
+    except Exception:
+        return removed
+
+    return removed
 
 
 def _ensure_schema_migrations_table():

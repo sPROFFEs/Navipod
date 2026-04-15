@@ -388,14 +388,36 @@ def _run_compose_update(job_id: int, changed_files: list[str]):
         update_admin_job_progress(job_id, message=f"Rebuild triggered by: {', '.join(rebuild_targets)}")
     else:
         update_admin_job_progress(job_id, message="No rebuild-triggering files detected in update diff")
-    completed = ops._run_compose_command(
-        compose_args,
-        check=False,
-        timeout_seconds=COMPOSE_UPDATE_TIMEOUT_SECONDS,
-    )
+    cleaned_before = ops.cleanup_stale_recreate_containers(services)
+    if cleaned_before:
+        update_admin_job_progress(job_id, message=f"Removed stale recreate containers: {', '.join(cleaned_before)}")
+
+    completed = ops._run_compose_command(compose_args, check=False, timeout_seconds=COMPOSE_UPDATE_TIMEOUT_SECONDS)
     _log_command_result(job_id, "Compose update", completed)
+    compose_error = (completed.stderr or completed.stdout or "docker compose up failed").strip()
     if completed.returncode != 0:
-        raise RuntimeError((completed.stderr or completed.stdout or "docker compose up failed").strip())
+        conflict_markers = [
+            'already in use by container',
+            'Conflict. The container name',
+        ]
+        if any(marker in compose_error for marker in conflict_markers):
+            cleaned_retry = ops.cleanup_stale_recreate_containers(services)
+            if cleaned_retry:
+                update_admin_job_progress(job_id, message=f"Retrying recreate after removing stale containers: {', '.join(cleaned_retry)}")
+                retry_completed = ops._run_compose_command(compose_args, check=False, timeout_seconds=COMPOSE_UPDATE_TIMEOUT_SECONDS)
+                _log_command_result(job_id, "Compose update retry", retry_completed)
+                completed = retry_completed
+                compose_error = (completed.stderr or completed.stdout or "docker compose up failed").strip()
+
+        if completed.returncode == 124:
+            update_admin_job_progress(job_id, message="Compose update timed out. Verifying service health before failing", phase="health", progress=90, status="running")
+            health_result = _run_post_update_health_check()
+            if health_result.get("ok"):
+                update_admin_job_progress(job_id, message="Compose command timed out, but services are healthy", phase="cleanup", progress=95, status="running")
+            else:
+                raise RuntimeError(compose_error)
+        elif completed.returncode != 0:
+            raise RuntimeError(compose_error)
 
     update_admin_job_progress(job_id, message="Services restarted. Waiting for health check", phase="health", progress=90, status="running")
     health_result = _run_post_update_health_check()
