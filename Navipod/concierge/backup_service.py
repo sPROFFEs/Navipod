@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import shutil
 import sqlite3
@@ -15,6 +16,7 @@ import ops_core as ops
 from personalization_service import MIX_CACHE_NAME, USER_ACTIVITY_DB_NAME
 from build_info_service import format_bytes, format_datetime_for_display, get_build_info
 from job_service import acquire_lock, create_admin_job, release_lock, update_admin_job, update_admin_job_progress
+logger = logging.getLogger(__name__)
 
 
 def _upsert_backup_artifact(db, slot, *, filename=None, file_path=None, size_bytes=0, created_at=None, manifest=None):
@@ -282,7 +284,7 @@ def should_run_autobackup(db):
         if file_exists and hasattr(local_created, "date") and local_created.date() == now.date():
             return False, "backup already exists for today"
         if not file_exists:
-            print("[BACKUP-SCHEDULER] Ignoring stale current backup metadata because the backup file is missing.")
+            logger.warning("Ignoring stale current backup metadata because the backup file is missing")
 
     lock = db.query(database.AdminOperationLock).filter(database.AdminOperationLock.name == "admin-global-operation").first()
     if lock is not None:
@@ -309,9 +311,10 @@ def update_autobackup_settings(enabled: bool, hour: int, minute: int, timezone_n
 
 
 async def autobackup_scheduler():
-    print(
-        f"[BACKUP-SCHEDULER] Started. Poll interval={ops.settings.BACKUP_SCHEDULER_POLL_SECONDS}s "
-        f"backup_root={ops.BACKUP_ROOT}"
+    logger.info(
+        "Backup scheduler started. Poll interval=%ss backup_root=%s",
+        ops.settings.BACKUP_SCHEDULER_POLL_SECONDS,
+        ops.BACKUP_ROOT,
     )
     while True:
         try:
@@ -319,13 +322,13 @@ async def autobackup_scheduler():
             try:
                 should_run, reason = should_run_autobackup(db)
                 if should_run:
-                    print("[BACKUP-SCHEDULER] Autobackup conditions met. Queueing backup job.")
+                    logger.info("Autobackup conditions met. Queueing backup job")
                     queue_backup("system", mode="auto")
                 else:
-                    print(f"[BACKUP-SCHEDULER] Skipping autobackup: {reason}")
+                    logger.info("Skipping autobackup: %s", reason)
             finally:
                 db.close()
             await asyncio.sleep(ops.settings.BACKUP_SCHEDULER_POLL_SECONDS)
         except Exception as e:
-            print(f"[BACKUP-SCHEDULER] {e}")
+            logger.warning("Backup scheduler error: %s", e)
             await asyncio.sleep(60)

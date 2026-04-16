@@ -1,6 +1,8 @@
 import json
+import logging
 import os
 from typing import Dict
+logger = logging.getLogger(__name__)
 
 # Global dictionary to hold loaded translations including nested keys
 # Structure: { "es": { "key": "value" }, "en": { ... } }
@@ -13,7 +15,7 @@ def load_translations(locales_dir: str = "locales"):
     """Loads all JSON files from the locales directory."""
     global translations
     if not os.path.exists(locales_dir):
-        print(f"[i18n] Warning: Locales directory '{locales_dir}' not found.")
+        logger.warning("Locales directory not found: %s", locales_dir)
         return
 
     for filename in os.listdir(locales_dir):
@@ -24,9 +26,9 @@ def load_translations(locales_dir: str = "locales"):
             try:
                 with open(os.path.join(locales_dir, filename), "r", encoding="utf-8") as f:
                     translations[lang_code] = json.load(f)
-                print(f"[i18n] Loaded {lang_code} translations.")
+                logger.info("Loaded %s translations", lang_code)
             except Exception as e:
-                print(f"[i18n] Error loading {filename}: {e}")
+                logger.warning("Error loading locale file %s: %s", filename, e)
 
 def get_text(key: str, lang: str = DEFAULT_LANG) -> str:
     """

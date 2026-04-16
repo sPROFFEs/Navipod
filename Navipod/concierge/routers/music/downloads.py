@@ -1,6 +1,7 @@
 """
 Download management endpoints.
 """
+import logging
 import os
 from urllib.parse import urlparse, parse_qs
 from fastapi import APIRouter, Request, Depends, Form, BackgroundTasks
@@ -18,6 +19,7 @@ from .core import get_db, get_current_user_safe
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 DOWNLOAD_JOB_HISTORY_LIMIT = 100
 TERMINAL_DOWNLOAD_STATUSES = ("completed", "finished", "failed", "error")
@@ -111,7 +113,7 @@ async def _resolve_download_url(user, req: DownloadRequest) -> tuple[str, str]:
         )
         return resolved.get("url") or raw_url, resolved.get("resolution_mode") or "original"
     except Exception as e:
-        print(f"[DOWNLOAD] Cross-provider resolve failed: {e}")
+        logger.warning("Cross-provider download resolve failed: %s", e)
 
     return raw_url, "original"
 
@@ -125,7 +127,7 @@ async def run_download_in_background(job_id: int, user_id: int):
         dm = downloader_service.DownloadManager(bg_db, user_id)
         await dm.process_download(job_id)
     except Exception as e:
-        print(f"Error background: {e}")
+        logger.warning("Background task error: %s", e)
     finally:
         bg_db.close()
 

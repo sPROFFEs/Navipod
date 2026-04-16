@@ -1,6 +1,7 @@
 """
 Recommendations engine: Spotify, YouTube, Last.fm, MusicBrainz, and local.
 """
+import logging
 import random
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
@@ -21,6 +22,7 @@ from .core import get_db, get_current_user_safe
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # 48-hour cache for recommendations (in seconds)
@@ -78,9 +80,9 @@ async def get_navidrome_top_songs(user, db: Session, limit: int = 5):
                     
                 return [{"title": s.get("title"), "artist": s.get("artist")} for s in songs]
             else:
-                print(f"[DISCOVERY] TopSongs failed: {resp.status_code}")
+                logger.warning("Navidrome top songs failed with status %s", resp.status_code)
     except Exception as e:
-        print(f"[DISCOVERY] Error fetching history: {e}")
+        logger.warning("Error fetching Navidrome history: %s", e)
     
     return []
 
@@ -160,7 +162,7 @@ async def get_spotify_recommendations(request: Request, db: Session = Depends(ge
         seeds = await get_navidrome_seeds(user, db, limit=10)
         
         if seeds:
-            print(f"[SPOTIFY] Generating hybrid mix for {user.username} (Candidates: {len(seeds)})")
+            logger.info("Generating Spotify hybrid mix for %s with %s candidates", user.username, len(seeds))
             seed_tracks = []
             seed_artists = []
             
@@ -191,7 +193,7 @@ async def get_spotify_recommendations(request: Request, db: Session = Depends(ge
                         seed_artists.append(item["id"])
             
             if seed_tracks or seed_artists:
-                print(f"[SPOTIFY] Final seeds -> Tracks: {len(seed_tracks)}, Artists: {len(seed_artists)}")
+                logger.info("Spotify final seeds: tracks=%s artists=%s", len(seed_tracks), len(seed_artists))
                 recommendations = await spotify_service.spotify_service.get_recommendations(
                     settings.spotify_client_id,
                     settings.spotify_client_secret,
@@ -204,10 +206,10 @@ async def get_spotify_recommendations(request: Request, db: Session = Depends(ge
                     return JSONResponse(recommendations)
                     
     except Exception as e:
-        print(f"[SPOTIFY] Personalization failed for {user.username}: {e}")
+        logger.warning("Spotify personalization failed for %s: %s", user.username, e)
 
     # 2. Fallback to new releases
-    print(f"[SPOTIFY] Using global fallback (New Releases)")
+    logger.info("Using Spotify global fallback: new releases")
     releases = await spotify_service.spotify_service.get_new_releases(
         settings.spotify_client_id,
         settings.spotify_client_secret,
@@ -240,7 +242,7 @@ async def get_youtube_recommendations(request: Request, db: Session = Depends(ge
             else:
                 query_override = f"{seed['artist']} top songs official"
                 
-            print(f"[YOUTUBE] Personalized mix for {user.username}: {query_override}")
+            logger.info("Using YouTube personalized mix for %s: %s", user.username, query_override)
     except:
         pass
 
@@ -268,7 +270,7 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
             with open(cache_file, 'r') as f:
                 cached = json.load(f)
             if cached.get("expires_at", 0) > time.time():
-                print(f"[RECS] Cache HIT for {user.username}")
+                logger.info("Recommendations cache hit for %s", user.username)
                 # Always refresh local section (cheap DB query)
                 local_section = _get_local_section(db)
                 sections = cached.get("sections", [])
@@ -278,9 +280,9 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
                     sections.append(local_section)
                 return JSONResponse(sections)
     except Exception as e:
-        print(f"[RECS] Cache read error: {e}")
+        logger.warning("Recommendations cache read error: %s", e)
 
-    print(f"[RECS] Cache MISS for {user.username}, fetching fresh data...")
+    logger.info("Recommendations cache miss for %s, fetching fresh data", user.username)
     
     sections = []
     top_artists = set()
@@ -301,7 +303,7 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
                 top_artists.add(t.artist)
             
     except Exception as e:
-        print(f"[RECOMMENDATIONS] Seed query error: {e}")
+        logger.warning("Recommendations seed query error: %s", e)
 
     top_artists_list = list(top_artists)
     random.shuffle(top_artists_list)
@@ -336,7 +338,7 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
                     "preview": item.get('preview_url')
                 })
         except Exception as e:
-            print(f"[RECOMMENDATIONS] Spotify error: {e}")
+            logger.warning("Recommendations Spotify error: %s", e)
     
     if spotify_items:
         sections.append({"title": "Spotify • For You", "items": spotify_items})
@@ -364,7 +366,7 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
                 "source": "youtube"
             })
     except Exception as e:
-        print(f"[RECOMMENDATIONS] YouTube error: {e}")
+        logger.warning("Recommendations YouTube error: %s", e)
     
     if yt_items:
         sections.append({"title": f"YouTube • Based on Your Taste" if top_artists else "YouTube • Trending Now", "items": yt_items})
@@ -397,7 +399,7 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
                         "source": "lastfm"
                     })
             except Exception as e:
-                print(f"[RECOMMENDATIONS] Last.fm error: {e}")
+                logger.warning("Recommendations Last.fm error: %s", e)
 
     if lastfm_items:
         sections.append({"title": "Last.fm • Discover", "items": lastfm_items})
@@ -423,7 +425,7 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
                 "source": "musicbrainz"
             })
     except Exception as e:
-        print(f"[RECOMMENDATIONS] MusicBrainz error: {e}")
+        logger.warning("Recommendations MusicBrainz error: %s", e)
 
     if mb_items:
         sections.append({"title": "MusicBrainz • Explore", "items": mb_items})
@@ -444,7 +446,7 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
                 "source": "local"
             })
     except Exception as e:
-        print(f"[RECOMMENDATIONS] Local error: {e}")
+        logger.warning("Recommendations local error: %s", e)
 
     if local_items:
         sections.append({"title": "Recently Added to Library", "items": local_items})
@@ -457,9 +459,9 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
                 "sections": remote_sections,
                 "expires_at": time.time() + RECS_CACHE_TTL
             }, f)
-        print(f"[RECS] Cache SAVED for {user.username} ({len(remote_sections)} remote sections)")
+        logger.info("Recommendations cache saved for %s with %s remote sections", user.username, len(remote_sections))
     except Exception as e:
-        print(f"[RECS] Cache write error: {e}")
+        logger.warning("Recommendations cache write error: %s", e)
 
     return JSONResponse(sections)
 
@@ -481,7 +483,7 @@ def _get_local_section(db: Session):
                 "source": "local"
             })
     except Exception as e:
-        print(f"[RECOMMENDATIONS] Local error: {e}")
+        logger.warning("Recommendations local section error: %s", e)
     
     if local_items:
         return {"title": "Recently Added to Library", "items": local_items}

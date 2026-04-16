@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 import socket
@@ -7,6 +8,7 @@ import docker
 client = docker.from_env()
 from navipod_config import settings
 DATA_ROOT = f"{settings.MUSIC_ROOT}" # Ruta interna del contenedor (/saas-data/users) 
+logger = logging.getLogger(__name__)
 
 # --- GLOBAL IP CACHE ---
 # Avoids saturating the system with constant Health Checks
@@ -39,7 +41,7 @@ def provision_user_env(username: str):
         except Exception:
             pass
     
-    print(f"[PROVISION] Environment created for {username}")
+    logger.info("Provisioned user environment for %s", username)
 
 def wait_for_port(ip, port, timeout=15):
     """Waits until the port responds or times out"""
@@ -76,7 +78,7 @@ def get_or_spawn_container(username: str):
             time.sleep(1)
             
     except docker.errors.NotFound:
-        print(f"[DOCKER] Creating container for {username}...")
+        logger.info("Creating Navidrome container for %s", username)
         container = client.containers.run(
             image=settings.NAVIDROME_IMAGE,
             name=container_name,
@@ -129,10 +131,10 @@ def stop_user_container(username: str):
     try:
         container = client.containers.get(container_name)
         if container.status == "running":
-            print(f"[LOGOUT] Stopping container {container_name}...")
+            logger.info("Stopping container %s", container_name)
             container.stop()
         
-        print(f"[LOGOUT] Removing container {container_name}...")
+        logger.info("Removing container %s", container_name)
         container.remove()
         
         # Limpiar caché si existe
@@ -142,7 +144,7 @@ def stop_user_container(username: str):
     except docker.errors.NotFound:
         pass # Ya no existe
     except Exception as e:
-        print(f"[LOGOUT-ERROR] Failed to remove container {container_name}: {e}")
+        logger.warning("Failed to remove container %s: %s", container_name, e)
     
 def get_dir_size(path):
     """Calcula el tamaño total de un directorio en bytes de forma recursiva."""
@@ -158,7 +160,7 @@ def get_dir_size(path):
                 elif entry.is_dir():
                     total += get_dir_size(entry.path)
     except Exception as e:
-        print(f"[DISK-ERROR] Failed to measure {path}: {e}")
+        logger.warning("Failed to measure disk usage for %s: %s", path, e)
         pass
     return total
 
@@ -223,5 +225,5 @@ def get_pool_status(db, force_refresh: bool = False):
         return round(used_gb, 2), limit_gb, round(min(percent, 100), 1)
         
     except Exception as e:
-        print(f"[QUOTA-ERROR] {e}")
+        logger.warning("Failed to compute pool quota status: %s", e)
         return 0.0, 100, 0.0

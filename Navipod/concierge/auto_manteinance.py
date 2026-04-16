@@ -1,8 +1,10 @@
 import os
+import logging
 import shutil
 import subprocess
 import time
 import reaper
+logger = logging.getLogger(__name__)
 
 # CONFIGURACIÓN
 USERS_ROOT = "/saas-data/users"
@@ -10,7 +12,7 @@ TRASH_EXTENSIONS = [".part", ".ytdl", ".tmp", ".cache"]
 DIRECTORIES_TO_CLEAN = ["/tmp", "/app/temp"]
 
 def purge_storage():
-    print(f"[{time.ctime()}] Iniciando purga de disco...")
+    logger.info("Starting disk purge at %s", time.ctime())
     freed = 0
     # 1. Limpiar carpetas temporales
     for path in DIRECTORIES_TO_CLEAN:
@@ -40,10 +42,10 @@ def purge_storage():
                     shutil.rmtree(dp)
                 except: pass
     
-    print(f"Purge completed. Freed: {round(freed / (1024**3), 3)} GB")
+    logger.info("Disk purge completed; freed %.3f GB", freed / (1024**3))
 
 def flush_ram():
-    print(f"[{time.ctime()}] Attempting RAM flush...")
+    logger.info("Attempting RAM flush at %s", time.ctime())
     try:
         subprocess.run(["sync"], check=True)
         # Solo intentar si somos privilegiados, si no, ignorar silenciosamente
@@ -51,11 +53,11 @@ def flush_ram():
             try:
                 with open("/proc/sys/vm/drop_caches", "w") as f:
                     f.write("3")
-                print("RAM flush completed.")
+                logger.info("RAM flush completed")
             except PermissionError:
-                print("RAM flush (drop_caches) skipped: permission denied (normal in Docker).")
+                logger.info("RAM flush skipped: drop_caches permission denied")
     except Exception as e:
-        print(f"RAM flush failed: {e}")
+        logger.warning("RAM flush failed: %s", e)
 
 if __name__ == "__main__":
     purge_storage()

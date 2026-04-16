@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import logging
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -8,6 +9,7 @@ import database
 import re
 # CONFIGURACIÓN
 from navipod_config import settings
+logger = logging.getLogger(__name__)
 
 SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = settings.ALGORITHM
@@ -87,7 +89,7 @@ def blacklist_token(db: Session, token: str):
             db.add(revoked)
             db.commit()
     except Exception as e:
-        print(f"[AUTH-ERROR] Failed to revoke token: {e}")
+        logger.warning("Failed to revoke token: %s", e)
 
 def is_token_blacklisted(db: Session, token: str) -> bool:
     """Verifica si un token está en la blacklist"""

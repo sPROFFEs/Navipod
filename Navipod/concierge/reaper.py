@@ -1,5 +1,6 @@
 import os
 import time
+import logging
 import docker
 import httpx
 from datetime import datetime, timedelta, timezone
@@ -11,6 +12,7 @@ IDLE_THRESHOLD_MINUTES = int(os.getenv("IDLE_THRESHOLD_MINUTES", "30"))
 NAVIDROME_PORT = 4533
 
 client = docker.from_env()
+logger = logging.getLogger(__name__)
 
 def is_player_active(ip: str, username: str) -> bool:
     """
@@ -42,15 +44,15 @@ def is_player_active(ip: str, username: str) -> bool:
                 entries = now_playing.get("entry", [])
                 
                 if entries:
-                    print(f"[REAPER] {username} is playing: {len(entries)} items.")
+                    logger.info("User %s is actively playing %s item(s)", username, len(entries))
                     return True
     except Exception as e:
-        print(f"[REAPER-WARN] Could not check activity on pod {ip}: {e}")
+        logger.warning("Could not check player activity on pod %s: %s", ip, e)
     
     return False
 
 def reap_idle_containers():
-    print(f"[{datetime.now()}] Starting idle container reaper...")
+    logger.info("Starting idle container reaper at %s", datetime.now())
     
     db = database.SessionLocal()
     try:
@@ -89,19 +91,19 @@ def reap_idle_containers():
                         
                         # SEGUNDO FILTRO: ¿Está escuchando música?
                         if ip_address and is_player_active(ip_address, user.username):
-                            print(f"[REAPER] SKIPPING {container_name}: user is idle in the web UI but still playing music.")
+                            logger.info("Skipping idle container %s because user is still playing music", container_name)
                             continue
 
-                        print(f"[REAPER] Stopping idle container: {container_name} (Idle for {int(idle_duration.total_seconds()/60)} min)")
+                        logger.info("Stopping idle container %s after %s idle minutes", container_name, int(idle_duration.total_seconds() / 60))
                         container.stop()
                         reaped_count += 1
                 except docker.errors.NotFound:
                     pass
                 except Exception as e:
-                    print(f"[REAPER-ERROR] Error with {container_name}: {e}")
+                    logger.warning("Idle reaper error with %s: %s", container_name, e)
         
         if reaped_count > 0:
-            print(f"[REAPER] Stopped {reaped_count} container(s).")
+            logger.info("Stopped %s idle container(s)", reaped_count)
         # else:
             # print("[REAPER] No se encontraron contenedores para detener.")
 

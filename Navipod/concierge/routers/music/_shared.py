@@ -4,6 +4,7 @@ All sub-modules should import from here instead of duplicating.
 """
 import os
 import asyncio
+import logging
 import shutil
 import subprocess
 from fastapi import APIRouter, Request, Depends, Form, BackgroundTasks, Response
@@ -31,6 +32,7 @@ from navipod_config import settings
 # --- HTTP CLIENT (Shared) ---
 # Use the global shared client for external API calls
 from http_client import http_client
+logger = logging.getLogger(__name__)
 
 
 # --- RADIO GARDEN HEADERS ---
@@ -71,7 +73,7 @@ async def run_download_in_background(job_id: int, user_id: int):
         mgr = downloader_service.DownloadManager(bg_db, user_id)
         await mgr.process_download(job_id)
     except Exception as e:
-        print(f"Error background: {e}")
+        logger.warning("Background download task error: %s", e)
     finally:
         bg_db.close()
 

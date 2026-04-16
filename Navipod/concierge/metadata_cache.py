@@ -1,10 +1,12 @@
 import json
+import logging
 import os
 import shutil
 import sqlite3
 import time
 from contextlib import contextmanager
 from typing import Any, Iterator
+logger = logging.getLogger(__name__)
 
 
 CACHE_DB_PATH = os.getenv("METADATA_CACHE_DB_PATH", "/saas-data/cache/metadata_cache.db")
@@ -16,7 +18,7 @@ CACHE_BUSY_TIMEOUT_MS = int(os.getenv("METADATA_CACHE_BUSY_TIMEOUT_MS", "2000"))
 
 
 def _log(message: str) -> None:
-    print(f"[METADATA-CACHE] {message}")
+    logger.info(message)
 
 
 def _ensure_parent_dir() -> None:

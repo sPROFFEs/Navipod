@@ -1,6 +1,7 @@
 """
 Unified search: local library plus remote providers.
 """
+import logging
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -21,6 +22,7 @@ from .core import get_db, get_current_user_safe
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _search_local_tracks(db: Session, raw_query: str, limit: int = 50):
@@ -130,7 +132,7 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
                         "source": "youtube"
                     })
         except Exception as e:
-            print(f"[Unified Search] YouTube Error: {e}")
+            logger.warning("Unified search YouTube error: %s", e)
 
     # Spotify Search (Optional, needs auth)
     if source in ["all", "spotify"]:
@@ -177,7 +179,7 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
                             "source": source_name
                         })
         except Exception as e:
-            print(f"[Unified Search] Spotify Error: {e}")
+            logger.warning("Unified search Spotify error: %s", e)
 
     # Last.fm Search
     if source in ["all", "lastfm"]:
@@ -203,7 +205,7 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
                             "source": "lastfm"
                         })
         except Exception as e:
-            print(f"[Unified Search] Last.fm Error: {e}")
+            logger.warning("Unified search Last.fm error: %s", e)
 
     # MusicBrainz Search
     if source in ["all", "musicbrainz"]:
@@ -226,7 +228,7 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
                         "source": "musicbrainz"
                     })
         except Exception as e:
-            print(f"[Unified Search] MusicBrainz Error: {e}")
+            logger.warning("Unified search MusicBrainz error: %s", e)
 
     return JSONResponse(results + remote_results)
 
@@ -275,7 +277,7 @@ async def api_search(source: str, q: str, request: Request, db: Session = Depend
             return JSONResponse(items)
             
     except Exception as e:
-        print(f"[SEARCH-ERROR] {e}")
+        logger.warning("Search endpoint error: %s", e)
         return JSONResponse({"error": str(e)}, status_code=500)
 
     return JSONResponse([])

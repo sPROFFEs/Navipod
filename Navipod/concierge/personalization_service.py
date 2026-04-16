@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 import time
@@ -12,6 +13,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 import database
+logger = logging.getLogger(__name__)
 
 
 USER_ACTIVITY_DB_NAME = "user_activity.db"
@@ -223,7 +225,7 @@ def _migrate_legacy_recent_cache(username: str) -> None:
                     )
             conn.commit()
     except Exception as e:
-        print(f"[PERSONALIZATION] Legacy recent cache migration failed for {username}: {e}")
+        logger.warning("Legacy recent cache migration failed for %s: %s", username, e)
 
 
 def _iso_from_timestamp(value: Any) -> str:
@@ -754,7 +756,7 @@ def _generate_top_pool_mix(db: Session) -> dict[str, Any]:
                     """
                 ).fetchall()
         except Exception as e:
-            print(f"[PERSONALIZATION] Failed to read top-pool stats for {username}: {e}")
+            logger.warning("Failed to read top-pool stats for %s: %s", username, e)
             continue
 
         for row in rows:

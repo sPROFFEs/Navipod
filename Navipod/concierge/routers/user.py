@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Request, Depends, Form, HTTPException, UploadFile, File
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -7,6 +8,7 @@ import spotify_service
 from lastfm_service import lastfm_service
 from shared_templates import templates
 from secrets_store import ENC_PREFIX
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/user")
 
@@ -413,7 +415,7 @@ async def upload_avatar(
         })
         
     except Exception as e:
-        print(f"[AVATAR] Upload error: {e}")
+        logger.warning("Avatar upload error: %s", e)
         return templates.TemplateResponse("user_settings.html", {
             "request": request, "user": user,
             "error": f"Upload failed: {str(e)}",

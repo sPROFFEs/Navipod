@@ -42,6 +42,12 @@ from shared_templates import templates
 from http_client import http_client  # Moved to top level to avoid shutdown re-import issues
 
 
+logging.basicConfig(
+    level=os.getenv("NAVIPOD_LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger(__name__)
+
 # Initialize rate limiter
 # (limiter is imported from limiter.py)
 
@@ -114,15 +120,15 @@ async def set_i18n_context(request: Request, call_next):
 async def startup_event():
     # Force reload on startup to be sure
     i18n.load_translations()
-    print(f"[I18N] Loaded languages: {list(i18n.translations.keys())}")
+    logger.info("Loaded languages: %s", list(i18n.translations.keys()))
     applied_migrations = operations_service.apply_schema_migrations()
     if applied_migrations:
-        print(f"[MIGRATIONS] Applied: {', '.join(applied_migrations)}")
+        logger.info("Applied migrations: %s", ", ".join(applied_migrations))
     db = database.SessionLocal()
     try:
         refreshed_identities = track_identity.sync_track_identities(db)
         if refreshed_identities:
-            print(f"[TRACK-IDENTITY] Synced {refreshed_identities} tracks.")
+            logger.info("Synced track identities: %s tracks", refreshed_identities)
     finally:
         db.close()
     
@@ -133,30 +139,30 @@ async def startup_event():
 
 async def reaper_scheduler():
     check_interval = settings.CHECK_INTERVAL_MINUTES
-    print(f"[SCHEDULER] Starting Reaper every {check_interval} minutes.")
+    logger.info("Starting reaper scheduler every %s minutes", check_interval)
     while True:
         try:
             # Esperar primero, para no matar nada más arrancar
             await asyncio.sleep(check_interval * 60)
             
-            print("[SCHEDULER] Running Reaper...")
+            logger.info("Running reaper")
             # Ejecutar en thread aparte para no bloquear el loop principal
             await asyncio.to_thread(reaper.reap_idle_containers)
         except Exception as e:
-            print(f"[SCHEDULER-ERROR] {e}")
+            logger.exception("Reaper scheduler failed: %s", e)
             await asyncio.sleep(60) # En caso de error, reintentar en 1 min
 
 
 async def cache_cleanup_scheduler():
-    print(f"[CACHE] Starting cache cleanup every {cache_maintenance.CACHE_CLEAN_INTERVAL_SECONDS // 3600} hours.")
+    logger.info("Starting cache cleanup every %s hours", cache_maintenance.CACHE_CLEAN_INTERVAL_SECONDS // 3600)
     while True:
         try:
             removed = await asyncio.to_thread(cache_maintenance.purge_expired_cache_files)
             if removed:
-                print(f"[CACHE] Removed {removed} expired cache files.")
+                logger.info("Removed expired cache files: %s", removed)
             await asyncio.sleep(cache_maintenance.CACHE_CLEAN_INTERVAL_SECONDS)
         except Exception as e:
-            print(f"[CACHE-ERROR] {e}")
+            logger.exception("Cache cleanup failed: %s", e)
             await asyncio.sleep(300)
 
 # Load immediately on import too, just in case
@@ -631,7 +637,7 @@ async def gateway(username: str, path: str, request: Request, db: Session = Depe
     if not authorized:
         user_db = auth.get_user_by_username(db, username)
         if not user_db: 
-            print(f"[AUTH-ERROR] User '{username}' not found in DB")
+            logger.warning("User not found in DB: %s", username)
             return JSONResponse({"error": "User not found"}, status_code=404)
         
         # Check Subsonic Params (GET or POST)
@@ -656,21 +662,22 @@ async def gateway(username: str, path: str, request: Request, db: Session = Depe
                         hex_str = p[4:]
                         p = bytes.fromhex(hex_str).decode("utf-8")
                     except Exception as ex: 
-                        print(f"[AUTH-ERROR] Failed to decode 'enc' password from '{hex_str}': {ex}")
+                        logger.warning("Failed to decode enc password for user %s: %s", username, ex)
                         pass
                 
                 if auth.verify_password(p, user_db.hashed_password): 
                     authorized = True
                 else:
-                    print(f"[AUTH-ERROR] Password Invalid for user '{username}' (Client: {params.get('c')})")
+                    logger.warning("Invalid password for user %s from client %s", username, params.get("c"))
             else:
                  if not u or not p:
                      # Silent fail for missing credentials is ok, but log if it looks like a login attempt
-                     if "ping" in path: print(f"[AUTH-WARN] Missing credentials for {path}")
+                     if "ping" in path:
+                         logger.warning("Missing credentials for %s", path)
 
     if not authorized:
         if "rest/" in path: 
-            print(f"[AUTH-FAILED] Returning 403. Path: {path} | User: {username}")
+            logger.warning("Returning 403 for path %s and user %s", path, username)
             return JSONResponse({"error": {"code":40,"message":"Auth failed"}}, status_code=403)
         return RedirectResponse(f"/login?next={username}/{path}")
 

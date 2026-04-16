@@ -2,6 +2,7 @@
 Sync state and heartbeat for multi-user scenarios.
 """
 import hashlib
+import logging
 import re
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse, Response, RedirectResponse, StreamingResponse
@@ -18,6 +19,7 @@ from .favorites import schedule_navidrome_sync
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/api/sync-state")
@@ -70,7 +72,7 @@ async def get_sync_state(request: Request, db: Session = Depends(get_db)):
         })
         
     except Exception as e:
-        print(f"[SYNC-STATE] Error: {e}")
+        logger.warning("Sync-state endpoint error: %s", e)
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -179,7 +181,7 @@ async def preview_playback(request: Request, url: str = None, title: str = None,
             try:
                 async with client.stream("GET", target_url, headers=upstream_headers) as resp:
                     if resp.status_code >= 400:
-                        print(f"[PREVIEW-PROXY] Remote error {resp.status_code} for {target_url[:60]}...")
+                        logger.warning("Preview proxy remote error %s for %s", resp.status_code, target_url[:60])
                         return
                     
                     async for chunk in resp.aiter_bytes(chunk_size=16384):
@@ -188,7 +190,7 @@ async def preview_playback(request: Request, url: str = None, title: str = None,
                 # Client disconnected or network error - suppress noise
                 pass
             except Exception as e:
-                print(f"[PREVIEW-PROXY] Proxy runtime error: {e}")
+                logger.warning("Preview proxy runtime error: %s", e)
 
     return StreamingResponse(stream_generator(), media_type="audio/mpeg", headers={
         "Accept-Ranges": "bytes",

@@ -1,6 +1,7 @@
 """
 Radio Garden integration endpoints.
 """
+import logging
 from fastapi import APIRouter, Request, Depends, Form
 from fastapi.responses import RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
@@ -14,6 +15,7 @@ from .core import get_db, get_current_user_safe
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # Radio Garden API headers
@@ -98,7 +100,7 @@ async def get_playlist_content(playlist_path: str):
         try:
             resp = await client.get(url, headers=RG_HEADERS, timeout=10)
             if resp.status_code != 200:
-                print(f"Error RG {resp.status_code} en URL: {url}")
+                logger.warning("Radio Garden playlist fetch failed with status %s for %s", resp.status_code, url)
                 return []
 
             data = resp.json().get("data", {}).get("content", [])
@@ -107,13 +109,13 @@ async def get_playlist_content(playlist_path: str):
                 if "items" in section and isinstance(section["items"], list):
                     items = section["items"]
                     if items:
-                        print(f"[RADIO] Sending {len(items)} items from playlist")
+                        logger.info("Sending %s Radio Garden playlist items", len(items))
                         return items
             
-            print(f"[RADIO] ⚠️ No items found in playlist data: {data[:200]}")
+            logger.warning("No Radio Garden playlist items found")
             return []
         except Exception as e:
-            print(f"Playlist fetch failed: {e}")
+            logger.warning("Radio Garden playlist fetch failed: %s", e)
             return []
 
 
@@ -161,14 +163,14 @@ async def inject_radio(request: Request, channel_id: str = Form(...), name: str 
             # Use stream=True to capture final URL after redirects without downloading infinite audio
             async with client.stream("GET", listen_url, headers=RG_HEADERS) as resp:
                 if resp.status_code != 200:
-                    print(f"[RADIO-INJECT] ❌ Stream error: {resp.status_code} for ID {channel_id}")
+                    logger.warning("Radio stream resolve failed with status %s for channel %s", resp.status_code, channel_id)
                     return JSONResponse(
                         {"error": f"Could not resolve radio (Error {resp.status_code} from Radio Garden)"}, 
                         status_code=400
                     )
                 
                 real_stream_url = str(resp.url)
-                print(f"[RADIO-INJECT] Stream URL resolved: {real_stream_url}")
+                logger.info("Radio stream URL resolved for channel %s", channel_id)
             
             # 3. Inject into Navidrome via gateway proxy
             gateway_url = f"http://localhost:8000/{user.username}/rest/createInternetRadioStation"
@@ -183,14 +185,14 @@ async def inject_radio(request: Request, channel_id: str = Form(...), name: str 
                 "homepageUrl": "https://radio.garden"
             }
             
-            print(f"[RADIO-INJECT] Calling gateway: {gateway_url}")
+            logger.info("Calling Navidrome radio gateway for user %s", user.username)
             
             # Pass auth token for gateway authorization
             cookies = {"access_token": request.cookies.get("access_token")}
             
             inject_resp = await client.get(gateway_url, params=params, cookies=cookies)
             
-            print(f"[RADIO-INJECT] Status code: {inject_resp.status_code}")
+            logger.info("Navidrome radio gateway status: %s", inject_resp.status_code)
             
             # Parse JSON response correctly
             try:
@@ -198,23 +200,21 @@ async def inject_radio(request: Request, channel_id: str = Form(...), name: str 
                 
                 # Subsonic API returns {"subsonic-response": {"status": "ok", ...}}
                 if result.get("subsonic-response", {}).get("status") == "ok":
-                    print(f"[RADIO-INJECT] ✅ Radio added successfully: {name}")
+                    logger.info("Radio added successfully: %s", name)
                     return JSONResponse({"status": "success", "stream": real_stream_url})
                 else:
                     error_msg = result.get("subsonic-response", {}).get("error", {}).get("message", "Unknown error")
-                    print(f"[RADIO-INJECT] ❌ Navidrome error: {error_msg}")
+                    logger.warning("Navidrome radio inject error: %s", error_msg)
                     return JSONResponse({"error": f"Navidrome API error: {error_msg}"}, status_code=500)
             except Exception as e:
-                print(f"[RADIO-INJECT] ❌ JSON parse error: {str(e)}")
+                logger.warning("Navidrome radio response parse error: %s", e)
                 return JSONResponse({"error": f"Invalid response from Navidrome: {str(e)}"}, status_code=500)
                 
     except httpx.TimeoutException:
-        print(f"[RADIO-INJECT] ❌ Timeout")
+        logger.warning("Radio inject timeout")
         return JSONResponse({"error": "Timeout connecting to Radio Garden or Navidrome"}, status_code=504)
     except Exception as e:
-        print(f"[RADIO-INJECT] ❌ General error: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.exception("Radio inject failed: %s", e)
         return JSONResponse({"error": f"Internal Error: {str(e)}"}, status_code=500)
 
 
@@ -228,7 +228,7 @@ async def get_saved_radios(request: Request, db: Session = Depends(get_db)):
     try:
         return JSONResponse(await fetch_saved_radios_for_user(user))
     except Exception as e:
-        print(f"[RADIO-LIST] Error: {e}")
+        logger.warning("Failed to list saved radios: %s", e)
         return JSONResponse([], status_code=500)
 
 
@@ -259,5 +259,5 @@ async def delete_saved_radio(radio_id: str, request: Request, db: Session = Depe
             else:
                 return JSONResponse({"error": f"Navidrome error: {resp.status_code}"}, status_code=resp.status_code)
     except Exception as e:
-        print(f"[RADIO-DELETE] Error: {e}")
+        logger.warning("Failed to delete saved radio %s: %s", radio_id, e)
         return JSONResponse({"error": str(e)}, status_code=500)

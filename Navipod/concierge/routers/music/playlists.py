@@ -1,6 +1,7 @@
 """
 Playlist management and Navidrome sync.
 """
+import logging
 import os
 import asyncio
 import io
@@ -22,6 +23,7 @@ from .favorites import schedule_navidrome_sync
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # --- PYDANTIC MODELS ---
@@ -95,7 +97,7 @@ def _remove_playlist_cover_file(playlist) -> None:
         try:
             os.remove(playlist.cover_path)
         except Exception as e:
-            print(f"[PLAYLIST-COVER] Error removing cover file: {e}")
+            logger.warning("Error removing playlist cover file: %s", e)
 
 
 def get_playlist_thumbnail(db: Session, playlist) -> str:
@@ -263,10 +265,10 @@ def generate_m3u_for_playlist(db: Session, playlist, username: str):
         # Update playlist record
         playlist.m3u_path = m3u_path
         db.commit()
-        print(f"[M3U] Generated: {m3u_path}")
+        logger.info("Generated playlist M3U: %s", m3u_path)
         return m3u_path
     except Exception as e:
-        print(f"[M3U] Error generating: {e}")
+        logger.warning("Error generating playlist M3U: %s", e)
         return None
 
 
@@ -287,7 +289,7 @@ def schedule_playlist_sync(db, user, playlist_id=None, force_now=False):
             task = _playlist_sync_tasks[user.username]
             task.cancel()
         except Exception as e:
-            print(f"[PLAYLIST-SYNC] Cancel error: {e}")
+            logger.warning("Playlist sync cancel error: %s", e)
     
     # 2. Define the async worker
     async def delayed_sync_worker():
@@ -308,12 +310,12 @@ def schedule_playlist_sync(db, user, playlist_id=None, force_now=False):
             async with httpx.AsyncClient(timeout=10.0) as client:
                 await client.get(url, params=params, headers=headers)
                 action_type = "immediate" if force_now else "batched"
-                print(f"[PLAYLIST-SYNC] Triggered {action_type} background scan for {user.username}")
+                logger.info("Triggered %s playlist background scan for %s", action_type, user.username)
                 
         except asyncio.CancelledError:
-            print(f"[PLAYLIST-SYNC] Scan cancelled (New update incoming)")
+            logger.info("Playlist sync scan cancelled because a new update arrived")
         except Exception as e:
-            print(f"[PLAYLIST-SYNC] Error: {e}")
+            logger.warning("Playlist sync error: %s", e)
 
     # 3. Schedule and store new task
     task = asyncio.create_task(delayed_sync_worker())
@@ -343,12 +345,12 @@ async def clean_remote_playlist(username: str, playlist_name: str):
                 for rp in remote_playlists:
                     if rp.get("name") == playlist_name:
                         rp_id = rp.get("id")
-                        print(f"[PLAYLIST-CLEAN] Deleting remote '{playlist_name}' (ID: {rp_id})")
+                        logger.info("Deleting remote playlist %s with id %s", playlist_name, rp_id)
                         del_params = {**auth_params, "id": rp_id}
                         await client.get(f"{base_url}/deletePlaylist", params=del_params, headers=headers)
                         return True
     except Exception as e:
-        print(f"[PLAYLIST-CLEAN] Error: {e}")
+        logger.warning("Playlist remote cleanup error: %s", e)
     return False
 
 
@@ -476,7 +478,7 @@ async def copy_public_playlist(playlist_id: int, request: Request, db: Session =
                 try:
                     os.remove(local_copy.m3u_path)
                 except Exception as e:
-                    print(f"[PLAYLIST-SYNC] Error removing old copy file: {e}")
+                    logger.warning("Error removing old playlist copy file: %s", e)
             await clean_remote_playlist(user.username, old_name)
             local_copy.name = next_name
             db.commit()
@@ -794,7 +796,7 @@ async def delete_playlist(playlist_id: int, request: Request, db: Session = Depe
         try:
             os.remove(playlist.m3u_path)
         except Exception as e:
-            print(f"[PLAYLIST-DEL] Error removing file: {e}")
+            logger.warning("Error removing playlist file: %s", e)
     _remove_playlist_cover_file(playlist)
 
     # Explicit Sync: Clean remote playlist immediately

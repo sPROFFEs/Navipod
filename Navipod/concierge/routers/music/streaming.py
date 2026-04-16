@@ -256,7 +256,7 @@ async def resolve_cover(request: Request, artist: str = "", title: str = "", db:
                             headers={"Cache-Control": "public, max-age=604800"},
                         )
             except Exception as e:
-                print(f"[COVER-RESOLVE] Cached image download failed: {e}")
+                logger.warning("Cached cover image download failed: %s", e)
 
     if os.path.exists(neg_cache):
         stat = os.stat(neg_cache)
@@ -296,7 +296,7 @@ async def resolve_cover(request: Request, artist: str = "", title: str = "", db:
                         image_url = sp["image"]
                         provider = "spotify"
                 except Exception as e:
-                    print(f"[COVER-RESOLVE] Spotify lookup failed: {e}")
+                    logger.warning("Spotify cover lookup failed: %s", e)
 
         if not image_url and user and user.download_settings:
             lastfm_key = getattr(user.download_settings, "lastfm_api_key", None)
@@ -309,7 +309,7 @@ async def resolve_cover(request: Request, artist: str = "", title: str = "", db:
                         image_url = info["image"]
                         provider = "lastfm"
                 except Exception as e:
-                    print(f"[COVER-RESOLVE] Last.fm lookup failed: {e}")
+                    logger.warning("Last.fm cover lookup failed: %s", e)
 
         if not image_url:
             try:
@@ -324,7 +324,7 @@ async def resolve_cover(request: Request, artist: str = "", title: str = "", db:
                         image_url = test_url
                         provider = "musicbrainz"
             except Exception as e:
-                print(f"[COVER-RESOLVE] MusicBrainz lookup failed: {e}")
+                logger.warning("MusicBrainz cover lookup failed: %s", e)
 
         if not image_url:
             try:
@@ -340,7 +340,7 @@ async def resolve_cover(request: Request, artist: str = "", title: str = "", db:
                         image_url = f"https://i.ytimg.com/vi/{vid_id}/hqdefault.jpg"
                         provider = "youtube"
             except Exception as e:
-                print(f"[COVER-RESOLVE] YouTube lookup failed: {e}")
+                logger.warning("YouTube cover lookup failed: %s", e)
 
         if image_url:
             try:
@@ -366,7 +366,7 @@ async def resolve_cover(request: Request, artist: str = "", title: str = "", db:
                         headers={"Cache-Control": "public, max-age=604800"},
                     )
             except Exception as e:
-                print(f"[COVER-RESOLVE] Download/cache failed: {e}")
+                logger.warning("Cover download/cache failed: %s", e)
 
     try:
         with open(neg_cache, "w") as f:

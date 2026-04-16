@@ -1,6 +1,7 @@
 """
 Favorites management and Navidrome sync.
 """
+import logging
 import os
 import asyncio
 from fastapi import APIRouter, Request, Depends
@@ -16,6 +17,7 @@ from .core import get_db, get_current_user_safe
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 _navidrome_sync_tasks: dict[str, asyncio.Task] = {}
 
 
@@ -44,10 +46,10 @@ def generate_favorites_m3u(db: Session, user):
                     f.write(f"#EXTINF:{track.duration or -1},{track.artist} - {track.title}\n")
                     f.write(f"{rel_path}\n")
         
-        print(f"[M3U] Favorites generated: {m3u_path}")
+        logger.info("Generated favorites M3U: %s", m3u_path)
         return m3u_path
     except Exception as e:
-        print(f"[M3U] Favorites error: {e}")
+        logger.warning("Favorites M3U error: %s", e)
         return None
 
 
@@ -104,11 +106,11 @@ async def sync_favorite_to_navidrome(user, track, is_starred: bool):
                     action_params = {**base_params, "id": navidrome_track_id}
                     async with httpx.AsyncClient(timeout=5.0) as client:
                         await client.get(action_url, params=action_params, headers=headers)
-                    print(f"[FAV-SYNC] Successfully {action}ed '{track.title}' (ID: {navidrome_track_id}) in Navidrome")
+                    logger.info("Successfully synced favorite action=%s track=%s navidrome_id=%s", action, track.title, navidrome_track_id)
                 else:
-                    print(f"[FAV-SYNC] Track '{track.title}' not found in Navidrome")
+                    logger.warning("Favorite track not found in Navidrome: %s", track.title)
     except Exception as e:
-        print(f"[FAV-SYNC] Error: {e}")
+        logger.warning("Favorite sync error: %s", e)
 
 
 async def sync_navidrome_to_local(db: Session, user):
@@ -154,7 +156,7 @@ async def sync_navidrome_to_local(db: Session, user):
                         if track:
                             new_fav = database.UserFavorite(user_id=user.id, track_id=track.id)
                             db.add(new_fav)
-                            print(f"[SYNC-BACK] Added '{title}' to local favorites (Starred in Navidrome)")
+                            logger.info("Added Navidrome-starred track to local favorites: %s", title)
                 
                 db.commit()
 
@@ -175,13 +177,13 @@ async def sync_navidrome_to_local(db: Session, user):
                         m3u_path = os.path.join(playlist_dir, pl.name + ".m3u")
                         
                         if not os.path.exists(m3u_path):
-                            print(f"[SYNC-BACK] Playlist '{pl.name}' missing in Navidrome and disk. Deleting.")
+                            logger.info("Deleting local playlist missing in Navidrome and disk: %s", pl.name)
                             db.delete(pl)
                 
                 db.commit()
 
     except Exception as e:
-        print(f"[SYNC-BACK] Error: {e}")
+        logger.warning("Sync-back error: %s", e)
 
 
 def schedule_navidrome_sync(user_id: int, username: str, delay_seconds: float = 1.0):
@@ -200,7 +202,7 @@ def schedule_navidrome_sync(user_id: int, username: str, delay_seconds: float = 
         except asyncio.CancelledError:
             return
         except Exception as e:
-            print(f"[SYNC-BACKGROUND] Error: {e}")
+            logger.warning("Background sync-back error: %s", e)
         finally:
             db.close()
 
@@ -241,7 +243,7 @@ async def list_favorites(request: Request, db: Session = Depends(get_db)):
             "added_at": str(row.added_at)
         } for row in favorites])
     except Exception as e:
-        print(f"[FAVORITES] Error: {e}")
+        logger.warning("Favorites endpoint error: %s", e)
         return JSONResponse([])
 
 

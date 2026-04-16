@@ -1,7 +1,9 @@
 import json
+import logging
 import os
 import time
 import metadata_cache
+logger = logging.getLogger(__name__)
 
 
 CACHE_DIRS = ["/saas-data/cache", "/opt/saas-data/cache"]
@@ -39,7 +41,7 @@ def purge_expired_cache_files() -> int:
                 except FileNotFoundError:
                     continue
                 except Exception as e:
-                    print(f"[CACHE] Failed to inspect {path}: {e}")
+                    logger.warning("Failed to inspect cache path %s: %s", path, e)
 
     return removed
 

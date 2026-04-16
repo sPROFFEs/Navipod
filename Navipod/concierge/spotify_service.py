@@ -1,3 +1,4 @@
+import logging
 import httpx
 import time
 import json
@@ -12,6 +13,7 @@ CACHE_DIR = "/saas-data/cache"
 TOKEN_CACHE_PATH = f"{CACHE_DIR}/spotify_token.json"
 REQS_CACHE_PATH = f"{CACHE_DIR}/spotify_new_releases.json"
 SPOTIFY_SEARCH_MAX_LIMIT = 10
+logger = logging.getLogger(__name__)
 
 # Crear un pool global para tareas de CPU
 cpu_executor = ThreadPoolExecutor(max_workers=4)
@@ -58,7 +60,7 @@ class SpotifyService:
             resp = await self.client.post(url, data=data, auth=(client_id, client_secret))
             
             if resp.status_code != 200:
-                print(f"[SPOTIFY-SERVICE] Failed to get token: {resp.text}")
+                logger.warning("Spotify token request failed: %s", resp.text)
                 return None
             
             res = resp.json()
@@ -76,7 +78,7 @@ class SpotifyService:
             
             return token
         except Exception as e:
-            print(f"[SPOTIFY-SERVICE] Token error: {e}")
+            logger.warning("Spotify token error: %s", e)
             return None
 
     async def validate_credentials(self, client_id: str, client_secret: str) -> bool:
@@ -152,7 +154,7 @@ class SpotifyService:
         try:
             resp = await self.client.get(url, headers=headers, params=params)
             if resp.status_code != 200: 
-                print(f"[SPOTIFY-SEARCH] Error {resp.status_code}: {resp.text}")
+                logger.warning("Spotify search failed with status %s: %s", resp.status_code, resp.text)
                 return []
             
             data = resp.json()
@@ -185,7 +187,7 @@ class SpotifyService:
                 })
             return items
         except Exception as e:
-            print(f"[SPOTIFY-SEARCH] Exception: {e}")
+            logger.warning("Spotify search exception: %s", e)
             return []
 
     async def get_recommendations(self, client_id: str, client_secret: str, seed_tracks: list = None, seed_artists: list = None, limit: int = 12, country: str = "ES", cache_path: str = None) -> list:
@@ -217,7 +219,7 @@ class SpotifyService:
         # (Esto requeriría otra llamada, así que por simplicidad usamos solo artistas)
         
         if not artist_ids:
-            print("[SPOTIFY] No hay artistas seed para recomendaciones")
+            logger.info("No Spotify artist seeds available for recommendations")
             return []
         
         items = []
@@ -233,7 +235,7 @@ class SpotifyService:
                 
                 resp = await self.client.get(url, headers=headers, params=params)
                 if resp.status_code != 200:
-                    print(f"[SPOTIFY] Top tracks error for {artist_id}: {resp.status_code}")
+                    logger.warning("Spotify top tracks failed for artist %s with status %s", artist_id, resp.status_code)
                     continue
                 
                 data = resp.json()
@@ -268,11 +270,11 @@ class SpotifyService:
                         "expires_at": time.time() + (7 * 24 * 3600)
                     }, f)
 
-            print(f"[SPOTIFY] Generadas {len(items)} recomendaciones desde {len(artist_ids)} artistas")
+            logger.info("Generated %s Spotify recommendations from %s artists", len(items), len(artist_ids))
             return items
             
         except Exception as e:
-            print(f"[SPOTIFY] Rec exception: {e}")
+            logger.warning("Spotify recommendations exception: %s", e)
             return []
 
     async def get_new_releases(self, client_id: str, client_secret: str, country: str = "ES", limit: int = 12, cache_path: str = None) -> list:
@@ -298,7 +300,7 @@ class SpotifyService:
         try:
             resp = await self.client.get(url, headers=headers, params=params)
             if resp.status_code != 200:
-                print(f"[SPOTIFY] New releases error: {resp.text}")
+                logger.warning("Spotify new releases failed: %s", resp.text)
                 return []
             
             data = resp.json()
@@ -323,7 +325,7 @@ class SpotifyService:
             
             return items
         except Exception as e:
-            print(f"[SPOTIFY-SERVICE] Fetch error: {e}")
+            logger.warning("Spotify fetch error: %s", e)
             return []
 
     async def get_embed_preview(self, track_id: str) -> Optional[str]:
@@ -346,7 +348,7 @@ class SpotifyService:
             return preview_url
 
         except Exception as e:
-            print(f"[SPOTIFY-EMBED] Error scraping preview: {e}")
+            logger.warning("Spotify embed preview scrape error: %s", e)
             return None
 
 # Singleton instance

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone, timedelta
 
 import database
+logger = logging.getLogger(__name__)
 
 ADMIN_JOB_RETENTION_LIMIT = 200
 ADMIN_JOB_LOG_LIMIT = 200
@@ -125,7 +127,7 @@ def update_admin_job(job_id: int, *, status=None, message=None, details=None, fi
         if not job:
             return
         if message:
-            print(f"[ADMIN-JOB {job_id}] {message}")
+            logger.info("Admin job %s: %s", job_id, message)
         if status:
             job.status = status
         if message is not None:
@@ -149,7 +151,7 @@ def update_admin_job_progress(job_id: int, *, message=None, status=None, phase=N
         if not job:
             return
         if message:
-            print(f"[ADMIN-JOB {job_id}] {message}")
+            logger.info("Admin job %s: %s", job_id, message)
         details = {}
         if job.details_json:
             try:
