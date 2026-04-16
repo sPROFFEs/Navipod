@@ -127,7 +127,7 @@
                                             type="password"
                                             name="new_password"
                                             placeholder="{{ _('admin.new_pass_placeholder') }}"
-                                            pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*]).{8,}"
+                                            pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[^A-Za-z0-9]).{8,}"
                                             title="{{ _('admin.pass_requirements_title') }}"
                                             required
                                         >

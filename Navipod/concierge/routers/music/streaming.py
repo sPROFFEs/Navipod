@@ -27,7 +27,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 MEDIA_ROOTS = ("/saas-data/pool", "/saas-data/users")
-CACHE_ROOT = "/saas-data/cache"
+CACHE_ROOTS = ("/saas-data/cache", "/saas-data/cover_cache")
 
 
 def _resolve_allowed_media_path(raw_path: str | None) -> Path | None:
@@ -47,13 +47,14 @@ def _resolve_allowed_media_path(raw_path: str | None) -> Path | None:
 def _resolve_allowed_cache_path(raw_path: str | Path | None) -> Path | None:
     if not raw_path:
         return None
-    try:
-        path = path_security.resolve_under(raw_path, CACHE_ROOT)
-    except path_security.UnsafePathError:
-        logger.warning("Blocked cache path outside allowed root: %s", raw_path)
-        return None
-    if path.exists() and path.is_file():
-        return path
+    for root in CACHE_ROOTS:
+        try:
+            path = path_security.resolve_under(raw_path, root)
+            if path.exists() and path.is_file():
+                return path
+        except path_security.UnsafePathError:
+            continue
+    logger.warning("Blocked cache path outside allowed roots: %s", raw_path)
     return None
 
 

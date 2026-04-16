@@ -8,6 +8,7 @@ import psutil
 import shutil
 import subprocess
 import os
+import errno
 import operations_service
 import track_identity
 import path_security
@@ -86,8 +87,9 @@ async def create_user(
     admin: database.User = Depends(get_current_admin)
 ):
     # 1. IF HERE (Validate complexity before creating)
+    password = (password or "").strip()
     if not auth.is_password_strong(password):
-        return {"error": "Weak password: use 8 chars, uppercase, numbers and symbols"}
+        return {"error": "Weak password: use 8 chars, uppercase, lowercase, numbers and symbols"}
 
     existing = auth.get_user_by_username(db, username)
     if existing: return {"error": f"User {username} already exists"}
@@ -154,8 +156,9 @@ async def reset_user_password(
     admin: database.User = Depends(get_current_admin)
 ):
     # 2. IF HERE (Validate complexity before resetting)
+    new_password = (new_password or "").strip()
     if not auth.is_password_strong(new_password):
-        return {"error": "New password is too weak (use 8 chars, uppercase, numbers and symbols)"}
+        return {"error": "New password is too weak (use 8 chars, uppercase, lowercase, numbers and symbols)"}
 
     user_to_edit = db.query(database.User).filter(database.User.id == user_id).first()
     if not user_to_edit:
@@ -178,6 +181,14 @@ async def flush_ram(db: Session = Depends(get_db), admin: database.User = Depend
         with open("/proc/sys/vm/drop_caches", "w", encoding="utf-8") as drop_caches:
             drop_caches.write("3\n")
         return RedirectResponse("/admin/system?msg=RAM Cache cleared successfully", status_code=303)
+    except OSError as e:
+        if e.errno in {errno.EROFS, errno.EPERM, errno.EACCES}:
+            return RedirectResponse(
+                "/admin/system?msg=RAM cache flush is not available in this container. "
+                "The host exposes /proc/sys/vm/drop_caches as read-only; no action was taken.",
+                status_code=303,
+            )
+        return RedirectResponse(f"/admin/system?error=Could not clear RAM: {str(e)}", status_code=303)
     except Exception as e:
         return RedirectResponse(f"/admin/system?error=Could not clear RAM: {str(e)}", status_code=303)
 

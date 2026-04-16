@@ -146,7 +146,7 @@
     "admin.delete_confirm": "ATENCIÓN: Se borrarán permanentemente el contenedor, la base de datos y toda la música de este usuario. ¿Continuar?",
     "admin.update_security": "Actualizar Seguridad",
     "admin.new_pass_placeholder": "Nueva contraseña (Mín. 8 caracteres)",
-    "admin.pass_requirements_title": "8+ chars, Mayúscula, Número y Símbolo",
+  "admin.pass_requirements_title": "8+ caracteres, mayúscula, minúscula, número y símbolo",
     "admin.apply_button": "APLICAR CAMBIO",
     "admin.storage_limit": "Límite de Almacenamiento",
     "admin.set_quota": "FIJAR CUOTA",
