@@ -132,7 +132,7 @@ export function renderQueue() {
                     <div class="queue-artist">${ui.escHtml(t.artist || 'Unknown')}${i === 0 ? ' - Next' : ''}</div>
                 </div>
             </div>`).join('')
-        : '<div class="queue-empty">Manual queue is empty. Add tracks with "Add to Queue" to force what plays next.</div>';
+        : '<div class="queue-empty">No manual tracks queued.</div>';
 
     container.innerHTML = `
         <div class="queue-section-title">Manual Queue</div>
@@ -147,9 +147,7 @@ export function renderQueue() {
                 <span>Context tracks</span>
                 <strong>${contextCount ? `${contextPosition || 1}/${contextCount}` : 'None'}</strong>
             </div>
-            <div class="queue-context-hint">
-                Manual queue always plays first. Context and shuffle stay separate and are restored after refresh.
-            </div>
-        </div>`;
+        </div>
+        <div class="queue-footnote">Manual queue plays before context and is restored after refresh.</div>`;
     lucide.createIcons();
 }

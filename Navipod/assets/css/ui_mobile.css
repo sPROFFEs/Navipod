@@ -402,9 +402,13 @@
     .track-list .action-btn-danger {
         width: 28px;
         height: 28px;
+        min-width: 28px;
+        padding: 0;
     }
 
     .track-list .action-btn i,
+    .track-list .action-btn svg,
+    .track-list .action-btn-danger svg,
     .track-list .action-btn-danger i {
         width: 15px;
         height: 15px;
@@ -503,6 +507,15 @@
     .track-list .action-btn-danger {
         width: 26px;
         height: 26px;
+        min-width: 26px;
+    }
+
+    .track-list .action-btn i,
+    .track-list .action-btn svg,
+    .track-list .action-btn-danger i,
+    .track-list .action-btn-danger svg {
+        width: 14px;
+        height: 14px;
     }
 }
 
