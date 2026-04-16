@@ -11,11 +11,13 @@ import * as api from './api.js';
 let _wakeLock = null;
 let _activeListenSession = null;
 let _sessionPersistInterval = null;
+let _remoteQueueSaveTimer = null;
 
 const PLAYBACK_SESSION_KEY = 'navipod.playback.session.v1';
 const PLAYBACK_SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const PLAYBACK_AUTO_RESUME_MAX_AGE_MS = 30 * 60 * 1000;
 const PLAYBACK_PROGRESS_SAVE_INTERVAL_MS = 10000;
+const PLAYBACK_REMOTE_SAVE_DEBOUNCE_MS = 1500;
 
 // Acquire a Web Lock to prevent Android Chrome from suspending the tab
 async function acquirePlaybackLock() {
@@ -44,7 +46,10 @@ function releasePlaybackLock() {
 }
 
 function buildPlaybackSessionSnapshot() {
-    if (!state.currentTrack?.db_id) return null;
+    const hasCurrentTrack = Boolean(state.currentTrack?.db_id);
+    const hasManualQueue = state.userQueue.length > 0;
+    const hasContextQueue = state.contextQueue.length > 0;
+    if (!hasCurrentTrack && !hasManualQueue && !hasContextQueue && !state.shuffleMode) return null;
 
     return {
         savedAt: Date.now(),
@@ -63,14 +68,81 @@ function buildPlaybackSessionSnapshot() {
     };
 }
 
-export function persistPlaybackSession() {
+function queueStatePayloadFromSnapshot(snapshot) {
+    if (!snapshot) return null;
+    return {
+        manual_queue: snapshot.userQueue || [],
+        context_queue: snapshot.contextQueue || [],
+        original_context_queue: snapshot.originalContextQueue || [],
+        current_track: snapshot.currentTrack || null,
+        current_view_name: snapshot.currentViewName || 'home',
+        current_view_param: snapshot.currentViewParam ?? null,
+        context_index: snapshot.contextIndex ?? -1,
+        shuffle_mode: Boolean(snapshot.shuffleMode),
+        repeat_mode: snapshot.repeatMode || 'off',
+        current_time: Number(snapshot.currentTime || 0),
+        duration: Number(snapshot.duration || 0),
+        was_playing: Boolean(snapshot.wasPlaying),
+        persist_enabled: true,
+    };
+}
+
+function scheduleRemoteQueueStateSave(snapshot) {
+    if (_remoteQueueSaveTimer) clearTimeout(_remoteQueueSaveTimer);
+    _remoteQueueSaveTimer = window.setTimeout(() => {
+        _remoteQueueSaveTimer = null;
+        if (snapshot) {
+            api.savePlaybackQueueState(queueStatePayloadFromSnapshot(snapshot));
+        } else {
+            api.clearPlaybackQueueState();
+        }
+    }, PLAYBACK_REMOTE_SAVE_DEBOUNCE_MS);
+}
+
+function remotePayloadToSnapshot(payload) {
+    if (!payload || payload.error) return null;
+    const hasRemoteData = payload.updated_at || payload.current_track || (payload.manual_queue || []).length || (payload.context_queue || []).length;
+    if (!hasRemoteData) return null;
+    const parsedUpdatedAt = payload.updated_at ? Date.parse(payload.updated_at) : NaN;
+
+    return {
+        savedAt: Number.isFinite(parsedUpdatedAt) ? parsedUpdatedAt : Date.now(),
+        currentTrack: payload.current_track || null,
+        userQueue: Array.isArray(payload.manual_queue) ? payload.manual_queue : [],
+        contextQueue: Array.isArray(payload.context_queue) ? payload.context_queue : [],
+        originalContextQueue: Array.isArray(payload.original_context_queue) ? payload.original_context_queue : [],
+        contextIndex: Number.isInteger(payload.context_index) ? payload.context_index : -1,
+        repeatMode: payload.repeat_mode || 'off',
+        shuffleMode: Boolean(payload.shuffle_mode),
+        currentViewName: payload.current_view_name || 'home',
+        currentViewParam: payload.current_view_param ?? null,
+        currentTime: Number(payload.current_time || 0),
+        duration: Number(payload.duration || 0),
+        wasPlaying: Boolean(payload.was_playing),
+    };
+}
+
+function applyQueueSnapshot(snapshot) {
+    state.setUserQueue(Array.isArray(snapshot.userQueue) ? snapshot.userQueue : []);
+    state.setContextQueue(Array.isArray(snapshot.contextQueue) ? snapshot.contextQueue : []);
+    state.setOriginalContextQueue(Array.isArray(snapshot.originalContextQueue) ? snapshot.originalContextQueue : []);
+    state.setContextIndex(Number.isInteger(snapshot.contextIndex) ? snapshot.contextIndex : -1);
+    state.setRepeatMode(snapshot.repeatMode || 'off');
+    state.setShuffleMode(Boolean(snapshot.shuffleMode));
+    state.setCurrentViewName(snapshot.currentViewName || 'home');
+    state.setCurrentViewParam(snapshot.currentViewParam ?? null);
+}
+
+export function persistPlaybackSession({ syncRemote = true } = {}) {
     try {
         const snapshot = buildPlaybackSessionSnapshot();
         if (!snapshot) {
             localStorage.removeItem(PLAYBACK_SESSION_KEY);
+            if (syncRemote) scheduleRemoteQueueStateSave(null);
             return;
         }
         localStorage.setItem(PLAYBACK_SESSION_KEY, JSON.stringify(snapshot));
+        if (syncRemote) scheduleRemoteQueueStateSave(snapshot);
     } catch (e) {
         console.warn('[BG-PLAY] Failed to persist playback session:', e);
     }
@@ -79,6 +151,7 @@ export function persistPlaybackSession() {
 function clearPersistedPlaybackSession() {
     try {
         localStorage.removeItem(PLAYBACK_SESSION_KEY);
+        scheduleRemoteQueueStateSave(null);
     } catch (e) {
         console.warn('[BG-PLAY] Failed to clear playback session:', e);
     }
@@ -140,13 +213,34 @@ function clampResumeTime(timeSeconds, durationSeconds) {
     return Math.min(current, Math.max(0, duration - 1));
 }
 
-export function restorePlaybackSession() {
+export async function restorePlaybackSession() {
     try {
-        const raw = localStorage.getItem(PLAYBACK_SESSION_KEY);
-        if (!raw) return null;
+        let serverSnapshot = null;
+        try {
+            serverSnapshot = remotePayloadToSnapshot(await api.fetchPlaybackQueueState());
+        } catch (e) {
+            console.warn('[BG-PLAY] Failed to fetch remote playback queue state:', e);
+        }
 
-        const snapshot = JSON.parse(raw);
-        if (!snapshot?.currentTrack?.db_id) return null;
+        const raw = localStorage.getItem(PLAYBACK_SESSION_KEY);
+        let localSnapshot = null;
+        if (raw) {
+            try {
+                localSnapshot = JSON.parse(raw);
+            } catch (e) {
+                localStorage.removeItem(PLAYBACK_SESSION_KEY);
+            }
+        }
+        const snapshot = serverSnapshot || localSnapshot;
+        if (!snapshot) return null;
+
+        applyQueueSnapshot(snapshot);
+
+        if (!snapshot?.currentTrack?.db_id) {
+            syncTransportControlButtons();
+            if (window.renderQueue) window.renderQueue();
+            return null;
+        }
 
         const ageMs = Date.now() - Number(snapshot.savedAt || 0);
         if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > PLAYBACK_SESSION_MAX_AGE_MS) {
@@ -154,15 +248,7 @@ export function restorePlaybackSession() {
             return null;
         }
 
-        state.setUserQueue(Array.isArray(snapshot.userQueue) ? snapshot.userQueue : []);
-        state.setContextQueue(Array.isArray(snapshot.contextQueue) ? snapshot.contextQueue : []);
-        state.setOriginalContextQueue(Array.isArray(snapshot.originalContextQueue) ? snapshot.originalContextQueue : []);
-        state.setContextIndex(Number.isInteger(snapshot.contextIndex) ? snapshot.contextIndex : -1);
-        state.setRepeatMode(snapshot.repeatMode || 'off');
-        state.setShuffleMode(Boolean(snapshot.shuffleMode));
         state.setCurrentTrack(snapshot.currentTrack);
-        state.setCurrentViewName(snapshot.currentViewName || 'home');
-        state.setCurrentViewParam(snapshot.currentViewParam ?? null);
         state.setIsPlaying(false);
 
         updatePlayerUI(snapshot.currentTrack);

@@ -789,6 +789,56 @@ def _migration_014_performance_indexes(conn):
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_favorites_user_track ON user_favorites(user_id, track_id)"))
 
 
+def _migration_015_queue_state_and_download_history(conn):
+    tables = {row[0] for row in conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()}
+
+    if "download_jobs" in tables:
+        columns = {row[1] for row in conn.execute(text("PRAGMA table_info(download_jobs)")).fetchall()}
+        required_columns = {
+            "original_input_url": "TEXT",
+            "requested_artist": "TEXT",
+            "requested_album": "TEXT",
+            "resolution_mode": "TEXT",
+            "resolved_title": "TEXT",
+            "resolved_artist": "TEXT",
+            "resolved_album": "TEXT",
+            "resolved_track_id": "INTEGER",
+            "resolved_track_count": "INTEGER DEFAULT 0",
+            "engine_used": "TEXT",
+            "fallback_reason": "TEXT",
+            "error_type": "TEXT",
+        }
+        for col_name, col_type in required_columns.items():
+            if col_name not in columns:
+                conn.execute(text(f"ALTER TABLE download_jobs ADD COLUMN {col_name} {col_type}"))
+
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_download_jobs_resolved_track_id ON download_jobs(resolved_track_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_download_jobs_engine_used ON download_jobs(engine_used)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_download_jobs_error_type ON download_jobs(error_type)"))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS playback_queue_states (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER NOT NULL UNIQUE,
+            manual_queue_json TEXT,
+            context_queue_json TEXT,
+            original_context_queue_json TEXT,
+            current_track_json TEXT,
+            current_view_name TEXT,
+            current_view_param_json TEXT,
+            context_index INTEGER DEFAULT -1,
+            shuffle_mode INTEGER DEFAULT 0,
+            repeat_mode TEXT DEFAULT 'off',
+            current_time INTEGER DEFAULT 0,
+            duration INTEGER DEFAULT 0,
+            was_playing INTEGER DEFAULT 0,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    """))
+    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_playback_queue_states_user_id ON playback_queue_states(user_id)"))
+
+
 MIGRATIONS = [
     ("000_base_schema", _migration_000_base_schema),
     ("001_tracks_library_columns", _migration_001_tracks_library_columns),
@@ -805,6 +855,7 @@ MIGRATIONS = [
     ("012_download_job_metadata", _migration_012_download_job_metadata),
     ("013_modern_download_playlist_targets", _migration_013_modern_download_playlist_targets),
     ("014_performance_indexes", _migration_014_performance_indexes),
+    ("015_queue_state_and_download_history", _migration_015_queue_state_and_download_history),
 ]
 
 

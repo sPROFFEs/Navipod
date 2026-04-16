@@ -117,21 +117,39 @@ export function renderQueue() {
     const container = document.getElementById('queue-list');
     if (!container) return;
 
-    if (state.userQueue.length === 0) {
-        container.innerHTML = '<div style="padding:20px; text-align:center; color:#666;">Queue is empty</div>';
-        return;
-    }
+    const contextCount = state.contextQueue.length;
+    const contextPosition = state.contextIndex >= 0 ? state.contextIndex + 1 : 0;
+    const modeLabel = state.shuffleMode
+        ? (contextCount > 0 ? 'Shuffled context' : 'Global random shuffle')
+        : (contextCount > 0 ? 'Context playback' : 'No playback context');
 
-    let html = `<div style="padding:10px 16px; font-size:0.75rem; color:var(--accent); font-weight:700; text-transform:uppercase;">Queue</div>`;
-    html += state.userQueue.map((t, i) => `
-        <div class="queue-item">
-            <img src="${t.thumbnail || '/static/img/default_cover.png'}" class="queue-img" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
-            <div class="queue-info">
-                <div class="queue-title">${ui.escHtml(t.title || 'Unknown')}</div>
-                <div class="queue-artist">${ui.escHtml(t.artist || 'Unknown')}${i === 0 ? ' • Next' : ''}</div>
+    const manualQueueHtml = state.userQueue.length > 0
+        ? state.userQueue.map((t, i) => `
+            <div class="queue-item">
+                <img src="${t.thumbnail || '/static/img/default_cover.png'}" class="queue-img" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
+                <div class="queue-info">
+                    <div class="queue-title">${ui.escHtml(t.title || 'Unknown')}</div>
+                    <div class="queue-artist">${ui.escHtml(t.artist || 'Unknown')}${i === 0 ? ' - Next' : ''}</div>
+                </div>
+            </div>`).join('')
+        : '<div class="queue-empty">Manual queue is empty. Add tracks with "Add to Queue" to force what plays next.</div>';
+
+    container.innerHTML = `
+        <div class="queue-section-title">Manual Queue</div>
+        ${manualQueueHtml}
+        <div class="queue-context-card">
+            <div class="queue-section-title">Playback Context</div>
+            <div class="queue-context-row">
+                <span>Mode</span>
+                <strong>${ui.escHtml(modeLabel)}</strong>
             </div>
-        </div>`).join('');
-
-    container.innerHTML = html;
+            <div class="queue-context-row">
+                <span>Context tracks</span>
+                <strong>${contextCount ? `${contextPosition || 1}/${contextCount}` : 'None'}</strong>
+            </div>
+            <div class="queue-context-hint">
+                Manual queue always plays first. Context and shuffle stay separate and are restored after refresh.
+            </div>
+        </div>`;
     lucide.createIcons();
 }

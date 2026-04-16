@@ -151,7 +151,7 @@ window.onYouTubeIframeAPIReady = () => {
 
 
 // === INITIALIZATION ===
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     console.log('[MAIN] Navipod ES6 Modules Initialized');
 
     initUserMenu();
@@ -169,7 +169,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Keep heartbeat quiet while backgrounded
     views.initHeartbeatLifecycle();
 
-    const restoredSession = player.restorePlaybackSession();
+    const restoredSession = await player.restorePlaybackSession();
 
     // Load initial view
     // Load initial view only if we are on the root path

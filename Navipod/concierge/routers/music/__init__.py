@@ -14,6 +14,7 @@ from . import search
 from . import sync
 from . import recent_activity
 from . import personalization
+from . import playback_state
 
 
 # Create the main router that includes all sub-routers
@@ -31,6 +32,7 @@ router.include_router(search.router)
 router.include_router(sync.router)
 router.include_router(recent_activity.router)
 router.include_router(personalization.router)
+router.include_router(playback_state.router)
 
 # Re-export the combined router
 __all__ = ["router"]

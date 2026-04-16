@@ -50,6 +50,7 @@ class User(Base):
     playlists = relationship("UserPlaylist", back_populates="owner", cascade="all, delete-orphan")
     new_playlists = relationship("Playlist", back_populates="owner", cascade="all, delete-orphan")
     favorites = relationship("UserFavorite", back_populates="user", cascade="all, delete-orphan")
+    playback_queue_state = relationship("PlaybackQueueState", uselist=False, back_populates="user", cascade="all, delete-orphan")
 
 
 class DownloadSettings(Base):
@@ -246,8 +247,20 @@ class DownloadJob(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     input_url = Column(String)
+    original_input_url = Column(String, nullable=True)
     requested_title = Column(String, nullable=True)
+    requested_artist = Column(String, nullable=True)
+    requested_album = Column(String, nullable=True)
     requested_source = Column(String, nullable=True)
+    resolution_mode = Column(String, nullable=True)
+    resolved_title = Column(String, nullable=True)
+    resolved_artist = Column(String, nullable=True)
+    resolved_album = Column(String, nullable=True)
+    resolved_track_id = Column(Integer, ForeignKey("tracks.id"), nullable=True)
+    resolved_track_count = Column(Integer, default=0)
+    engine_used = Column(String, nullable=True)
+    fallback_reason = Column(Text, nullable=True)
+    error_type = Column(String, nullable=True)
     target_playlist_id = Column(Integer, ForeignKey("user_playlists.id"), nullable=True)
     target_modern_playlist_id = Column(Integer, ForeignKey("playlists.id"), nullable=True)
     new_playlist_name = Column(String, nullable=True)
@@ -259,6 +272,29 @@ class DownloadJob(Base):
 
     owner = relationship("User", back_populates="downloads")
     target_modern_playlist = relationship("Playlist")
+    resolved_track = relationship("Track")
+
+
+class PlaybackQueueState(Base):
+    __tablename__ = "playback_queue_states"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, index=True)
+    manual_queue_json = Column(Text, nullable=True)
+    context_queue_json = Column(Text, nullable=True)
+    original_context_queue_json = Column(Text, nullable=True)
+    current_track_json = Column(Text, nullable=True)
+    current_view_name = Column(String, nullable=True)
+    current_view_param_json = Column(Text, nullable=True)
+    context_index = Column(Integer, default=-1)
+    shuffle_mode = Column(Boolean, default=False)
+    repeat_mode = Column(String, default="off")
+    current_time = Column(Integer, default=0)
+    duration = Column(Integer, default=0)
+    was_playing = Column(Boolean, default=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User", back_populates="playback_queue_state")
 
 
 class UserFavorite(Base):

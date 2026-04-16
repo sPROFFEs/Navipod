@@ -37,6 +37,46 @@ def _infer_source_label(raw_source: str | None, raw_url: str | None) -> str:
     return source_registry.infer_source(raw_source, raw_url)
 
 
+def _serialize_download_job(job, target: str | None = None):
+    resolved_track = getattr(job, "resolved_track", None)
+    resolved_track_title = None
+    if resolved_track:
+        resolved_track_title = " - ".join(
+            part for part in [resolved_track.artist, resolved_track.title] if part
+        ).strip() or resolved_track.title
+
+    return {
+        "id": job.id,
+        "url": job.input_url,
+        "input_url": job.input_url,
+        "original_input_url": job.original_input_url or job.input_url,
+        "status": job.status,
+        "progress": job.progress_percent,
+        "filename": job.current_file,
+        "track_title": job.requested_title,
+        "requested_title": job.requested_title,
+        "requested_artist": job.requested_artist,
+        "requested_album": job.requested_album,
+        "source": job.requested_source,
+        "requested_source": job.requested_source,
+        "resolution_mode": job.resolution_mode,
+        "resolved_title": job.resolved_title,
+        "resolved_artist": job.resolved_artist,
+        "resolved_album": job.resolved_album,
+        "resolved_track_id": job.resolved_track_id,
+        "resolved_track_count": job.resolved_track_count or 0,
+        "resolved_track_title": resolved_track_title,
+        "engine_used": job.engine_used,
+        "fallback_reason": job.fallback_reason,
+        "error_type": job.error_type,
+        "target_playlist_id": job.target_modern_playlist_id,
+        "detail": job.current_file,
+        "error": job.error_log,
+        "target": target,
+        "created_at": str(job.created_at),
+    }
+
+
 async def _resolve_download_url(user, req: DownloadRequest) -> tuple[str, str]:
     """
     Prefer a Spotify track URL for metadata-only sources so the downloader can
@@ -138,8 +178,12 @@ async def trigger_download(
     job = database.DownloadJob(
         user_id=user.id,
         input_url=resolved_url,
+        original_input_url=(req.url or "").strip() or resolved_url,
         requested_title=(req.title or "").strip() or None,
+        requested_artist=(req.artist or "").strip() or None,
+        requested_album=(req.album or "").strip() or None,
         requested_source=_infer_source_label(req.source, req.url),
+        resolution_mode=resolution_mode,
         status="pending",
         progress_percent=0.0,
         new_playlist_name=None,  # No default playlist - just add to library
@@ -210,13 +254,8 @@ async def downloads_status(request: Request, db: Session = Depends(get_db)):
         current_file = os.path.basename(job.current_file) if job.current_file and "/" in job.current_file else job.current_file
 
         clean_jobs.append({
-            "id": job.id,
-            "input_url": job.input_url,
-            "status": job.status,
-            "progress": job.progress_percent,
+            **_serialize_download_job(job, target=target),
             "current_file": current_file,
-            "error": job.error_log,
-            "target": target
         })
     return JSONResponse(clean_jobs)
 
@@ -257,7 +296,14 @@ async def start_download(
             clean_url = f"https://www.youtube.com/watch?v={parsed.path.lstrip('/')}"
 
     # Create Job
-    job = database.DownloadJob(user_id=user.id, input_url=clean_url, status="pending")
+    job = database.DownloadJob(
+        user_id=user.id,
+        input_url=clean_url,
+        original_input_url=url,
+        requested_source=_infer_source_label(None, url),
+        resolution_mode="youtube-clean-url" if clean_url != url else "original",
+        status="pending",
+    )
     
     # Assign destination logic
     if target_mode == "existing" and target_playlist_id:
@@ -291,17 +337,5 @@ async def list_download_jobs(request: Request, db: Session = Depends(get_db)):
         database.DownloadJob.user_id == user.id
     ).order_by(database.DownloadJob.created_at.desc()).limit(50).all()
     
-    return JSONResponse([{
-        "id": j.id,
-        "url": j.input_url,
-        "status": j.status,
-        "progress": j.progress_percent,
-        "filename": j.current_file,
-        "track_title": j.requested_title,
-        "source": j.requested_source,
-        "target_playlist_id": j.target_modern_playlist_id,
-        "detail": j.current_file,
-        "error": j.error_log,
-        "created_at": str(j.created_at)
-    } for j in jobs])
+    return JSONResponse([_serialize_download_job(j) for j in jobs])
 

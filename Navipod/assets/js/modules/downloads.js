@@ -41,6 +41,43 @@ function formatSourceLabel(source) {
     return labels[normalized] || (normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : 'Unknown source');
 }
 
+function formatEngineLabel(engine) {
+    const normalized = String(engine || '').trim().toLowerCase();
+    const labels = {
+        'spotiflac': 'SpotiFLAC',
+        'spotdl-auth': 'spotDL (auth)',
+        'spotdl-anonymous': 'spotDL (anonymous)',
+        'spotdl-basic': 'spotDL (basic)',
+        'yt-dlp': 'yt-dlp',
+        'yt-dlp-spotify-fallback': 'yt-dlp Spotify fallback',
+        'dedupe': 'Library dedupe',
+    };
+    return labels[normalized] || (normalized ? normalized : 'Pending');
+}
+
+function buildDownloadResolutionLines(job) {
+    const lines = [];
+    const requested = [job.requested_artist, job.requested_title].filter(Boolean).join(' - ') || job.requested_title;
+    const resolved = [job.resolved_artist, job.resolved_title].filter(Boolean).join(' - ') || job.resolved_track_title || job.resolved_title;
+
+    lines.push(['Requested source', formatSourceLabel(job.requested_source || job.source)]);
+    if (job.original_input_url && job.original_input_url !== job.url) lines.push(['Original input', job.original_input_url]);
+    if (requested) lines.push(['Requested track', requested]);
+    if (resolved) lines.push(['Resolved track', resolved]);
+    if (job.resolved_track_id) lines.push(['Track ID', `#${job.resolved_track_id}`]);
+    if (job.engine_used) lines.push(['Engine', formatEngineLabel(job.engine_used)]);
+    if (job.resolution_mode) lines.push(['Resolution', job.resolution_mode]);
+    if (job.fallback_reason) lines.push(['Fallback', job.fallback_reason]);
+    if (job.error_type) lines.push(['Error type', job.error_type]);
+
+    return lines.map(([label, value]) => `
+        <div class="job-resolution-row">
+            <span>${ui.escHtml(label)}</span>
+            <strong>${ui.escHtml(String(value || ''))}</strong>
+        </div>
+    `).join('');
+}
+
 function ensureDownloadPolling() {
     if (!state.downloadPolling) {
         state.setDownloadPolling(setInterval(refreshJobs, 3000));
@@ -101,8 +138,9 @@ export async function refreshJobs() {
             const statusIcon = uiState.icon;
             const isSpinning = uiState.active ? 'style="animation: spin 2s linear infinite;"' : '';
             const detail = ui.escHtml(j.error || j.detail || j.filename || j.url || '');
-            const title = ui.escHtml(j.track_title || j.filename || j.url || 'Untitled download');
+            const title = ui.escHtml(j.resolved_track_title || j.resolved_title || j.track_title || j.filename || j.url || 'Untitled download');
             const source = ui.escHtml(formatSourceLabel(j.source));
+            const resolutionLines = buildDownloadResolutionLines(j);
 
             return `
             <div class="job-item">
@@ -121,6 +159,7 @@ export async function refreshJobs() {
                 <div class="job-detail" style="margin-top:8px; font-size:0.82rem; color: ${j.error ? '#ff9d9d' : 'var(--text-sub, #aaa)'};">
                     ${detail}
                 </div>
+                ${resolutionLines ? `<div class="job-resolution">${resolutionLines}</div>` : ''}
                 <div class="job-footer">
                     <div class="job-footer-left">
                         <i data-lucide="${statusIcon}" width="14" height="14" ${isSpinning}></i>

@@ -285,6 +285,43 @@ export async function fetchRecommendations() {
     return [];
 }
 
+
+// === PLAYBACK QUEUE STATE API ===
+
+export async function fetchPlaybackQueueState() {
+    try {
+        const res = await fetch(`${state.API}/playback/queue-state`);
+        if (res.ok) return await res.json();
+    } catch (e) {
+        console.warn('[PLAYBACK] Queue state fetch failed:', e);
+    }
+    return null;
+}
+
+export async function savePlaybackQueueState(payload) {
+    try {
+        const res = await fetch(`${state.API}/playback/queue-state`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        return res.ok;
+    } catch (e) {
+        console.warn('[PLAYBACK] Queue state save failed:', e);
+        return false;
+    }
+}
+
+export async function clearPlaybackQueueState() {
+    try {
+        const res = await fetch(`${state.API}/playback/queue-state`, { method: 'DELETE' });
+        return res.ok;
+    } catch (e) {
+        console.warn('[PLAYBACK] Queue state clear failed:', e);
+        return false;
+    }
+}
+
 export async function fetchMixes() {
     try {
         const res = await fetch(`${state.API}/mixes`);

@@ -48,6 +48,8 @@ class DownloadManager:
         self.settings = self.user.download_settings
         self._runtime_cookie_path = None
         self._last_download_reason = ""
+        self._engine_used = None
+        self._fallback_reasons = []
         
         # --- VALIDACIÓN DE MOTOR ---
         if not shutil.which("ffmpeg"):
@@ -76,6 +78,44 @@ class DownloadManager:
 
     def _set_last_reason(self, reason: str):
         self._last_download_reason = (reason or "").strip()
+
+    def _set_engine_used(self, engine: str):
+        self._engine_used = (engine or "").strip() or None
+
+    def _append_fallback_reason(self, reason: str):
+        reason = (reason or "").strip()
+        if reason and reason not in self._fallback_reasons:
+            self._fallback_reasons.append(reason[:500])
+
+    def _fallback_reason_text(self) -> str | None:
+        if not self._fallback_reasons:
+            return None
+        return " | ".join(self._fallback_reasons)[-2000:]
+
+    def _normalize_download_error(self, error: Exception | str) -> tuple[str, str]:
+        message = str(error or "").strip()
+        lower = message.lower()
+        if "storage limit" in lower or "pool limit" in lower:
+            return "storage_limit", message
+        if self._is_youtube_age_gate_error(message):
+            return "youtube_age_gate", message
+        if self._is_youtube_bot_challenge_error(message):
+            return "youtube_bot_challenge", message
+        if "rate/request limit" in lower or "rate limit" in lower:
+            return "rate_limited", message
+        if "missing 'genres'" in lower or 'missing "genres"' in lower or "keyerror: 'genres'" in lower:
+            return "spotify_metadata_schema", message
+        if "no audio files" in lower or "without producing an audio file" in lower:
+            return "no_audio_output", message
+        if "ffmpeg" in lower:
+            return "ffmpeg_unavailable", message
+        if "spotdl" in lower:
+            return "spotdl_failed", message
+        if "spotiflac" in lower:
+            return "spotiflac_failed", message
+        if "yt-dlp" in lower or "ytdlp" in lower:
+            return "ytdlp_failed", message
+        return "download_failed", message or "Download failed"
 
     def _get_or_create_playlist_by_name(self, name: str | None):
         playlist_name = (name or "").strip()
@@ -306,6 +346,11 @@ class DownloadManager:
         job = self.db.query(database.DownloadJob).filter(database.DownloadJob.id == job_id).first()
         if not job: return
         self._set_last_reason("")
+        self._set_engine_used("")
+        self._fallback_reasons = []
+        job.original_input_url = job.original_input_url or job.input_url
+        job.error_log = None
+        job.error_type = None
 
         # --- VERIFICACIÓN DE CUOTA DE DISCO (GLOBAL POOL) ---
         used_gb, limit_gb, percent = manager.get_pool_status(self.db)
@@ -315,11 +360,14 @@ class DownloadManager:
             job.status = "failed"
             job.current_file = "Download failed"
             job.error_log = f"Global storage limit reached ({limit_gb}GB). Please free some space."
+            job.error_type = "storage_limit"
             self.db.commit()
             return
 
         job.status = "processing"
         job.progress_percent = 0
+        job.engine_used = None
+        job.fallback_reason = None
         self.db.commit()
 
         pool_root = "/saas-data/pool"
@@ -345,6 +393,13 @@ class DownloadManager:
                 job.status = "finished"
                 job.progress_percent = 100
                 job.current_file = f"Already in library: {existing_track.title}"
+                job.engine_used = "dedupe"
+                job.resolved_title = existing_track.title
+                job.resolved_artist = existing_track.artist
+                job.resolved_album = existing_track.album
+                job.resolved_track_id = existing_track.id
+                job.resolved_track_count = 1
+                job.fallback_reason = "Skipped download because source_id already exists in library."
                 self.db.commit()
                 return
             else:
@@ -370,6 +425,7 @@ class DownloadManager:
                 self._log(job_id, "Processing metadata and deduplicating...", 90)
                 
                 processed_count = 0
+                last_display_title = None
                 for filepath in self._iter_downloaded_audio_files(temp_dir):
                     file_name = os.path.basename(filepath)
                     
@@ -435,7 +491,9 @@ class DownloadManager:
 
                         display_title = " - ".join(part for part in [artist, title] if part).strip() or title or file_name
                         if display_title:
-                            job.requested_title = display_title[:200]
+                            job.resolved_title = title[:200] if title else None
+                            job.resolved_artist = artist[:200] if artist else None
+                            job.resolved_album = album[:200] if album else None
                             self.db.commit()
 
                     except Exception as e:
@@ -497,6 +555,13 @@ class DownloadManager:
                         self._link_track_to_playlist(target_playlist, track)
                     
                     processed_count += 1
+                    last_display_title = " - ".join(part for part in [track.artist, track.title] if part).strip() or display_title
+                    job.resolved_track_id = track.id
+                    job.resolved_track_count = processed_count
+                    job.resolved_title = track.title
+                    job.resolved_artist = track.artist
+                    job.resolved_album = track.album
+                    self.db.commit()
 
                 if processed_count == 0:
                     # DEBUG: List directory contents to see what happened
@@ -514,15 +579,22 @@ class DownloadManager:
                 
                 job.status = "completed"
                 job.progress_percent = 100
-                job.current_file = "Imported to library"
+                job.current_file = f"Imported to library: {last_display_title}" if last_display_title else "Imported to library"
+                job.engine_used = self._engine_used or ("spotdl" if "spotify.com" in job.input_url else "yt-dlp")
+                job.fallback_reason = self._fallback_reason_text()
+                job.error_type = None
                 self.db.commit()
 
             except Exception as e:
                 logger.error(f"Critical error in job {job_id}: {e}")
                 job = self.db.merge(job)
+                error_type, normalized_error = self._normalize_download_error(e)
                 job.status = "failed"
                 job.current_file = "Download failed"
-                job.error_log = str(e)
+                job.error_log = normalized_error
+                job.error_type = error_type
+                job.engine_used = self._engine_used
+                job.fallback_reason = self._fallback_reason_text() or self._last_download_reason or None
                 self.db.commit()
             finally:
                 self._runtime_cookie_path = None
@@ -537,7 +609,9 @@ class DownloadManager:
         if shutil.which("spotiflac"):
             self._log(job_id, "SpotiFLAC module mode...", 8)
             if self._run_spotiflac_cmd(url, folder):
+                self._set_engine_used("spotiflac")
                 return True
+            self._append_fallback_reason(self._last_download_reason or "SpotiFLAC failed.")
             self._log(job_id, "SpotiFLAC failed. Falling back to spotDL...", 10)
         else:
             logger.info("SpotiFLAC command not found. Falling back to spotDL.")
@@ -546,7 +620,9 @@ class DownloadManager:
         if self.settings.spotify_client_id:
             self._log(job_id, "SpotDL metadata mode...", 10)
             if self._run_spotdl_cmd(url, folder, mode="full", use_auth=True):
+                self._set_engine_used("spotdl-auth")
                 return True
+            self._append_fallback_reason(self._last_download_reason or "spotDL auth mode failed.")
             if self._spotdl_should_bypass_retries():
                 self._log(job_id, "spotDL metadata parsing failed. Switching to yt-dlp fallback...", 20)
                 return self._handle_spotify_query_fallback(url, folder, job_id)
@@ -555,7 +631,9 @@ class DownloadManager:
         # 2. Intento Anónimo (320k) - AQUÍ ESTÁ EL FIX
         self._log(job_id, "spotDL anonymous mode...", 30)
         if self._run_spotdl_cmd(url, folder, mode="full", use_auth=False):
+            self._set_engine_used("spotdl-anonymous")
             return True
+        self._append_fallback_reason(self._last_download_reason or "spotDL anonymous mode failed.")
         if self._spotdl_should_bypass_retries():
             self._log(job_id, "spotDL metadata parsing failed. Switching to yt-dlp fallback...", 40)
             return self._handle_spotify_query_fallback(url, folder, job_id)
@@ -563,12 +641,15 @@ class DownloadManager:
         # 3. Intento Básico (128k)
         self._log(job_id, "spotDL basic mode retry (128k)...", 50)
         if self._run_spotdl_cmd(url, folder, mode="basic", use_auth=False):
+            self._set_engine_used("spotdl-basic")
             return True
+        self._append_fallback_reason(self._last_download_reason or "spotDL basic mode failed.")
 
         # 4. Fallback: resolver metadata desde Spotify y descargar vía ytsearch + yt-dlp
         self._log(job_id, "spotDL failed. Activating yt-dlp metadata fallback...", 60)
         if self._handle_spotify_query_fallback(url, folder, job_id):
             return True
+        self._append_fallback_reason(self._last_download_reason or "yt-dlp Spotify fallback failed.")
 
         if not self._last_download_reason:
             self._set_last_reason("SpotiFLAC, spotDL, and yt-dlp Spotify fallbacks all failed.")
@@ -698,7 +779,9 @@ class DownloadManager:
             logger.info(f"[Job {job_id}] Spotify fallback query {index}/{len(queries)}: {query}")
             self._log(job_id, f"Spotify fallback search {index}/{len(queries)}...", 65)
             if self._handle_ytdlp_robust(query, folder, job_id):
+                self._set_engine_used("yt-dlp-spotify-fallback")
                 return True
+            self._append_fallback_reason(self._last_download_reason or f"Spotify fallback query {index} failed.")
 
         return False
 
@@ -869,6 +952,8 @@ class DownloadManager:
                             logger.warning(f"[Job {job_id}] Strategy {i+1} finished but produced no audio files.")
                             continue
                         self._set_last_reason("")
+                        if not self._engine_used:
+                            self._set_engine_used("yt-dlp")
                         return True
                 except Exception as e:
                     err_str = str(e).lower()
