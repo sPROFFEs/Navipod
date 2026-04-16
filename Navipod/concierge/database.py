@@ -249,6 +249,7 @@ class DownloadJob(Base):
     requested_title = Column(String, nullable=True)
     requested_source = Column(String, nullable=True)
     target_playlist_id = Column(Integer, ForeignKey("user_playlists.id"), nullable=True)
+    target_modern_playlist_id = Column(Integer, ForeignKey("playlists.id"), nullable=True)
     new_playlist_name = Column(String, nullable=True)
     status = Column(String, default="pending")
     progress_percent = Column(Integer, default=0)
@@ -257,6 +258,7 @@ class DownloadJob(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     owner = relationship("User", back_populates="downloads")
+    target_modern_playlist = relationship("Playlist")
 
 
 class UserFavorite(Base):

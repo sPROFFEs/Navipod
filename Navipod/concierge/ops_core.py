@@ -440,6 +440,7 @@ def _migration_000_base_schema(conn):
             user_id INTEGER NOT NULL,
             input_url TEXT,
             target_playlist_id INTEGER,
+            target_modern_playlist_id INTEGER,
             new_playlist_name TEXT,
             status TEXT DEFAULT 'pending',
             progress_percent INTEGER DEFAULT 0,
@@ -447,7 +448,8 @@ def _migration_000_base_schema(conn):
             error_log TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id),
-            FOREIGN KEY (target_playlist_id) REFERENCES user_playlists(id)
+            FOREIGN KEY (target_playlist_id) REFERENCES user_playlists(id),
+            FOREIGN KEY (target_modern_playlist_id) REFERENCES playlists(id)
         )
     """))
 
@@ -676,6 +678,83 @@ def _migration_012_download_job_metadata(conn):
         conn.execute(text("ALTER TABLE download_jobs ADD COLUMN requested_source TEXT"))
 
 
+def _migration_013_modern_download_playlist_targets(conn):
+    columns = {row[1] for row in conn.execute(text("PRAGMA table_info(download_jobs)")).fetchall()}
+    if "target_modern_playlist_id" not in columns:
+        conn.execute(text("ALTER TABLE download_jobs ADD COLUMN target_modern_playlist_id INTEGER"))
+
+    legacy_playlists = conn.execute(text("""
+        SELECT id, user_id, name
+        FROM user_playlists
+        WHERE name IS NOT NULL AND TRIM(name) != ''
+    """)).fetchall()
+
+    legacy_to_modern = {}
+    for legacy_id, user_id, name in legacy_playlists:
+        existing = conn.execute(text("""
+            SELECT id FROM playlists
+            WHERE owner_id = :owner_id AND name = :name
+            ORDER BY id ASC
+            LIMIT 1
+        """), {"owner_id": user_id, "name": name}).fetchone()
+
+        if existing:
+            modern_id = existing[0]
+        else:
+            result = conn.execute(text("""
+                INSERT INTO playlists(name, owner_id, is_public, source_playlist_id)
+                VALUES (:name, :owner_id, 0, :source_playlist_id)
+            """), {"name": name, "owner_id": user_id, "source_playlist_id": legacy_id})
+            modern_id = result.lastrowid
+
+        legacy_to_modern[legacy_id] = modern_id
+
+    for legacy_id, modern_id in legacy_to_modern.items():
+        conn.execute(text("""
+            UPDATE download_jobs
+            SET target_modern_playlist_id = :modern_id
+            WHERE target_modern_playlist_id IS NULL
+              AND target_playlist_id = :legacy_id
+        """), {"modern_id": modern_id, "legacy_id": legacy_id})
+
+        legacy_tracks = conn.execute(text("""
+            SELECT pt.file_path
+            FROM playlist_tracks pt
+            WHERE pt.playlist_id = :legacy_id
+              AND pt.file_path IS NOT NULL
+        """), {"legacy_id": legacy_id}).fetchall()
+
+        for (file_path,) in legacy_tracks:
+            track = conn.execute(text("""
+                SELECT id FROM tracks
+                WHERE filepath = :file_path
+                LIMIT 1
+            """), {"file_path": file_path}).fetchone()
+            if not track:
+                continue
+            track_id = track[0]
+            existing_item = conn.execute(text("""
+                SELECT id FROM playlist_items
+                WHERE playlist_id = :playlist_id AND track_id = :track_id
+                LIMIT 1
+            """), {"playlist_id": modern_id, "track_id": track_id}).fetchone()
+            if existing_item:
+                continue
+            next_position = conn.execute(text("""
+                SELECT COALESCE(MAX(position), 0) + 1
+                FROM playlist_items
+                WHERE playlist_id = :playlist_id
+            """), {"playlist_id": modern_id}).scalar()
+            conn.execute(text("""
+                INSERT INTO playlist_items(playlist_id, track_id, position)
+                VALUES (:playlist_id, :track_id, :position)
+            """), {
+                "playlist_id": modern_id,
+                "track_id": track_id,
+                "position": next_position,
+            })
+
+
 MIGRATIONS = [
     ("000_base_schema", _migration_000_base_schema),
     ("001_tracks_library_columns", _migration_001_tracks_library_columns),
@@ -690,6 +769,7 @@ MIGRATIONS = [
     ("010_playlist_cover_fields", _migration_010_playlist_cover_fields),
     ("011_track_identity_fields", _migration_011_track_identity_fields),
     ("012_download_job_metadata", _migration_012_download_job_metadata),
+    ("013_modern_download_playlist_targets", _migration_013_modern_download_playlist_targets),
 ]
 
 

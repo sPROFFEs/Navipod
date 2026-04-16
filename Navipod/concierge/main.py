@@ -68,6 +68,28 @@ app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 app.mount("/static", StaticFiles(directory="assets"), name="static") # Alias for legacy paths
 # templates = Jinja2Templates(directory="templates")  <-- Eliminado, usamos el compartido
 
+RESERVED_GATEWAY_PREFIXES = {
+    "admin",
+    "api",
+    "assets",
+    "downloads",
+    "favicon.ico",
+    "health",
+    "help",
+    "index.html",
+    "library",
+    "login",
+    "logout",
+    "portal",
+    "robots.txt",
+    "search",
+    "settings",
+    "sitemap.xml",
+    "static",
+    "updater",
+    "user",
+}
+
 # --- I18N SETUP ---
 current_lang = ContextVar("current_lang", default="es")
 
@@ -589,8 +611,9 @@ async def api_save_settings(req: UserSettingsRequest, request: Request, db: Sess
 # --- PROXY GATEWAY (SIEMPRE EL ÚLTIMO) ---
 @app.api_route("/{username}/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"])
 async def gateway(username: str, path: str, request: Request, db: Session = Depends(get_db)):
-    # Ignorar archivos comunes de sistema que no son usuarios
-    if username in ["favicon.ico", "robots.txt", "sitemap.xml", "assets"]:
+    # Keep internal/static/admin routes out of the per-user Navidrome gateway,
+    # even when traffic bypasses nginx and reaches concierge directly.
+    if (username or "").lower() in RESERVED_GATEWAY_PREFIXES:
         return JSONResponse({"error": "Not found"}, status_code=404)
     
     # 1. DEBUG LOGS FOR SUBSONIC (Only Errors/Warns)

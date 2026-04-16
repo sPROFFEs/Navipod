@@ -200,16 +200,17 @@ async def downloads_status(request: Request, db: Session = Depends(get_db)):
     ).order_by(database.DownloadJob.created_at.desc()).limit(10).all()
 
     target_playlist_ids = {
-        job.target_playlist_id
+        job.target_modern_playlist_id
         for job in jobs
-        if job.target_playlist_id
+        if job.target_modern_playlist_id
     }
-    legacy_playlist_names = {}
+    playlist_names = {}
     if target_playlist_ids:
-        legacy_playlist_names = {
+        playlist_names = {
             row.id: row.name
-            for row in db.query(database.UserPlaylist.id, database.UserPlaylist.name).filter(
-                database.UserPlaylist.id.in_(target_playlist_ids)
+            for row in db.query(database.Playlist.id, database.Playlist.name).filter(
+                database.Playlist.id.in_(target_playlist_ids),
+                database.Playlist.owner_id == user.id,
             ).all()
         }
 
@@ -218,9 +219,11 @@ async def downloads_status(request: Request, db: Session = Depends(get_db)):
         target = "General"
         if job.new_playlist_name:
             target = f"✨ {job.new_playlist_name}"
+        elif job.target_modern_playlist_id:
+            playlist_name = playlist_names.get(job.target_modern_playlist_id)
+            target = f"📂 {playlist_name}" if playlist_name else f"Playlist #{job.target_modern_playlist_id}"
         elif job.target_playlist_id:
-            playlist_name = legacy_playlist_names.get(job.target_playlist_id)
-            target = f"📂 {playlist_name}" if playlist_name else f"Playlist #{job.target_playlist_id}"
+            target = f"Legacy playlist #{job.target_playlist_id}"
 
         current_file = os.path.basename(job.current_file) if job.current_file and "/" in job.current_file else job.current_file
 
@@ -276,7 +279,12 @@ async def start_download(
     
     # Assign destination logic
     if target_mode == "existing" and target_playlist_id:
-        job.target_playlist_id = target_playlist_id
+        playlist = db.query(database.Playlist).filter(
+            database.Playlist.id == target_playlist_id,
+            database.Playlist.owner_id == user.id,
+        ).first()
+        if playlist:
+            job.target_modern_playlist_id = playlist.id
     elif target_mode == "new" and new_playlist_name:
         job.new_playlist_name = new_playlist_name
     
@@ -309,6 +317,7 @@ async def list_download_jobs(request: Request, db: Session = Depends(get_db)):
         "filename": j.current_file,
         "track_title": j.requested_title,
         "source": j.requested_source,
+        "target_playlist_id": j.target_modern_playlist_id,
         "detail": j.current_file,
         "error": j.error_log,
         "created_at": str(j.created_at)

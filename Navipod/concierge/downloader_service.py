@@ -25,8 +25,6 @@ try:
 except ImportError:
     pass
 
-from database import Track, Playlist, PlaylistItem, UserPlaylist
-
 from navipod_config import settings
 
 # Límite global de descargas simultáneas (ej. 3)
@@ -77,6 +75,119 @@ class DownloadManager:
 
     def _set_last_reason(self, reason: str):
         self._last_download_reason = (reason or "").strip()
+
+    def _get_or_create_playlist_by_name(self, name: str | None):
+        playlist_name = (name or "").strip()
+        if not playlist_name:
+            return None
+
+        playlist = self.db.query(database.Playlist).filter(
+            database.Playlist.name == playlist_name,
+            database.Playlist.owner_id == self.user_id,
+        ).first()
+        if playlist:
+            return playlist
+
+        playlist = database.Playlist(name=playlist_name, owner_id=self.user_id)
+        self.db.add(playlist)
+        self.db.commit()
+        self.db.refresh(playlist)
+        return playlist
+
+    def _resolve_target_playlist(self, job):
+        if getattr(job, "target_modern_playlist_id", None):
+            playlist = self.db.query(database.Playlist).filter(
+                database.Playlist.id == job.target_modern_playlist_id,
+                database.Playlist.owner_id == self.user_id,
+            ).first()
+            if playlist:
+                return playlist
+            logger.warning(
+                "Job %s requested inaccessible modern playlist %s",
+                job.id,
+                job.target_modern_playlist_id,
+            )
+
+        if job.target_playlist_id:
+            legacy_pl = self.db.query(database.UserPlaylist).filter(
+                database.UserPlaylist.id == job.target_playlist_id,
+                database.UserPlaylist.user_id == self.user_id,
+            ).first()
+            if legacy_pl:
+                playlist = self._get_or_create_playlist_by_name(legacy_pl.name)
+                if playlist and not getattr(job, "target_modern_playlist_id", None):
+                    job.target_modern_playlist_id = playlist.id
+                    self.db.commit()
+                return playlist
+
+        if job.new_playlist_name:
+            return self._get_or_create_playlist_by_name(job.new_playlist_name)
+
+        return None
+
+    def _link_track_to_playlist(self, playlist, track):
+        if not playlist or not track:
+            return False
+
+        item_exists = self.db.query(database.PlaylistItem).filter_by(
+            playlist_id=playlist.id,
+            track_id=track.id,
+        ).first()
+        if item_exists:
+            return False
+
+        pos = self.db.query(database.PlaylistItem).filter_by(playlist_id=playlist.id).count() + 1
+        self.db.add(database.PlaylistItem(
+            playlist_id=playlist.id,
+            track_id=track.id,
+            position=pos,
+        ))
+        self.db.commit()
+        return True
+
+    def _move_into_pool_and_create_track(
+        self,
+        source_path: str,
+        final_path: str,
+        *,
+        title: str,
+        artist: str,
+        album: str,
+        source_id: str,
+        file_hash: str,
+        identity: dict | None,
+        source_provider: str,
+    ):
+        moved = False
+        try:
+            shutil.move(source_path, final_path)
+            moved = True
+            track = database.Track(
+                title=title,
+                artist=artist,
+                album=album,
+                source_id=source_id,
+                file_hash=file_hash,
+                artist_norm=identity["artist_norm"] if identity else None,
+                title_norm=identity["title_norm"] if identity else None,
+                version_tag=identity["version_tag"] if identity else None,
+                fingerprint=identity["fingerprint"] if identity else None,
+                filepath=final_path,
+                source_provider=source_provider,
+            )
+            self.db.add(track)
+            self.db.commit()
+            self.db.refresh(track)
+            return track
+        except Exception:
+            self.db.rollback()
+            if moved and os.path.exists(final_path) and not os.path.exists(source_path):
+                try:
+                    os.makedirs(os.path.dirname(source_path), exist_ok=True)
+                    shutil.move(final_path, source_path)
+                except Exception as rollback_error:
+                    logger.error("Failed to rollback moved download artifact: %s", rollback_error)
+            raise
 
     def _spotdl_should_bypass_retries(self) -> bool:
         reason = (self._last_download_reason or "").lower()
@@ -211,30 +322,9 @@ class DownloadManager:
 
         pool_root = "/saas-data/pool"
 
-        # 1. Determinar Playlist Destino (Opcional en Versión Moderna)
-        target_playlist = None
-        target_playlist_name = None
-
-        if job.target_playlist_id:
-             # Legacy lookup mapping
-             legacy_pl = self.db.query(database.UserPlaylist).filter(database.UserPlaylist.id == job.target_playlist_id).first()
-             if legacy_pl: 
-                 target_playlist_name = legacy_pl.name
-        elif job.new_playlist_name:
-             target_playlist_name = job.new_playlist_name
-
-        # Solo creamos la playlist si el usuario lo pidió explícitamente
-        if target_playlist_name:
-            target_playlist = self.db.query(database.Playlist).filter(
-                database.Playlist.name == target_playlist_name, 
-                database.Playlist.owner_id == self.user_id
-            ).first()
-
-            if not target_playlist:
-                target_playlist = database.Playlist(name=target_playlist_name, owner_id=self.user_id)
-                self.db.add(target_playlist)
-                self.db.commit()
-                self.db.refresh(target_playlist)
+        # New jobs target Playlist/PlaylistItem. Legacy UserPlaylist ids are
+        # mapped once for old jobs and never used for new writes.
+        target_playlist = self._resolve_target_playlist(job)
 
         # PRE-DOWNLOAD DEDUPLICATION CHECK
         # Extract source_id from URL and check if track already exists
@@ -247,15 +337,8 @@ class DownloadManager:
                 
                 # Link existing track to the target playlist ONLY if one was requested
                 if target_playlist:
-                    existing_link = self.db.query(database.PlaylistItem).filter(
-                        database.PlaylistItem.playlist_id == target_playlist.id,
-                        database.PlaylistItem.track_id == existing_track.id
-                    ).first()
-                    if not existing_link:
-                        new_item = database.PlaylistItem(playlist_id=target_playlist.id, track_id=existing_track.id)
-                        self.db.add(new_item)
-                        self.db.commit()
-                        logger.info(f"Linked existing track to playlist '{target_playlist_name}'")
+                    if self._link_track_to_playlist(target_playlist, existing_track):
+                        logger.info(f"Linked existing track to playlist '{target_playlist.name}'")
                 
                 job.status = "finished"
                 job.progress_percent = 100
@@ -393,36 +476,23 @@ class DownloadManager:
                             new_filename = f"{safe_title}_{file_hash[:6]}{os.path.splitext(file_name)[1]}"
                             final_path = os.path.join(pool_dir, new_filename)
                             
-                        shutil.move(filepath, final_path)
-                        
-                        # D. Create Track Record
-                        track = database.Track(
-                            title=title, artist=artist, album=album,
-                            source_id=source_id, file_hash=file_hash,
-                            artist_norm=identity["artist_norm"] if identity else None,
-                            title_norm=identity["title_norm"] if identity else None,
-                            version_tag=identity["version_tag"] if identity else None,
-                            fingerprint=identity["fingerprint"] if identity else None,
-                            filepath=final_path, source_provider="download"
+                        # D. Create Track Record. Move + DB insert are handled
+                        # together so failed commits do not leave orphan files.
+                        track = self._move_into_pool_and_create_track(
+                            filepath,
+                            final_path,
+                            title=title,
+                            artist=artist,
+                            album=album,
+                            source_id=source_id,
+                            file_hash=file_hash,
+                            identity=identity,
+                            source_provider=(job.requested_source or "download"),
                         )
-                        self.db.add(track)
-                        self.db.commit()
-                        self.db.refresh(track)
 
                     # E. Link to Playlist (Only if requested)
                     if target_playlist:
-                        # Check if already in playlist
-                        item_exists = self.db.query(database.PlaylistItem).filter_by(
-                            playlist_id=target_playlist.id, track_id=track.id
-                        ).first()
-                        
-                        if not item_exists:
-                            pos = self.db.query(database.PlaylistItem).filter_by(playlist_id=target_playlist.id).count() + 1
-                            item = database.PlaylistItem(
-                                playlist_id=target_playlist.id, track_id=track.id, position=pos
-                            )
-                            self.db.add(item)
-                            self.db.commit()
+                        self._link_track_to_playlist(target_playlist, track)
                     
                     processed_count += 1
 
@@ -866,39 +936,3 @@ class DownloadManager:
             self._set_last_reason("yt-dlp exhausted all download strategies.")
         logger.error(f"[Job {job_id}] All download strategies failed.")
         return False
-        
-
-
-
-
-    def _sync_folder_to_db(self, playlist_db):
-        """Tu función original de sync"""
-        if not os.path.exists(playlist_db.folder_path): return
-        files = [f for f in os.listdir(playlist_db.folder_path) if f.endswith(('.mp3', '.m4a', '.flac'))]
-        
-        self.db.query(database.PlaylistTrack).filter(database.PlaylistTrack.playlist_id == playlist_db.id).delete()
-        
-        for f in files:
-            path = os.path.join(playlist_db.folder_path, f)
-            # Solo añadimos si tiene un tamaño decente (evitar archivos corruptos vacíos)
-            if os.path.getsize(path) > 10000: 
-                track = database.PlaylistTrack(playlist_id=playlist_db.id, title=f, file_path=path, source_id="local")
-                self.db.add(track)
-        self.db.commit()
-
-    def _generate_m3u(self, folder, name):
-        """
-        Genera un M3U forzando UTF-8 sin BOM para que Navidrome no se pierda.
-        """
-        files = [f for f in os.listdir(folder) if f.endswith(('.mp3', '.m4a', '.flac'))]
-        files.sort()
-        try:
-            m3u_path = os.path.join(folder, f"{name}.m3u")
-            # Forzamos encoding utf-8 explícito
-            with open(m3u_path, 'w', encoding='utf-8') as f:
-                f.write("#EXTM3U\n")
-                for file in files:
-                    f.write(f"{file}\n")
-            logger.info(f"M3U generado exitosamente: {m3u_path}")
-        except Exception as e:
-            logger.error(f"Error generando M3U: {e}")

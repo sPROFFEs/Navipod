@@ -10,6 +10,7 @@ import subprocess
 import os
 import operations_service
 import track_identity
+import path_security
 
 router = APIRouter(prefix="/admin")
 from shared_templates import templates
@@ -111,18 +112,20 @@ async def delete_user(
         return {"error": "Action not allowed: you cannot delete yourself"}
 
     username = user_del.username
-    user_data_path = f"/saas-data/users/{username}"
+    users_root = "/saas-data/users"
     bytes_to_free = 0
 
     try:
+        user_data_path = path_security.safe_child_path(users_root, username)
+
         # 1. DOCKER PURGE
         subprocess.run(["docker", "rm", "-f", f"navidrome-{username}"], check=False, capture_output=True)
 
         # 2. CALCULATE SPACE (Before deleting)
-        if os.path.exists(user_data_path):
+        if user_data_path.exists():
             bytes_to_free = get_dir_size(user_data_path)
-            # 3. DISK PURGE (Using rm -rf for robustness against permissions)
-            subprocess.run(["rm", "-rf", user_data_path], check=False)
+            # 3. DISK PURGE with an explicit path guard under /saas-data/users.
+            shutil.rmtree(user_data_path)
 
         # 4. DB PURGE
         db.delete(user_del)
@@ -168,7 +171,8 @@ async def flush_ram(db: Session = Depends(get_db), admin: database.User = Depend
         subprocess.run(["sync"], check=True)
         # Nota: En Docker, esto solo funciona si el contenedor tiene privilegios o mapeo de /proc
         # Si falla, es normal por restricciones de seguridad de Docker.
-        os.system("echo 3 > /proc/sys/vm/drop_caches")
+        with open("/proc/sys/vm/drop_caches", "w", encoding="utf-8") as drop_caches:
+            drop_caches.write("3\n")
         return RedirectResponse("/admin/system?msg=RAM Cache cleared successfully", status_code=303)
     except Exception as e:
         return RedirectResponse(f"/admin/system?error=Could not clear RAM: {str(e)}", status_code=303)

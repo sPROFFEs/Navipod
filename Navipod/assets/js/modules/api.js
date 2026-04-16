@@ -4,7 +4,7 @@
  */
 
 import * as state from './state.js';
-import * as ui from './ui.js';
+import * as sync from './sync.js';
 
 // === USER DATA LOADING ===
 
@@ -24,69 +24,18 @@ export async function loadUserData() {
         if (window.renderSidebarPlaylists) window.renderSidebarPlaylists();
         if (window.loadSidebarRadios) window.loadSidebarRadios();
 
-        startHeartbeatSync();
-        requestSyncRefresh();
+        sync.startHeartbeatSync();
+        sync.requestSyncRefresh();
     } catch (e) {
         console.error("Failed to load user data:", e);
     }
 }
 
-
-// === HEARTBEAT SYNC SYSTEM ===
-
-export function startHeartbeatSync() {
-    if (state.heartbeatInterval) clearInterval(state.heartbeatInterval);
-    if (document.visibilityState === 'hidden') {
-        state.setHeartbeatInterval(null);
-        return;
-    }
-    state.setHeartbeatInterval(setInterval(checkSyncState, 15000));
-    checkSyncState();
-}
-
-export async function requestSyncRefresh() {
-    try {
-        await fetch(`${state.API}/sync-refresh`, { method: 'POST' });
-    } catch (e) {
-        console.error('[SYNC] Refresh request error:', e);
-    }
-}
-
-export async function checkSyncState() {
-    try {
-        const res = await fetch(`${state.API}/sync-state`);
-        if (!res.ok) return;
-
-        const syncState = await res.json();
-
-        if (state.lastSyncVersion !== null && syncState.version !== state.lastSyncVersion) {
-            console.log('[SYNC] State changed, updating...');
-
-            state.setUserFavorites(new Set(syncState.fav_ids));
-
-            const plsRes = await fetch(`${state.API}/playlists`);
-            if (plsRes.ok) {
-                state.setUserPlaylists(await plsRes.json());
-                if (window.renderSidebarPlaylists) window.renderSidebarPlaylists();
-            }
-
-            if (window.updateFullscreenPlayButton) window.updateFullscreenPlayButton();
-
-            document.querySelectorAll('.like-btn').forEach(btn => {
-                const trackId = parseInt(btn.dataset.trackId);
-                if (!isNaN(trackId)) {
-                    const isLiked = state.userFavorites.has(trackId);
-                    btn.innerHTML = `<i data-lucide="heart" ${isLiked ? 'fill="var(--accent)"' : ''}></i>`;
-                }
-            });
-            lucide.createIcons();
-        }
-
-        state.setLastSyncVersion(syncState.version);
-    } catch (e) {
-        // Silent fail - heartbeat is non-critical
-    }
-}
+export const startHeartbeatSync = sync.startHeartbeatSync;
+export const stopHeartbeatSync = sync.stopHeartbeatSync;
+export const initHeartbeatLifecycle = sync.initHeartbeatLifecycle;
+export const requestSyncRefresh = sync.requestSyncRefresh;
+export const checkSyncState = sync.checkSyncState;
 
 
 // === SEARCH API ===

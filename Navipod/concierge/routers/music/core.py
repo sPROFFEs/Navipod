@@ -80,21 +80,19 @@ async def downloads_page(request: Request, db: Session = Depends(get_db)):
     music_root = f"/saas-data/users/{user.username}/music"
     if os.path.exists(music_root):
         physical_folders = [f for f in os.listdir(music_root) if os.path.isdir(os.path.join(music_root, f))]
-        db_playlists = db.query(database.UserPlaylist).filter(database.UserPlaylist.user_id == user.id).all()
+        db_playlists = db.query(database.Playlist).filter(database.Playlist.owner_id == user.id).all()
         db_names = [p.name for p in db_playlists]
         
         changes = False
         for folder in physical_folders:
             if folder not in db_names:
-                new_pl = database.UserPlaylist(
-                    user_id=user.id, name=folder, folder_path=os.path.join(music_root, folder), source_url=""
-                )
+                new_pl = database.Playlist(owner_id=user.id, name=folder)
                 db.add(new_pl)
                 changes = True
         if changes:
             db.commit()
 
-    playlists = db.query(database.UserPlaylist).filter(database.UserPlaylist.user_id == user.id).all()
+    playlists = db.query(database.Playlist).filter(database.Playlist.owner_id == user.id).all()
     
     # Global Quota
     u_gb, l_gb, pct = manager.get_pool_status(db)
@@ -132,7 +130,7 @@ async def search_page(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/login")
     
     # Need playlists for the modal dropdown
-    playlists = db.query(database.UserPlaylist).filter(database.UserPlaylist.user_id == user.id).all()
+    playlists = db.query(database.Playlist).filter(database.Playlist.owner_id == user.id).all()
     
     # Pool Status
     u_gb, l_gb, pct = manager.get_pool_status(db)

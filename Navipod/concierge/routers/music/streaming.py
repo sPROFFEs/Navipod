@@ -5,6 +5,8 @@ import os
 import io
 import mimetypes
 import random
+import logging
+from pathlib import Path
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse, JSONResponse, FileResponse, StreamingResponse, Response
 from sqlalchemy.orm import Session
@@ -16,11 +18,43 @@ import httpx
 import database
 import cover_cache
 import metadata_cache
+import path_security
 
 from .core import get_db, get_current_user_safe
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+MEDIA_ROOTS = ("/saas-data/pool", "/saas-data/users")
+CACHE_ROOT = "/saas-data/cache"
+
+
+def _resolve_allowed_media_path(raw_path: str | None) -> Path | None:
+    if not raw_path:
+        return None
+    for root in MEDIA_ROOTS:
+        try:
+            path = path_security.resolve_under(raw_path, root)
+            if path.exists() and path.is_file():
+                return path
+        except path_security.UnsafePathError:
+            continue
+    logger.warning("Blocked media path outside allowed roots: %s", raw_path)
+    return None
+
+
+def _resolve_allowed_cache_path(raw_path: str | Path | None) -> Path | None:
+    if not raw_path:
+        return None
+    try:
+        path = path_security.resolve_under(raw_path, CACHE_ROOT)
+    except path_security.UnsafePathError:
+        logger.warning("Blocked cache path outside allowed root: %s", raw_path)
+        return None
+    if path.exists() and path.is_file():
+        return path
+    return None
 
 
 def _cover_metadata_key(artist: str, title: str) -> str:
@@ -48,16 +82,18 @@ async def get_cover(track_id: int, db: Session = Depends(get_db)):
     """Extract cover art from ID3 tags with disk caching"""
     # 1. Check Cache First (using cover_cache module)
     cached = cover_cache.get_cached_cover(track_id)
+    cached = _resolve_allowed_cache_path(cached)
     if cached:
         return FileResponse(str(cached))
 
     # 2. Extract if not cached
     track = db.query(database.Track).filter(database.Track.id == track_id).first()
-    if not track or not os.path.exists(track.filepath):
+    media_path = _resolve_allowed_media_path(track.filepath if track else None)
+    if not track or not media_path:
         return RedirectResponse("/static/img/default_cover.png")
         
     try:
-        audio = mutagen.File(track.filepath)
+        audio = mutagen.File(str(media_path))
         cover_data = None
         
         # ID3 v2.3+
@@ -83,7 +119,7 @@ async def get_cover(track_id: int, db: Session = Depends(get_db)):
             return FileResponse(str(cache_path))
 
     except Exception as e:
-        print(f"Error extracting cover for {track_id}: {e}")
+        logger.warning("Error extracting cover for %s: %s", track_id, e)
         
     # Redirect to default
     return RedirectResponse("/static/img/default_cover.png")
@@ -93,12 +129,12 @@ async def get_cover(track_id: int, db: Session = Depends(get_db)):
 async def stream_track(track_id: int, request: Request, db: Session = Depends(get_db)):
     """Stream local audio file with Range support (Essential for correct duration/seeking)"""
     track = db.query(database.Track).filter(database.Track.id == track_id).first()
-    if not track or not os.path.exists(track.filepath):
+    file_path = _resolve_allowed_media_path(track.filepath if track else None)
+    if not track or not file_path:
         return Response(status_code=404)
         
-    file_path = track.filepath
-    file_size = os.path.getsize(file_path)
-    content_type, _ = mimetypes.guess_type(file_path)
+    file_size = file_path.stat().st_size
+    content_type, _ = mimetypes.guess_type(str(file_path))
     content_type = content_type or "audio/mpeg"
     
     # Handle Range Header
@@ -106,7 +142,7 @@ async def stream_track(track_id: int, request: Request, db: Session = Depends(ge
     if not range_header:
         # No range: Serve full file
         def iterfile():
-            with open(file_path, "rb") as f:
+            with file_path.open("rb") as f:
                 yield from f
         return StreamingResponse(
             iterfile(), 
@@ -119,10 +155,13 @@ async def stream_track(track_id: int, request: Request, db: Session = Depends(ge
         start, end = range_header.replace("bytes=", "").split("-")
         start = int(start)
         end = int(end) if end else file_size - 1
+        if start < 0 or end < start or start >= file_size:
+            return Response(status_code=416, headers={"Content-Range": f"bytes */{file_size}"})
+        end = min(end, file_size - 1)
         chunk_size = (end - start) + 1
         
         def iterfile():
-            with open(file_path, "rb") as f:
+            with file_path.open("rb") as f:
                 f.seek(start)
                 yield f.read(chunk_size)
                 
@@ -137,10 +176,10 @@ async def stream_track(track_id: int, request: Request, db: Session = Depends(ge
             }
         )
     except Exception as e:
-        print(f"Range error: {e}")
+        logger.warning("Range error for track %s: %s", track_id, e)
         # Fallback to full file
         def iterfile():
-            with open(file_path, "rb") as f:
+            with file_path.open("rb") as f:
                 yield from f
         return StreamingResponse(iterfile(), media_type=content_type)
 

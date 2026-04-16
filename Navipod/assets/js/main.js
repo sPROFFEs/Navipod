@@ -101,7 +101,6 @@ window.copyPublicPlaylist = playlists.copyPublicPlaylist;
 window.addToPlaylistCurrent = playlists.addToPlaylistCurrent;
 window.showAddToPlaylistFromPlayer = playlists.showAddToPlaylistFromPlayer;
 window.playPlaylistInOrder = playlists.playPlaylistInOrder;
-window.playPlaylistInOrder = playlists.playPlaylistInOrder;
 window.playPlaylistShuffle = playlists.playPlaylistShuffle;
 window.showRemoveFromPlaylistModal = playlists.showRemoveFromPlaylistModal;
 window.openPlaylistCoverUpload = playlists.openPlaylistCoverUpload;

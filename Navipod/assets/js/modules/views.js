@@ -12,6 +12,7 @@ import * as radio from './radio.js';
 import * as favorites from './favorites.js';
 import * as playlists from './playlists.js';
 import * as downloads from './downloads.js';
+import * as sync from './sync.js';
 
 const SECRET_EYE_ICON = `
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -751,7 +752,11 @@ export async function loadUserData() {
 
         renderSidebarRecents();
 
-        startHeartbeatSync();
+        sync.setSyncHandlers({
+            renderSidebarPlaylists,
+            refreshRecentActivity,
+        });
+        sync.startHeartbeatSync();
     } catch (e) {
         console.error("Failed to load user data:", e);
     }
@@ -805,79 +810,14 @@ export async function saveMixAsPlaylistAction(mixKey) {
 }
 
 
-// === HEARTBEAT SYNC ===
-
-export function startHeartbeatSync() {
-    if (state.heartbeatInterval) {
-        clearInterval(state.heartbeatInterval);
-        state.setHeartbeatInterval(null);
-    }
-
-    if (document.visibilityState === 'hidden') return;
-
-    state.setHeartbeatInterval(setInterval(checkSyncState, 30000));
-    checkSyncState();
-}
-
-export function stopHeartbeatSync() {
-    if (!state.heartbeatInterval) return;
-    clearInterval(state.heartbeatInterval);
-    state.setHeartbeatInterval(null);
-}
-
 export function initHeartbeatLifecycle() {
-    if (window.__navipodHeartbeatLifecycleBound) return;
-    window.__navipodHeartbeatLifecycleBound = true;
-
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') {
-            stopHeartbeatSync();
-        } else {
-            startHeartbeatSync();
-        }
+    sync.setSyncHandlers({
+        renderSidebarPlaylists,
+        refreshRecentActivity,
     });
-
-    window.addEventListener('pageshow', () => {
-        startHeartbeatSync();
-    });
-
-    window.addEventListener('pagehide', () => {
-        stopHeartbeatSync();
-    });
+    sync.initHeartbeatLifecycle();
 }
 
-export async function checkSyncState() {
-    try {
-        const res = await fetch(`${state.API}/sync-state`);
-        if (!res.ok) return;
-
-        const syncState = await res.json();
-
-        if (state.lastSyncVersion !== null && syncState.version !== state.lastSyncVersion) {
-            console.log('[SYNC] State changed, updating...');
-
-            state.setUserFavorites(new Set(syncState.fav_ids));
-
-            const plsRes = await fetch(`${state.API}/playlists`);
-            if (plsRes.ok) {
-                state.setUserPlaylists(await plsRes.json());
-                await refreshRecentActivity();
-            }
-
-            ui.updateFullscreenPlayButton();
-
-            document.querySelectorAll('.like-btn').forEach(btn => {
-                const trackId = parseInt(btn.dataset.trackId);
-                if (!isNaN(trackId)) {
-                    const isLiked = state.userFavorites.has(trackId);
-                    btn.innerHTML = `<i data-lucide="heart" ${isLiked ? 'fill="var(--accent)"' : ''}></i>`;
-                }
-            });
-            lucide.createIcons();
-        }
-
-        state.setLastSyncVersion(syncState.version);
-    } catch (e) {
-        // Silent fail - heartbeat is non-critical
-    }
-}
+export const startHeartbeatSync = sync.startHeartbeatSync;
+export const stopHeartbeatSync = sync.stopHeartbeatSync;
+export const checkSyncState = sync.checkSyncState;
