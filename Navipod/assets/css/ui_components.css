@@ -187,8 +187,17 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    height: 42px;
     gap: 6px;
     opacity: 0.85;
+}
+
+.music-loader .music-bar {
+    width: 5px;
+    min-height: 8px;
+    background: linear-gradient(180deg, #d56b9a 0%, var(--accent) 100%);
+    border-radius: 3px;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 .empty-icon {

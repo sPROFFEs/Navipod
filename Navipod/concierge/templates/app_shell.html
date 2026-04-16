@@ -5,7 +5,13 @@
 {% block content %}
 <!-- This container will be populated by app.js loadView('home') -->
 <div class="empty-state">
-    <i data-lucide="loader-2" style="animation: spin 1s linear infinite;"></i>
+    <div class="music-loader" aria-label="Loading">
+        <div class="music-bar" style="animation-delay: 0.0s"></div>
+        <div class="music-bar" style="animation-delay: 0.1s"></div>
+        <div class="music-bar" style="animation-delay: 0.2s"></div>
+        <div class="music-bar" style="animation-delay: 0.3s"></div>
+        <div class="music-bar" style="animation-delay: 0.4s"></div>
+    </div>
 </div>
 {% endblock %}
 
