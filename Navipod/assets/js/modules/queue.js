@@ -45,6 +45,9 @@ export function toggleShuffle() {
     const btn = document.getElementById('btn-shuffle');
 
     if (state.shuffleMode) {
+        state.setContextQueue([]);
+        state.setOriginalContextQueue([]);
+        state.setContextIndex(-1);
         if (btn) btn.classList.add('active-control');
         ui.showToast("Shuffle On (Global Pool)");
 
