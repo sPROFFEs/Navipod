@@ -125,7 +125,7 @@ export function renderQueue() {
     let html = `<div style="padding:10px 16px; font-size:0.75rem; color:var(--accent); font-weight:700; text-transform:uppercase;">Queue</div>`;
     html += state.userQueue.map((t, i) => `
         <div class="queue-item">
-            <img src="${t.thumbnail || '/static/img/default_cover.png'}" class="queue-img" onerror="this.src='/static/img/default_cover.png'">
+            <img src="${t.thumbnail || '/static/img/default_cover.png'}" class="queue-img" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
             <div class="queue-info">
                 <div class="queue-title">${ui.escHtml(t.title || 'Unknown')}</div>
                 <div class="queue-artist">${ui.escHtml(t.artist || 'Unknown')}${i === 0 ? ' • Next' : ''}</div>

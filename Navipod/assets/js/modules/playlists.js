@@ -84,7 +84,7 @@ export async function renderPlaylist(container, playlistId) {
     container.innerHTML = `
         <div class="playlist-header-section">
             <div class="playlist-cover-large">
-                ${hasThumb ? `<img src="${thumb}" onerror="this.src='/static/img/default_cover.png'">` : `<i data-lucide="list-music"></i>`}
+                ${hasThumb ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">` : `<i data-lucide="list-music"></i>`}
                 ${coverControls}
             </div>
             <div class="playlist-info">
@@ -162,7 +162,7 @@ export function showPlaylistCoverTrackModal(playlistId) {
     const items = tracks.map(track => `
         <button class="modal-playlist-item" onclick="setPlaylistCoverFromTrack(${playlistId}, ${track.id})">
             <div class="modal-playlist-thumb">
-                <img src="${track.thumbnail || '/static/img/default_cover.png'}" onerror="this.src='/static/img/default_cover.png'" alt="">
+                <img src="${track.thumbnail || '/static/img/default_cover.png'}" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'" alt="">
             </div>
             <div class="modal-playlist-info">
                 <span class="modal-playlist-name">${ui.escHtml(track.title || 'Unknown')}</span>
@@ -287,7 +287,7 @@ export function showAddToPlaylistModal(trackId) {
             return `
                 <div class="modal-playlist-item" onclick="addToPlaylist(${p.id}, ${trackId})">
                     <div class="modal-playlist-thumb">
-                        <img src="${thumb}" onerror="this.src='/static/img/default_cover.png'" alt="">
+                        <img src="${thumb}" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'" alt="">
                     </div>
                     <div class="modal-playlist-info">
                         <span class="modal-playlist-name">${ui.escHtml(p.name)}</span>

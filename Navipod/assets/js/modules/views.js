@@ -353,7 +353,7 @@ export async function renderMix(container, mixKey) {
     container.innerHTML = `
         <div class="playlist-header-section">
             <div class="playlist-cover-large">
-                <img src="${mix.thumbnail || '/static/img/default_cover.png'}" class="mix-cover-img" onerror="this.src='/static/img/default_cover.png'">
+                <img src="${mix.thumbnail || '/static/img/default_cover.png'}" class="mix-cover-img" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
             </div>
             <div class="playlist-info">
                 <p class="playlist-type">Personal Mix</p>
@@ -435,7 +435,7 @@ export function createCard(item) {
 
     return `<div class="card" onclick="handleCardClick('${data}', this)">
         <div class="card-img-container">
-            <img src="${img}" loading="lazy" onerror="this.src='/static/img/default_cover.png'">
+            <img src="${img}" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
             <div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.7);border-radius:50%;padding:4px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;">
                 <i data-lucide="${sourceIcon}" style="color:${sourceColor};width:14px;height:14px;"></i>
             </div>
@@ -462,7 +462,7 @@ export function createPlaylistCard(pl) {
 
     return `<div class="card glass-hover" onclick="loadView('playlist', ${pl.id})">
         <div class="card-img-container playlist-card-bg">
-            ${hasThumb ? `<img src="${thumb}" class="card-img" onerror="this.src='/static/img/default_cover.png'">` : `<i data-lucide="list-music" class="playlist-icon-large"></i>`}
+            ${hasThumb ? `<img src="${thumb}" class="card-img" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">` : `<i data-lucide="list-music" class="playlist-icon-large"></i>`}
         </div>
         <div class="playlist-card-copy">
             <div class="card-title">${ui.escHtml(pl.name)}</div>
@@ -476,7 +476,7 @@ export function createMixCard(mix) {
     const mixMeta = MIX_META[mix.key] || {};
     return `<div class="card glass-hover" onclick="loadView('mix', '${ui.escHtml(mix.key).replace(/'/g, "\\'")}')">
         <div class="card-img-container playlist-card-bg">
-            <img src="${thumb}" class="card-img mix-cover-img" onerror="this.src='/static/img/default_cover.png'">
+            <img src="${thumb}" class="card-img mix-cover-img" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
         </div>
         <div class="playlist-card-copy">
             <div class="card-title">${ui.escHtml(mix.title || 'Mix')}</div>
@@ -506,7 +506,7 @@ export function createTrackRow(item, idx, playlistId = null) {
             ${isActive ? '<i data-lucide="bar-chart-2" class="playing-icon"></i>' : ''}
         </div>
         <div class="track-main">
-            <img src="${img}" class="track-cover-sm" onerror="this.src='/static/img/default_cover.png'">
+            <img src="${img}" class="track-cover-sm" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
             <div class="track-titles">
                 <div class="track-name-sm">${ui.escHtml(item.title || 'Unknown')}</div>
                 <div class="track-artist-sm">${ui.escHtml(item.artist || 'Unknown')}</div>
@@ -668,7 +668,7 @@ export function renderSidebarRecents() {
                     <div class="playlist-item" onclick="loadView('playlist', ${pl.id})">
                         <div class="sidebar-playlist-thumb">
                             ${hasThumb
-                                ? `<img src="${thumb}" onerror="this.src='/static/img/default_cover.png'">`
+                                ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">`
                                 : `<i data-lucide="${playlistIcon}"></i>`}
                         </div>
                         <span class="truncate">${ui.escHtml(pl.name)}</span>

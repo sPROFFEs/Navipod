@@ -755,6 +755,40 @@ def _migration_013_modern_download_playlist_targets(conn):
             })
 
 
+def _migration_014_performance_indexes(conn):
+    tables = {row[0] for row in conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()}
+
+    if "tracks" in tables:
+        track_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(tracks)")).fetchall()}
+        if "created_at" in track_columns:
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tracks_created_at ON tracks(created_at)"))
+        if {"artist_norm", "title_norm", "fingerprint"}.issubset(track_columns):
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tracks_identity_lookup ON tracks(artist_norm, title_norm, fingerprint)"))
+        if {"source_provider", "created_at"}.issubset(track_columns):
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tracks_provider_created ON tracks(source_provider, created_at)"))
+
+    if "playlist_items" in tables:
+        item_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(playlist_items)")).fetchall()}
+        if "playlist_id" in item_columns:
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_playlist_items_playlist_id ON playlist_items(playlist_id)"))
+        if "track_id" in item_columns:
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_playlist_items_track_id ON playlist_items(track_id)"))
+        if {"playlist_id", "position"}.issubset(item_columns):
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_playlist_items_playlist_position ON playlist_items(playlist_id, position)"))
+
+    if "download_jobs" in tables:
+        job_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(download_jobs)")).fetchall()}
+        if {"user_id", "created_at"}.issubset(job_columns):
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_download_jobs_user_created ON download_jobs(user_id, created_at)"))
+        if {"status", "created_at"}.issubset(job_columns):
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_download_jobs_status_created ON download_jobs(status, created_at)"))
+
+    if "user_favorites" in tables:
+        favorite_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(user_favorites)")).fetchall()}
+        if {"user_id", "track_id"}.issubset(favorite_columns):
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_favorites_user_track ON user_favorites(user_id, track_id)"))
+
+
 MIGRATIONS = [
     ("000_base_schema", _migration_000_base_schema),
     ("001_tracks_library_columns", _migration_001_tracks_library_columns),
@@ -770,6 +804,7 @@ MIGRATIONS = [
     ("011_track_identity_fields", _migration_011_track_identity_fields),
     ("012_download_job_metadata", _migration_012_download_job_metadata),
     ("013_modern_download_playlist_targets", _migration_013_modern_download_playlist_targets),
+    ("014_performance_indexes", _migration_014_performance_indexes),
 ]
 
 

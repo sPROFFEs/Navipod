@@ -993,6 +993,28 @@
     color: #fca5a5;
 }
 
+.admin-feedback-meta {
+    color: var(--admin-muted);
+    font-size: .78rem;
+    margin-top: 8px;
+}
+
+.admin-progress-mini {
+    background: rgba(148, 163, 184, 0.16);
+    border-radius: 999px;
+    height: 6px;
+    margin: 16px auto 0;
+    max-width: 420px;
+    overflow: hidden;
+}
+
+.admin-progress-mini span {
+    background: linear-gradient(90deg, #22c55e, #38bdf8);
+    display: block;
+    height: 100%;
+    transition: width .2s ease;
+}
+
 .admin-results-list,
 .admin-duplicate-groups {
     display: grid;

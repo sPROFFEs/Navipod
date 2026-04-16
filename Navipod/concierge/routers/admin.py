@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
+from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query, BackgroundTasks
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -461,6 +461,153 @@ def _group_tracks_by_value(tracks, attr_name):
     return grouped
 
 
+def _build_duplicate_scan_result(db: Session, limit_groups: int, progress_callback=None):
+    from database import Track
+    from sqlalchemy import func
+
+    def report(message, phase, progress):
+        if progress_callback:
+            progress_callback(message=message, phase=phase, progress=progress)
+
+    groups_by_members = {}
+
+    report("Scanning duplicate source IDs", "source_id", 15)
+    source_id_dupes = [
+        row[0]
+        for row in db.query(Track.source_id)
+        .filter(Track.source_id.isnot(None))
+        .group_by(Track.source_id)
+        .having(func.count() > 1)
+        .order_by(func.count().desc())
+        .limit(MAX_DUPLICATE_VALUE_SCAN)
+        .all()
+    ]
+    if source_id_dupes:
+        tracks_by_source_id = _group_tracks_by_value(
+            db.query(Track).filter(Track.source_id.in_(source_id_dupes)).order_by(Track.source_id.asc(), Track.id.asc()).all(),
+            "source_id",
+        )
+        for source_id in source_id_dupes:
+            tracks = tracks_by_source_id.get(source_id, [])
+            _append_duplicate_group(groups_by_members, "source_id", f"source_id:{source_id}", tracks)
+
+    report("Scanning duplicate file hashes", "file_hash", 45)
+    hash_dupes = [
+        row[0]
+        for row in db.query(Track.file_hash)
+        .filter(Track.file_hash.isnot(None))
+        .group_by(Track.file_hash)
+        .having(func.count() > 1)
+        .order_by(func.count().desc())
+        .limit(MAX_DUPLICATE_VALUE_SCAN)
+        .all()
+    ]
+    if hash_dupes:
+        tracks_by_hash = _group_tracks_by_value(
+            db.query(Track).filter(Track.file_hash.in_(hash_dupes)).order_by(Track.file_hash.asc(), Track.id.asc()).all(),
+            "file_hash",
+        )
+        for file_hash in hash_dupes:
+            tracks = tracks_by_hash.get(file_hash, [])
+            _append_duplicate_group(groups_by_members, "file_hash", f"hash:{file_hash[:16]}...", tracks)
+
+    report("Scanning semantic fingerprints", "semantic", 70)
+    fingerprint_dupes = [
+        row[0]
+        for row in db.query(Track.fingerprint)
+        .filter(
+            Track.fingerprint.isnot(None),
+            Track.artist_norm.isnot(None),
+            Track.title_norm.isnot(None),
+        )
+        .group_by(Track.fingerprint)
+        .having(func.count() > 1)
+        .order_by(func.count().desc())
+        .limit(MAX_DUPLICATE_VALUE_SCAN)
+        .all()
+    ]
+    if fingerprint_dupes:
+        tracks_by_fingerprint = _group_tracks_by_value(
+            db.query(Track).filter(Track.fingerprint.in_(fingerprint_dupes)).order_by(Track.fingerprint.asc(), Track.id.asc()).all(),
+            "fingerprint",
+        )
+        for fingerprint in fingerprint_dupes:
+            tracks = tracks_by_fingerprint.get(fingerprint, [])
+            if not tracks:
+                continue
+            first_track = tracks[0]
+            if not track_identity.is_semantic_identity_valid(first_track.artist_norm or "", first_track.title_norm or ""):
+                continue
+            _append_duplicate_group(groups_by_members, "semantic", f"semantic:{fingerprint}", tracks)
+
+    report("Preparing duplicate groups", "summarize", 90)
+    groups = []
+    for group in groups_by_members.values():
+        display_key = " | ".join(group["keys"])
+        groups.append({
+            "key": display_key,
+            "reasons": group["reasons"],
+            "tracks": group["tracks"],
+        })
+
+    groups.sort(key=lambda item: (-len(item["tracks"]), item["key"]))
+    total_count = len(groups)
+    return {
+        "count": total_count,
+        "returned_count": min(total_count, limit_groups),
+        "truncated": total_count > limit_groups,
+        "groups": groups[:limit_groups],
+        "scan_limits": {
+            "max_duplicate_values_per_strategy": MAX_DUPLICATE_VALUE_SCAN,
+            "limit_groups": limit_groups,
+        },
+    }
+
+
+def _run_duplicate_scan_job(job_id: int, limit_groups: int):
+    db = database.SessionLocal()
+    try:
+        operations_service.update_admin_job_progress(
+            job_id,
+            status="running",
+            message="Starting duplicate scan",
+            phase="starting",
+            progress=5,
+        )
+
+        def progress_callback(message, phase, progress):
+            operations_service.update_admin_job_progress(
+                job_id,
+                status="running",
+                message=message,
+                phase=phase,
+                progress=progress,
+            )
+
+        result = _build_duplicate_scan_result(db, limit_groups, progress_callback=progress_callback)
+        operations_service.update_admin_job_progress(
+            job_id,
+            status="completed",
+            message=f"Duplicate scan completed: {result['count']} group(s)",
+            phase="completed",
+            progress=100,
+            extra={"result": result},
+            finished=True,
+        )
+    except Exception as e:
+        operations_service.update_admin_job_progress(
+            job_id,
+            status="failed",
+            message=f"Duplicate scan failed: {str(e)}",
+            phase="failed",
+            progress=100,
+            extra={"error": str(e)},
+            finished=True,
+        )
+    finally:
+        db.close()
+
+
 def _query_tracks_with_fts(db, raw_query: str, limit: int):
     normalized = " ".join(token for token in raw_query.strip().split() if token)
     if not normalized:
@@ -559,92 +706,21 @@ async def admin_find_duplicates(
     admin: database.User = Depends(get_current_admin),
 ):
     """Find duplicate tracks by source_id, file_hash, or semantic fingerprint (Admin only)"""
-    from fastapi.responses import JSONResponse
-    from database import Track
-    from sqlalchemy import func
-    
-    groups_by_members = {}
+    return JSONResponse(_build_duplicate_scan_result(db, limit_groups))
 
-    source_id_dupes = [
-        row[0]
-        for row in db.query(Track.source_id)
-        .filter(Track.source_id.isnot(None))
-        .group_by(Track.source_id)
-        .having(func.count() > 1)
-        .order_by(func.count().desc())
-        .limit(MAX_DUPLICATE_VALUE_SCAN)
-        .all()
-    ]
-    if source_id_dupes:
-        tracks_by_source_id = _group_tracks_by_value(
-            db.query(Track).filter(Track.source_id.in_(source_id_dupes)).order_by(Track.source_id.asc(), Track.id.asc()).all(),
-            "source_id",
-        )
-        for source_id in source_id_dupes:
-            tracks = tracks_by_source_id.get(source_id, [])
-            _append_duplicate_group(groups_by_members, "source_id", f"source_id:{source_id}", tracks)
 
-    hash_dupes = [
-        row[0]
-        for row in db.query(Track.file_hash)
-        .filter(Track.file_hash.isnot(None))
-        .group_by(Track.file_hash)
-        .having(func.count() > 1)
-        .order_by(func.count().desc())
-        .limit(MAX_DUPLICATE_VALUE_SCAN)
-        .all()
-    ]
-    if hash_dupes:
-        tracks_by_hash = _group_tracks_by_value(
-            db.query(Track).filter(Track.file_hash.in_(hash_dupes)).order_by(Track.file_hash.asc(), Track.id.asc()).all(),
-            "file_hash",
-        )
-        for file_hash in hash_dupes:
-            tracks = tracks_by_hash.get(file_hash, [])
-            _append_duplicate_group(groups_by_members, "file_hash", f"hash:{file_hash[:16]}...", tracks)
-
-    fingerprint_dupes = [
-        row[0]
-        for row in db.query(Track.fingerprint)
-        .filter(
-            Track.fingerprint.isnot(None),
-            Track.artist_norm.isnot(None),
-            Track.title_norm.isnot(None),
-        )
-        .group_by(Track.fingerprint)
-        .having(func.count() > 1)
-        .order_by(func.count().desc())
-        .limit(MAX_DUPLICATE_VALUE_SCAN)
-        .all()
-    ]
-    if fingerprint_dupes:
-        tracks_by_fingerprint = _group_tracks_by_value(
-            db.query(Track).filter(Track.fingerprint.in_(fingerprint_dupes)).order_by(Track.fingerprint.asc(), Track.id.asc()).all(),
-            "fingerprint",
-        )
-        for fingerprint in fingerprint_dupes:
-            tracks = tracks_by_fingerprint.get(fingerprint, [])
-            if not tracks:
-                continue
-            first_track = tracks[0]
-            if not track_identity.is_semantic_identity_valid(first_track.artist_norm or "", first_track.title_norm or ""):
-                continue
-            _append_duplicate_group(groups_by_members, "semantic", f"semantic:{fingerprint}", tracks)
-
-    groups = []
-    for group in groups_by_members.values():
-        display_key = " | ".join(group["keys"])
-        groups.append({
-            "key": display_key,
-            "reasons": group["reasons"],
-            "tracks": group["tracks"],
-        })
-
-    groups.sort(key=lambda item: (-len(item["tracks"]), item["key"]))
-    total_count = len(groups)
-    return JSONResponse({
-        "count": total_count,
-        "returned_count": min(total_count, limit_groups),
-        "truncated": total_count > limit_groups,
-        "groups": groups[:limit_groups],
-    })
+@router.post("/api/library/duplicates/jobs")
+async def admin_find_duplicates_job(
+    background_tasks: BackgroundTasks,
+    limit_groups: int = Query(50, ge=1, le=200),
+    admin: database.User = Depends(get_current_admin),
+):
+    """Run the duplicate scan out of the request path so large libraries do not block the admin UI."""
+    job_id = operations_service.create_admin_job(
+        "duplicate_scan",
+        admin.username,
+        "Duplicate scan queued",
+        {"phase": "queued", "progress": 0, "limit_groups": limit_groups},
+    )
+    background_tasks.add_task(_run_duplicate_scan_job, job_id, limit_groups)
+    return JSONResponse({"job_id": job_id})

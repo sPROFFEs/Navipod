@@ -169,51 +169,107 @@ export async function adminSearchLibrary() {
     }
 }
 
+function renderDuplicateScanStatus(container, job) {
+    const details = job?.details || {};
+    const progress = Number.isFinite(Number(details.progress)) ? Number(details.progress) : 0;
+    const message = job?.message || 'Scanning for duplicates...';
+    const phase = details.phase ? `Phase: ${ui.escHtml(details.phase)}` : '';
+
+    container.innerHTML = `
+        <div class="admin-feedback">
+            <strong>${ui.escHtml(message)}</strong>
+            <div class="admin-progress-mini" aria-label="Duplicate scan progress">
+                <span style="width:${Math.max(0, Math.min(100, progress))}%"></span>
+            </div>
+            <div class="admin-feedback-meta">${progress}% ${phase}</div>
+        </div>`;
+}
+
+function bindDuplicateDeleteHandlers(container) {
+    if (container.dataset.duplicateDeleteBound === '1') return;
+    container.dataset.duplicateDeleteBound = '1';
+    container.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-action="delete-duplicate"]');
+        if (!button || !container.contains(button)) return;
+        const trackId = Number(button.dataset.trackId);
+        if (!Number.isFinite(trackId)) return;
+        showDeleteTrackModal(trackId, button.dataset.trackTitle || 'Track');
+    });
+}
+
+function renderDuplicateScanResult(container, data) {
+    if (!data?.count) {
+        container.innerHTML = '<div class="admin-feedback success"><strong>Clean library.</strong> No duplicates found.</div>';
+        return;
+    }
+
+    const truncatedNote = data.truncated
+        ? `<div class="admin-feedback">Showing ${data.returned_count || data.groups.length} of ${data.count} groups. Refine cleanup in batches to keep the admin panel responsive.</div>`
+        : '';
+
+    container.innerHTML = `
+        <div class="admin-duplicate-summary">${data.count} duplicate groups found</div>
+        ${truncatedNote}
+        <div class="admin-duplicate-groups">
+            ${data.groups.map((group) => `
+                <section class="admin-duplicate-group">
+                    <div class="admin-duplicate-group-key">${ui.escHtml(group.key)}</div>
+                    <div class="admin-results-list compact">
+                        ${group.tracks.map((t) => `
+                            <article class="admin-result-row compact">
+                                <div class="admin-result-main">
+                                    <div class="admin-result-title">${ui.escHtml(t.title)}</div>
+                                    <div class="admin-result-meta">${ui.escHtml(t.artist)}</div>
+                                </div>
+                                <div class="admin-result-side">
+                                    <button type="button" data-action="delete-duplicate" data-track-id="${t.id}" data-track-title="${ui.escHtml(t.title)}" class="admin-icon-btn danger" title="Delete duplicate">
+                                        <i data-lucide="trash-2" width="14" height="14"></i>
+                                    </button>
+                                </div>
+                            </article>
+                        `).join('')}
+                    </div>
+                </section>
+            `).join('')}
+        </div>`;
+    bindDuplicateDeleteHandlers(container);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function pollDuplicateScanJob(jobId, container, attempt = 0) {
+    const res = await fetch(`/admin/api/system/jobs/${jobId}`);
+    const job = await res.json();
+    if (!res.ok) throw new Error(job.error || `HTTP ${res.status}`);
+
+    if (job.status === 'completed') {
+        renderDuplicateScanResult(container, job.details?.result);
+        return;
+    }
+
+    if (job.status === 'failed') {
+        throw new Error(job.message || job.details?.error || 'Duplicate scan failed');
+    }
+
+    renderDuplicateScanStatus(container, job);
+    if (attempt >= 180) throw new Error('Duplicate scan timed out');
+    window.setTimeout(() => {
+        pollDuplicateScanJob(jobId, container, attempt + 1).catch((e) => {
+            container.innerHTML = `<div class="admin-feedback error">Error: ${ui.escHtml(e.message)}</div>`;
+        });
+    }, 1500);
+}
+
 export async function adminFindDuplicates() {
     const container = document.getElementById('library-results');
     if (!container) return;
 
-    container.innerHTML = '<div class="admin-feedback">Scanning for duplicates...</div>';
+    container.innerHTML = '<div class="admin-feedback">Starting duplicate scan...</div>';
 
     try {
-        const res = await fetch('/admin/api/library/duplicates');
+        const res = await fetch('/admin/api/library/duplicates/jobs', { method: 'POST' });
         const data = await res.json();
-
-        if (!data.count) {
-            container.innerHTML = '<div class="admin-feedback success"><strong>Clean library.</strong> No duplicates found.</div>';
-            return;
-        }
-
-        const truncatedNote = data.truncated
-            ? `<div class="admin-feedback">Showing ${data.returned_count || data.groups.length} of ${data.count} groups. Refine cleanup in batches to keep the admin panel responsive.</div>`
-            : '';
-
-        container.innerHTML = `
-            <div class="admin-duplicate-summary">${data.count} duplicate groups found</div>
-            ${truncatedNote}
-            <div class="admin-duplicate-groups">
-                ${data.groups.map((group) => `
-                    <section class="admin-duplicate-group">
-                        <div class="admin-duplicate-group-key">${ui.escHtml(group.key)}</div>
-                        <div class="admin-results-list compact">
-                            ${group.tracks.map((t) => `
-                                <article class="admin-result-row compact">
-                                    <div class="admin-result-main">
-                                        <div class="admin-result-title">${ui.escHtml(t.title)}</div>
-                                        <div class="admin-result-meta">${ui.escHtml(t.artist)}</div>
-                                    </div>
-                                    <div class="admin-result-side">
-                                        <button onclick="showDeleteTrackModal(${t.id}, '${ui.escHtml(t.title).replace(/'/g, "\\'")}')" class="admin-icon-btn danger" title="Delete duplicate">
-                                            <i data-lucide="trash-2" width="14" height="14"></i>
-                                        </button>
-                                    </div>
-                                </article>
-                            `).join('')}
-                        </div>
-                    </section>
-                `).join('')}
-            </div>`;
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+        if (!res.ok || !data.job_id) throw new Error(data.error || `HTTP ${res.status}`);
+        await pollDuplicateScanJob(data.job_id, container);
     } catch (e) {
         container.innerHTML = `<div class="admin-feedback error">Error: ${ui.escHtml(e.message)}</div>`;
     }

@@ -98,7 +98,7 @@ export async function loadRadioPlaylists() {
         container.innerHTML = playlists.map(pl => `
             <div class="card" onclick="loadRadioPlaylist('${pl.page.url}', '${ui.escHtml(pl.title)}')">
                 <div class="card-img-container">
-                    <img src="${pl.image}" loading="lazy" onerror="this.src='/static/img/default_cover.png'">
+                    <img src="${pl.image}" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
                 </div>
                 <div class="card-title">${ui.escHtml(pl.title)}</div>
                 <div class="card-subtitle">${pl.count} radios</div>
