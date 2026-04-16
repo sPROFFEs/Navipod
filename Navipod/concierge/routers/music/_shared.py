@@ -2,36 +2,42 @@
 Shared dependencies for music sub-routers.
 All sub-modules should import from here instead of duplicating.
 """
-import os
+
 import asyncio
+import io
 import logging
+import os
 import shutil
 import subprocess
-from fastapi import APIRouter, Request, Depends, Form, BackgroundTasks, Response
-from fastapi.responses import RedirectResponse, JSONResponse, FileResponse, StreamingResponse
-from fastapi.templating import Jinja2Templates
-from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, or_
-import database, auth, utils, downloader_service, manager
-from pydantic import BaseModel
-import mutagen
-import httpx
-import spotify_service
-import youtube_service
-from shared_templates import templates
-from PIL import Image
-import io
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
-# Pydantic models
-from pydantic import BaseModel as PydanticBaseModel
-
-from navipod_config import settings
+import auth
+import database
+import downloader_service
+import httpx
+import manager
+import mutagen
+import spotify_service
+import utils
+import youtube_service
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.templating import Jinja2Templates
 
 # --- HTTP CLIENT (Shared) ---
 # Use the global shared client for external API calls
 from http_client import http_client
+from navipod_config import settings
+from PIL import Image
+from pydantic import BaseModel
+
+# Pydantic models
+from pydantic import BaseModel as PydanticBaseModel
+from shared_templates import templates
+from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import Session
+
 logger = logging.getLogger(__name__)
 
 
@@ -103,4 +109,5 @@ class AddToPlaylistRequest(PydanticBaseModel):
 def get_limiter():
     """Get limiter from limiter.py module."""
     from limiter import limiter
+
     return limiter

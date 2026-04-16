@@ -1,27 +1,27 @@
 """
 Audio streaming and cover art endpoints.
 """
-import os
+
 import io
-import mimetypes
-import random
 import logging
+import mimetypes
+import os
+import random
 from pathlib import Path
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import RedirectResponse, JSONResponse, FileResponse, StreamingResponse, Response
-from sqlalchemy.orm import Session
-from sqlalchemy import func
-from PIL import Image
-import mutagen
-import httpx
 
-import database
 import cover_cache
+import database
+import httpx
 import metadata_cache
+import mutagen
 import path_security
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
+from PIL import Image
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
-from .core import get_db, get_current_user_safe
-
+from .core import get_current_user_safe, get_db
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -92,27 +92,27 @@ async def get_cover(track_id: int, db: Session = Depends(get_db)):
     media_path = _resolve_allowed_media_path(track.filepath if track else None)
     if not track or not media_path:
         return RedirectResponse("/static/img/default_cover.png")
-        
+
     try:
         audio = mutagen.File(str(media_path))
         cover_data = None
-        
+
         # ID3 v2.3+
-        if audio and 'APIC:' in audio:
-            cover_data = audio['APIC:'].data
+        if audio and "APIC:" in audio:
+            cover_data = audio["APIC:"].data
         else:
             # Fallback scan
             for key in audio.keys():
-                if key.startswith('APIC'):
+                if key.startswith("APIC"):
                     cover_data = audio[key].data
                     break
-        
+
         if cover_data:
             # Resize and optimize
             img = Image.open(io.BytesIO(cover_data))
             img.thumbnail((400, 400))  # Reasonable size for web
             img = img.convert("RGB")
-            
+
             # Save to cache using cover_cache module
             img_bytes = io.BytesIO()
             img.save(img_bytes, "JPEG", quality=80)
@@ -121,7 +121,7 @@ async def get_cover(track_id: int, db: Session = Depends(get_db)):
 
     except Exception as e:
         logger.warning("Error extracting cover for %s: %s", track_id, e)
-        
+
     # Redirect to default
     return RedirectResponse("/static/img/default_cover.png")
 
@@ -133,11 +133,11 @@ async def stream_track(track_id: int, request: Request, db: Session = Depends(ge
     file_path = _resolve_allowed_media_path(track.filepath if track else None)
     if not track or not file_path:
         return Response(status_code=404)
-        
+
     file_size = file_path.stat().st_size
     content_type, _ = mimetypes.guess_type(str(file_path))
     content_type = content_type or "audio/mpeg"
-    
+
     # Handle Range Header
     range_header = request.headers.get("range")
     if not range_header:
@@ -145,12 +145,11 @@ async def stream_track(track_id: int, request: Request, db: Session = Depends(ge
         def iterfile():
             with file_path.open("rb") as f:
                 yield from f
+
         return StreamingResponse(
-            iterfile(), 
-            media_type=content_type,
-            headers={"Content-Length": str(file_size), "Accept-Ranges": "bytes"}
+            iterfile(), media_type=content_type, headers={"Content-Length": str(file_size), "Accept-Ranges": "bytes"}
         )
-    
+
     # Range Requested
     try:
         start, end = range_header.replace("bytes=", "").split("-")
@@ -160,12 +159,12 @@ async def stream_track(track_id: int, request: Request, db: Session = Depends(ge
             return Response(status_code=416, headers={"Content-Range": f"bytes */{file_size}"})
         end = min(end, file_size - 1)
         chunk_size = (end - start) + 1
-        
+
         def iterfile():
             with file_path.open("rb") as f:
                 f.seek(start)
                 yield f.read(chunk_size)
-                
+
         return StreamingResponse(
             iterfile(),
             status_code=206,
@@ -173,15 +172,17 @@ async def stream_track(track_id: int, request: Request, db: Session = Depends(ge
             headers={
                 "Content-Range": f"bytes {start}-{end}/{file_size}",
                 "Accept-Ranges": "bytes",
-                "Content-Length": str(chunk_size)
-            }
+                "Content-Length": str(chunk_size),
+            },
         )
     except Exception as e:
         logger.warning("Range error for track %s: %s", track_id, e)
+
         # Fallback to full file
         def iterfile():
             with file_path.open("rb") as f:
                 yield from f
+
         return StreamingResponse(iterfile(), media_type=content_type)
 
 
@@ -191,7 +192,7 @@ async def get_random_track(db: Session = Depends(get_db)):
     track = _pick_random_track(db)
     if not track:
         return JSONResponse({"error": "Library is empty"}, status_code=404)
-    
+
     return {
         "id": track.id,
         "db_id": track.id,
@@ -200,7 +201,7 @@ async def get_random_track(db: Session = Depends(get_db)):
         "album": track.album,
         "thumbnail": f"/api/cover/{track.id}",
         "is_local": True,
-        "source": "local"
+        "source": "local",
     }
 
 
@@ -376,4 +377,3 @@ async def resolve_cover(request: Request, artist: str = "", title: str = "", db:
 
     metadata_cache.set(metadata_key, {"negative": True, "provider": "none"})
     return RedirectResponse("/static/img/default_cover.png")
-

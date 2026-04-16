@@ -9,26 +9,26 @@ import * as sync from './sync.js';
 // === USER DATA LOADING ===
 
 export async function loadUserData() {
-    try {
-        const [favsRes, playlistsRes] = await Promise.all([
-            fetch(`${state.API}/favorites`),
-            fetch(`${state.API}/playlists`)
-        ]);
-        const favs = await favsRes.json();
-        const pls = await playlistsRes.json();
+  try {
+    const [favsRes, playlistsRes] = await Promise.all([
+      fetch(`${state.API}/favorites`),
+      fetch(`${state.API}/playlists`)
+    ]);
+    const favs = await favsRes.json();
+    const pls = await playlistsRes.json();
 
-        state.setUserFavorites(new Set(favs.map(f => f.id)));
-        state.setUserPlaylists(pls);
+    state.setUserFavorites(new Set(favs.map((f) => f.id)));
+    state.setUserPlaylists(pls);
 
-        // These will be called from views.js
-        if (window.renderSidebarPlaylists) window.renderSidebarPlaylists();
-        if (window.loadSidebarRadios) window.loadSidebarRadios();
+    // These will be called from views.js
+    if (window.renderSidebarPlaylists) window.renderSidebarPlaylists();
+    if (window.loadSidebarRadios) window.loadSidebarRadios();
 
-        sync.startHeartbeatSync();
-        sync.requestSyncRefresh();
-    } catch (e) {
-        console.error("Failed to load user data:", e);
-    }
+    sync.startHeartbeatSync();
+    sync.requestSyncRefresh();
+  } catch (e) {
+    console.error('Failed to load user data:', e);
+  }
 }
 
 export const startHeartbeatSync = sync.startHeartbeatSync;
@@ -37,358 +37,350 @@ export const initHeartbeatLifecycle = sync.initHeartbeatLifecycle;
 export const requestSyncRefresh = sync.requestSyncRefresh;
 export const checkSyncState = sync.checkSyncState;
 
-
 // === SEARCH API ===
 
 export async function executeSearch(query) {
-    if (!query) return [];
+  if (!query) return [];
 
-    try {
-        const source = state.currentSource;
-        const res = await fetch(`${state.API}/search?q=${encodeURIComponent(query)}&source=${source}`);
-        if (!res.ok) throw new Error('Search failed');
-        return await res.json();
-    } catch (e) {
-        console.error('[SEARCH] Error:', e);
-        return [];
-    }
+  try {
+    const source = state.currentSource;
+    const res = await fetch(`${state.API}/search?q=${encodeURIComponent(query)}&source=${source}`);
+    if (!res.ok) throw new Error('Search failed');
+    return await res.json();
+  } catch (e) {
+    console.error('[SEARCH] Error:', e);
+    return [];
+  }
 }
-
 
 // === FAVORITES API ===
 
 export async function addFavorite(trackId) {
-    try {
-        const res = await fetch(`${state.API}/favorites/${trackId}`, { method: 'POST' });
-        return res.ok;
-    } catch (e) {
-        console.error('[FAV] Add error:', e);
-        return false;
-    }
+  try {
+    const res = await fetch(`${state.API}/favorites/${trackId}`, { method: 'POST' });
+    return res.ok;
+  } catch (e) {
+    console.error('[FAV] Add error:', e);
+    return false;
+  }
 }
 
 export async function removeFavorite(trackId) {
-    try {
-        const res = await fetch(`${state.API}/favorites/${trackId}`, { method: 'DELETE' });
-        return res.ok;
-    } catch (e) {
-        console.error('[FAV] Remove error:', e);
-        return false;
-    }
+  try {
+    const res = await fetch(`${state.API}/favorites/${trackId}`, { method: 'DELETE' });
+    return res.ok;
+  } catch (e) {
+    console.error('[FAV] Remove error:', e);
+    return false;
+  }
 }
-
 
 // === PLAYLISTS API ===
 
 export async function fetchPlaylists() {
-    try {
-        const res = await fetch(`${state.API}/playlists`);
-        if (res.ok) return await res.json();
-    } catch (e) {
-        console.error('[PLAYLISTS] Fetch error:', e);
-    }
-    return [];
+  try {
+    const res = await fetch(`${state.API}/playlists`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[PLAYLISTS] Fetch error:', e);
+  }
+  return [];
 }
 
 export async function fetchPlaylist(playlistId) {
-    try {
-        const res = await fetch(`${state.API}/playlists/${playlistId}`);
-        if (res.ok) return await res.json();
-    } catch (e) {
-        console.error('[PLAYLIST] Fetch error:', e);
-    }
-    return null;
+  try {
+    const res = await fetch(`${state.API}/playlists/${playlistId}`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[PLAYLIST] Fetch error:', e);
+  }
+  return null;
 }
 
 export async function createPlaylistApi(name) {
-    try {
-        const res = await fetch(`${state.API}/playlists`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name })
-        });
-        if (res.ok) return await res.json();
-    } catch (e) {
-        console.error('[PLAYLIST] Create error:', e);
-    }
-    return null;
+  try {
+    const res = await fetch(`${state.API}/playlists`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[PLAYLIST] Create error:', e);
+  }
+  return null;
 }
 
 export async function addToPlaylistApi(playlistId, trackId) {
-    try {
-        const res = await fetch(`${state.API}/playlists/${playlistId}/add`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ track_id: trackId })
-        });
-        return res.ok;
-    } catch (e) {
-        console.error('[PLAYLIST] Add error:', e);
-        return false;
-    }
+  try {
+    const res = await fetch(`${state.API}/playlists/${playlistId}/add`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ track_id: trackId })
+    });
+    return res.ok;
+  } catch (e) {
+    console.error('[PLAYLIST] Add error:', e);
+    return false;
+  }
 }
 
 export async function removeFromPlaylistApi(playlistId, trackId) {
-    try {
-        const res = await fetch(`${state.API}/playlists/${playlistId}/remove/${trackId}`, {
-            method: 'DELETE'
-        });
-        return res.ok;
-    } catch (e) {
-        console.error('[PLAYLIST] Remove error:', e);
-        return false;
-    }
+  try {
+    const res = await fetch(`${state.API}/playlists/${playlistId}/remove/${trackId}`, {
+      method: 'DELETE'
+    });
+    return res.ok;
+  } catch (e) {
+    console.error('[PLAYLIST] Remove error:', e);
+    return false;
+  }
 }
 
 export async function deletePlaylistApi(playlistId) {
-    try {
-        const res = await fetch(`${state.API}/playlists/${playlistId}`, { method: 'DELETE' });
-        return res.ok;
-    } catch (e) {
-        console.error('[PLAYLIST] Delete error:', e);
-        return false;
-    }
+  try {
+    const res = await fetch(`${state.API}/playlists/${playlistId}`, { method: 'DELETE' });
+    return res.ok;
+  } catch (e) {
+    console.error('[PLAYLIST] Delete error:', e);
+    return false;
+  }
 }
 
 export async function updatePlaylistNameApi(playlistId, name) {
-    try {
-        const res = await fetch(`${state.API}/playlists/${playlistId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name })
-        });
-        return res.ok;
-    } catch (e) {
-        console.error('[PLAYLIST] Rename error:', e);
-        return false;
-    }
+  try {
+    const res = await fetch(`${state.API}/playlists/${playlistId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    return res.ok;
+  } catch (e) {
+    console.error('[PLAYLIST] Rename error:', e);
+    return false;
+  }
 }
-
 
 // === DOWNLOAD API ===
 
 export async function triggerDownloadApi(trackData) {
-    try {
-        const res = await fetch(`${state.API}/download`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                url: trackData.id || trackData.url,
-                title: trackData.title,
-                artist: trackData.artist
-            })
-        });
-        return res.ok;
-    } catch (e) {
-        console.error('[DOWNLOAD] Error:', e);
-        return false;
-    }
+  try {
+    const res = await fetch(`${state.API}/download`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: trackData.id || trackData.url,
+        title: trackData.title,
+        artist: trackData.artist
+      })
+    });
+    return res.ok;
+  } catch (e) {
+    console.error('[DOWNLOAD] Error:', e);
+    return false;
+  }
 }
 
 export async function fetchDownloadJobs() {
-    try {
-        const res = await fetch(`${state.API}/jobs`);
-        if (res.ok) return await res.json();
-    } catch (e) {
-        console.error('[JOBS] Fetch error:', e);
-    }
-    return [];
+  try {
+    const res = await fetch(`${state.API}/jobs`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[JOBS] Fetch error:', e);
+  }
+  return [];
 }
-
 
 // === RADIO API ===
 
 export async function fetchRadioBrowse(query) {
-    try {
-        const res = await fetch(`${state.API}/radio/browse?q=${encodeURIComponent(query)}`);
-        if (res.ok) return await res.json();
-    } catch (e) {
-        console.error('[RADIO] Browse error:', e);
-    }
-    return [];
+  try {
+    const res = await fetch(`${state.API}/radio/browse?q=${encodeURIComponent(query)}`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[RADIO] Browse error:', e);
+  }
+  return [];
 }
 
 export async function fetchRadioPlaylist(path) {
-    try {
-        const res = await fetch(`${state.API}/radio/playlist/${path}`);
-        if (res.ok) return await res.json();
-    } catch (e) {
-        console.error('[RADIO] Playlist error:', e);
-    }
-    return [];
+  try {
+    const res = await fetch(`${state.API}/radio/playlist/${path}`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[RADIO] Playlist error:', e);
+  }
+  return [];
 }
 
 export async function fetchRadioSearch(query) {
-    try {
-        const res = await fetch(`${state.API}/radio/search?q=${encodeURIComponent(query)}`);
-        if (res.ok) return await res.json();
-    } catch (e) {
-        console.error('[RADIO] Search error:', e);
-    }
-    return [];
+  try {
+    const res = await fetch(`${state.API}/radio/search?q=${encodeURIComponent(query)}`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[RADIO] Search error:', e);
+  }
+  return [];
 }
 
 export async function fetchRadioPlace(placeId) {
-    try {
-        const res = await fetch(`${state.API}/radio/place/${placeId}`);
-        if (res.ok) return await res.json();
-    } catch (e) {
-        console.error('[RADIO] Place error:', e);
-    }
-    return null;
+  try {
+    const res = await fetch(`${state.API}/radio/place/${placeId}`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[RADIO] Place error:', e);
+  }
+  return null;
 }
 
 export async function injectRadioApi(id, name) {
-    try {
-        const res = await fetch(`${state.API}/radio/inject`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ radio_garden_id: id, name })
-        });
-        return res.ok;
-    } catch (e) {
-        console.error('[RADIO] Inject error:', e);
-        return false;
-    }
+  try {
+    const res = await fetch(`${state.API}/radio/inject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ radio_garden_id: id, name })
+    });
+    return res.ok;
+  } catch (e) {
+    console.error('[RADIO] Inject error:', e);
+    return false;
+  }
 }
 
 export async function fetchSavedRadios() {
-    try {
-        const res = await fetch(`${state.API}/radio/list`);
-        if (res.ok) return await res.json();
-    } catch (e) {
-        console.error('[RADIO] List error:', e);
-    }
-    return [];
+  try {
+    const res = await fetch(`${state.API}/radio/list`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[RADIO] List error:', e);
+  }
+  return [];
 }
 
 export async function deleteRadioApi(radioId) {
-    try {
-        const res = await fetch(`${state.API}/radio/${radioId}`, { method: 'DELETE' });
-        return res.ok;
-    } catch (e) {
-        console.error('[RADIO] Delete error:', e);
-        return false;
-    }
+  try {
+    const res = await fetch(`${state.API}/radio/${radioId}`, { method: 'DELETE' });
+    return res.ok;
+  } catch (e) {
+    console.error('[RADIO] Delete error:', e);
+    return false;
+  }
 }
-
 
 // === RECOMMENDATIONS API ===
 
 export async function fetchRecommendations() {
-    try {
-        const res = await fetch(`${state.API}/recommendations`);
-        if (res.ok) return await res.json();
-    } catch (e) {
-        console.error('[RECS] Fetch error:', e);
-    }
-    return [];
+  try {
+    const res = await fetch(`${state.API}/recommendations`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[RECS] Fetch error:', e);
+  }
+  return [];
 }
-
 
 // === PLAYBACK QUEUE STATE API ===
 
 export async function fetchPlaybackQueueState() {
-    try {
-        const res = await fetch(`${state.API}/playback/queue-state`);
-        if (res.ok) return await res.json();
-    } catch (e) {
-        console.warn('[PLAYBACK] Queue state fetch failed:', e);
-    }
-    return null;
+  try {
+    const res = await fetch(`${state.API}/playback/queue-state`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.warn('[PLAYBACK] Queue state fetch failed:', e);
+  }
+  return null;
 }
 
 export async function savePlaybackQueueState(payload) {
-    try {
-        const res = await fetch(`${state.API}/playback/queue-state`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        return res.ok;
-    } catch (e) {
-        console.warn('[PLAYBACK] Queue state save failed:', e);
-        return false;
-    }
+  try {
+    const res = await fetch(`${state.API}/playback/queue-state`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return res.ok;
+  } catch (e) {
+    console.warn('[PLAYBACK] Queue state save failed:', e);
+    return false;
+  }
 }
 
 export async function clearPlaybackQueueState() {
-    try {
-        const res = await fetch(`${state.API}/playback/queue-state`, { method: 'DELETE' });
-        return res.ok;
-    } catch (e) {
-        console.warn('[PLAYBACK] Queue state clear failed:', e);
-        return false;
-    }
+  try {
+    const res = await fetch(`${state.API}/playback/queue-state`, { method: 'DELETE' });
+    return res.ok;
+  } catch (e) {
+    console.warn('[PLAYBACK] Queue state clear failed:', e);
+    return false;
+  }
 }
 
 export async function fetchMixes() {
-    try {
-        const res = await fetch(`${state.API}/mixes`);
-        if (res.ok) return await res.json();
-    } catch (e) {
-        console.error('[MIXES] Fetch error:', e);
-    }
-    return [];
+  try {
+    const res = await fetch(`${state.API}/mixes`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[MIXES] Fetch error:', e);
+  }
+  return [];
 }
 
 export async function fetchMixDetail(mixKey) {
-    try {
-        const res = await fetch(`${state.API}/mixes/${encodeURIComponent(mixKey)}`);
-        if (res.ok) return await res.json();
-    } catch (e) {
-        console.error('[MIX] Detail error:', e);
-    }
-    return null;
+  try {
+    const res = await fetch(`${state.API}/mixes/${encodeURIComponent(mixKey)}`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[MIX] Detail error:', e);
+  }
+  return null;
 }
 
 export async function saveMixAsPlaylist(mixKey, name) {
-    try {
-        const res = await fetch(`${state.API}/mixes/${encodeURIComponent(mixKey)}/save`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name })
-        });
-        if (res.ok) return await res.json();
-    } catch (e) {
-        console.error('[MIX] Save error:', e);
-    }
-    return null;
+  try {
+    const res = await fetch(`${state.API}/mixes/${encodeURIComponent(mixKey)}/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[MIX] Save error:', e);
+  }
+  return null;
 }
 
 export function recordListenEvent(payload) {
-    try {
-        const body = JSON.stringify(payload);
-        fetch(`${state.API}/activity/listen`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body,
-            keepalive: true,
-        }).catch(() => {});
-    } catch (e) {
-        console.error('[ACTIVITY] Listen tracking error:', e);
-    }
+  try {
+    const body = JSON.stringify(payload);
+    fetch(`${state.API}/activity/listen`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      keepalive: true
+    }).catch(() => {});
+  } catch (e) {
+    console.error('[ACTIVITY] Listen tracking error:', e);
+  }
 }
 
 export async function fetchRandomTrack() {
-    try {
-        const res = await fetch(`${state.API}/random-track`);
-        if (res.ok) return await res.json();
-    } catch (e) {
-        console.error('[RANDOM] Fetch error:', e);
-    }
-    return null;
+  try {
+    const res = await fetch(`${state.API}/random-track`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[RANDOM] Fetch error:', e);
+  }
+  return null;
 }
-
 
 // === FAVORITES LIST ===
 
 export async function fetchFavorites() {
-    try {
-        const res = await fetch(`${state.API}/favorites`);
-        if (res.ok) return await res.json();
-    } catch (e) {
-        console.error('[FAVS] Fetch error:', e);
-    }
-    return [];
+  try {
+    const res = await fetch(`${state.API}/favorites`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[FAVS] Fetch error:', e);
+  }
+  return [];
 }

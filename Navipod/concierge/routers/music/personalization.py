@@ -1,15 +1,13 @@
 from __future__ import annotations
 
+import database
+import personalization_service
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-import database
-import personalization_service
-
-from .core import get_db, get_current_user_safe
-
+from .core import get_current_user_safe, get_db
 
 router = APIRouter()
 
@@ -78,8 +76,8 @@ async def save_mix_as_playlist(mix_key: str, payload: SaveMixRequest, request: R
     if not mix or not mix.get("items"):
         return JSONResponse({"error": "Mix not found"}, status_code=404)
 
-    from .playlists import build_unique_copy_name, generate_m3u_for_playlist, schedule_playlist_sync
     from .favorites import schedule_navidrome_sync
+    from .playlists import build_unique_copy_name, generate_m3u_for_playlist, schedule_playlist_sync
 
     base_name = (payload.name or "").strip() or mix["title"]
     playlist_name = build_unique_copy_name(db, user.id, base_name)
@@ -96,11 +94,13 @@ async def save_mix_as_playlist(mix_key: str, payload: SaveMixRequest, request: R
         exists = db.query(database.Track.id).filter(database.Track.id == track_id).first()
         if not exists:
             continue
-        db.add(database.PlaylistItem(
-            playlist_id=playlist.id,
-            track_id=track_id,
-            position=position,
-        ))
+        db.add(
+            database.PlaylistItem(
+                playlist_id=playlist.id,
+                track_id=track_id,
+                position=position,
+            )
+        )
         position += 1
     db.commit()
 
@@ -109,4 +109,3 @@ async def save_mix_as_playlist(mix_key: str, payload: SaveMixRequest, request: R
     schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
 
     return JSONResponse({"id": playlist.id, "name": playlist.name})
-

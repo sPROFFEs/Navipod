@@ -1,32 +1,33 @@
 """
 Playlist management and Navidrome sync.
 """
-import logging
-import os
+
 import asyncio
 import io
+import logging
+import os
 import uuid
-from fastapi import APIRouter, Request, Depends, UploadFile, File
-from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
-from sqlalchemy.orm import Session, aliased
-from sqlalchemy import func, select
-from pydantic import BaseModel as PydanticBaseModel
-import httpx
-from PIL import Image
 
 import database
+import httpx
 import manager
+from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from navipod_config import settings
+from PIL import Image
+from pydantic import BaseModel as PydanticBaseModel
+from sqlalchemy import func
+from sqlalchemy.orm import Session, aliased
 
-from .core import get_db, get_current_user_safe
+from .core import get_current_user_safe, get_db
 from .favorites import schedule_navidrome_sync
-
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
 # --- PYDANTIC MODELS ---
+
 
 class CreatePlaylistRequest(PydanticBaseModel):
     name: str
@@ -61,6 +62,7 @@ PLAYLIST_COVER_SIZE = (640, 640)
 
 # --- PLAYLIST ACCESS HELPERS ---
 
+
 def get_playlist_or_404(db: Session, playlist_id: int, user):
     playlist = db.query(database.Playlist).filter(database.Playlist.id == playlist_id).first()
     if not playlist:
@@ -89,7 +91,7 @@ def _playlist_cover_url(playlist_id: int) -> str:
 def _validate_playlist_cover_bytes(file_content: bytes, content_type: str) -> bool:
     if content_type not in ALLOWED_PLAYLIST_COVER_TYPES:
         return False
-    return any(file_content[:len(pattern)] == pattern for pattern in ALLOWED_PLAYLIST_COVER_TYPES[content_type])
+    return any(file_content[: len(pattern)] == pattern for pattern in ALLOWED_PLAYLIST_COVER_TYPES[content_type])
 
 
 def _remove_playlist_cover_file(playlist) -> None:
@@ -105,15 +107,20 @@ def get_playlist_thumbnail(db: Session, playlist) -> str:
         return _playlist_cover_url(playlist.id)
     if playlist.cover_track_id:
         return f"/api/cover/{playlist.cover_track_id}"
-    first_item = db.query(database.PlaylistItem).filter(
-        database.PlaylistItem.playlist_id == playlist.id
-    ).order_by(database.PlaylistItem.position).first()
+    first_item = (
+        db.query(database.PlaylistItem)
+        .filter(database.PlaylistItem.playlist_id == playlist.id)
+        .order_by(database.PlaylistItem.position)
+        .first()
+    )
     if first_item and first_item.track:
         return f"/api/cover/{first_item.track.id}"
     return "/static/img/default_cover.png"
 
 
-def fetch_playlist_summaries(db: Session, viewer_id: int | None = None, *, owner_id: int | None = None, public_only: bool = False):
+def fetch_playlist_summaries(
+    db: Session, viewer_id: int | None = None, *, owner_id: int | None = None, public_only: bool = False
+):
     count_subquery = (
         db.query(
             database.PlaylistItem.playlist_id.label("playlist_id"),
@@ -125,14 +132,6 @@ def fetch_playlist_summaries(db: Session, viewer_id: int | None = None, *, owner
 
     source_playlist = aliased(database.Playlist)
     source_owner = aliased(database.User)
-    thumbnail_track_id = (
-        select(database.PlaylistItem.track_id)
-        .where(database.PlaylistItem.playlist_id == database.Playlist.id)
-        .order_by(database.PlaylistItem.position.asc(), database.PlaylistItem.id.asc())
-        .limit(1)
-        .scalar_subquery()
-    )
-
     query = (
         db.query(
             database.Playlist.id.label("id"),
@@ -163,18 +162,24 @@ def fetch_playlist_summaries(db: Session, viewer_id: int | None = None, *, owner
             continue
         owner_username = row.owner_username or "Unknown"
         source_owner_username = row.source_owner_username or owner_username
-        summaries.append({
-            "id": row.id,
-            "name": row.name,
-            "track_count": int(row.track_count or 0),
-            "thumbnail": _playlist_cover_url(row.id) if (row.cover_path or row.cover_track_id or int(row.track_count or 0) > 0) else "/static/img/default_cover.png",
-            "is_public": bool(row.is_public),
-            "source_playlist_id": row.source_playlist_id,
-            "owner_username": owner_username,
-            "source_owner_username": source_owner_username,
-            "is_owner": viewer_id == row.owner_id if viewer_id is not None else False,
-            "is_editable": row.source_playlist_id is None and viewer_id == row.owner_id if viewer_id is not None else False,
-        })
+        summaries.append(
+            {
+                "id": row.id,
+                "name": row.name,
+                "track_count": int(row.track_count or 0),
+                "thumbnail": _playlist_cover_url(row.id)
+                if (row.cover_path or row.cover_track_id or int(row.track_count or 0) > 0)
+                else "/static/img/default_cover.png",
+                "is_public": bool(row.is_public),
+                "source_playlist_id": row.source_playlist_id,
+                "owner_username": owner_username,
+                "source_owner_username": source_owner_username,
+                "is_owner": viewer_id == row.owner_id if viewer_id is not None else False,
+                "is_editable": row.source_playlist_id is None and viewer_id == row.owner_id
+                if viewer_id is not None
+                else False,
+            }
+        )
     return summaries
 
 
@@ -182,9 +187,9 @@ def serialize_playlist_summary(db: Session, playlist, viewer_id: int | None = No
     owner_name = playlist.owner.username if playlist.owner else "Unknown"
     source_owner_name = owner_name
     if playlist.source_playlist_id:
-        source_playlist = db.query(database.Playlist).filter(
-            database.Playlist.id == playlist.source_playlist_id
-        ).first()
+        source_playlist = (
+            db.query(database.Playlist).filter(database.Playlist.id == playlist.source_playlist_id).first()
+        )
         if source_playlist and source_playlist.owner:
             source_owner_name = source_playlist.owner.username
 
@@ -198,21 +203,23 @@ def serialize_playlist_summary(db: Session, playlist, viewer_id: int | None = No
         "owner_username": owner_name,
         "source_owner_username": source_owner_name,
         "is_owner": viewer_id == playlist.owner_id if viewer_id is not None else False,
-        "is_editable": playlist.source_playlist_id is None and viewer_id == playlist.owner_id if viewer_id is not None else False,
+        "is_editable": playlist.source_playlist_id is None and viewer_id == playlist.owner_id
+        if viewer_id is not None
+        else False,
     }
 
 
 def sync_playlist_copy_contents(db: Session, source_playlist, target_playlist):
-    db.query(database.PlaylistItem).filter(
-        database.PlaylistItem.playlist_id == target_playlist.id
-    ).delete(synchronize_session=False)
+    db.query(database.PlaylistItem).filter(database.PlaylistItem.playlist_id == target_playlist.id).delete(
+        synchronize_session=False
+    )
 
     for source_item in sorted(source_playlist.items, key=lambda x: x.position):
-        db.add(database.PlaylistItem(
-            playlist_id=target_playlist.id,
-            track_id=source_item.track_id,
-            position=source_item.position
-        ))
+        db.add(
+            database.PlaylistItem(
+                playlist_id=target_playlist.id, track_id=source_item.track_id, position=source_item.position
+            )
+        )
     db.commit()
     db.refresh(target_playlist)
 
@@ -234,6 +241,7 @@ def build_unique_copy_name(db: Session, user_id: int, base_name: str, exclude_pl
 
 # --- M3U GENERATION ---
 
+
 def generate_m3u_for_playlist(db: Session, playlist, username: str):
     """Generate M3U file for a playlist so Navidrome can read it"""
     try:
@@ -243,18 +251,18 @@ def generate_m3u_for_playlist(db: Session, playlist, username: str):
             os.chmod(playlist_dir, 0o777)
         except:
             pass
-        
+
         # Sanitize playlist name for filename
         safe_name = "".join(c for c in playlist.name if c.isalnum() or c in " -_").strip()
         m3u_path = f"{playlist_dir}/{safe_name}.m3u"
-        
-        with open(m3u_path, 'w', encoding='utf-8') as f:
+
+        with open(m3u_path, "w", encoding="utf-8") as f:
             f.write("#EXTM3U\n")
             for item in sorted(playlist.items, key=lambda x: x.position):
                 track = item.track
                 if track and track.filepath:
-                    if '/pool/' in track.filepath:
-                        rel_path = "../Library/" + track.filepath.split('/pool/')[-1]
+                    if "/pool/" in track.filepath:
+                        rel_path = "../Library/" + track.filepath.split("/pool/")[-1]
                     else:
                         rel_path = track.filepath
                     f.write(f"#EXTINF:{track.duration or -1},{track.artist} - {track.title}\n")
@@ -290,28 +298,22 @@ def schedule_playlist_sync(db, user, playlist_id=None, force_now=False):
             task.cancel()
         except Exception as e:
             logger.warning("Playlist sync cancel error: %s", e)
-    
+
     # 2. Define the async worker
     async def delayed_sync_worker():
         try:
             delay = 0.5 if force_now else 3.0
             await asyncio.sleep(delay)
-            
+
             target_ip = manager.get_or_spawn_container(user.username)
             url = f"http://{target_ip}:4533/{user.username}/rest/startScan"
-            params = {
-                "u": user.username,
-                "p": "enc:000000",
-                "v": "1.16.1",
-                "c": "navipod-concierge",
-                "f": "json"
-            }
+            params = {"u": user.username, "p": "enc:000000", "v": "1.16.1", "c": "navipod-concierge", "f": "json"}
             headers = {"x-navidrome-user": user.username}
             async with httpx.AsyncClient(timeout=10.0) as client:
                 await client.get(url, params=params, headers=headers)
                 action_type = "immediate" if force_now else "batched"
                 logger.info("Triggered %s playlist background scan for %s", action_type, user.username)
-                
+
         except asyncio.CancelledError:
             logger.info("Playlist sync scan cancelled because a new update arrived")
         except Exception as e:
@@ -327,21 +329,15 @@ async def clean_remote_playlist(username: str, playlist_name: str):
     try:
         target_ip = manager.get_or_spawn_container(username)
         base_url = f"http://{target_ip}:4533/{username}/rest"
-        auth_params = {
-            "u": username,
-            "p": "enc:000000",
-            "v": "1.16.1",
-            "c": "navipod-concierge",
-            "f": "json"
-        }
+        auth_params = {"u": username, "p": "enc:000000", "v": "1.16.1", "c": "navipod-concierge", "f": "json"}
         headers = {"x-navidrome-user": username}
-        
+
         async with httpx.AsyncClient(timeout=3.0) as client:
             resp = await client.get(f"{base_url}/getPlaylists", params=auth_params, headers=headers)
             if resp.status_code == 200:
                 data = resp.json()
                 remote_playlists = data.get("subsonic-response", {}).get("playlists", {}).get("playlist", [])
-                
+
                 for rp in remote_playlists:
                     if rp.get("name") == playlist_name:
                         rp_id = rp.get("id")
@@ -355,6 +351,7 @@ async def clean_remote_playlist(username: str, playlist_name: str):
 
 
 # --- API ENDPOINTS ---
+
 
 @router.get("/api/playlists")
 async def list_playlists(request: Request, db: Session = Depends(get_db)):
@@ -382,15 +379,15 @@ async def create_playlist(req: CreatePlaylistRequest, request: Request, db: Sess
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
+
     playlist = database.Playlist(name=req.name, owner_id=user.id)
     db.add(playlist)
     db.commit()
     db.refresh(playlist)
-    
+
     # Generate empty M3U
     generate_m3u_for_playlist(db, playlist, user.username)
-    
+
     # Trigger Sync
     schedule_playlist_sync(db, user)
     schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
@@ -399,16 +396,19 @@ async def create_playlist(req: CreatePlaylistRequest, request: Request, db: Sess
 
 
 @router.post("/api/playlists/{playlist_id}/public")
-async def set_playlist_public(playlist_id: int, payload: PublishPlaylistRequest, request: Request, db: Session = Depends(get_db)):
+async def set_playlist_public(
+    playlist_id: int, payload: PublishPlaylistRequest, request: Request, db: Session = Depends(get_db)
+):
     """Publish or unpublish a playlist owned by the current user."""
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-    playlist = db.query(database.Playlist).filter(
-        database.Playlist.id == playlist_id,
-        database.Playlist.owner_id == user.id
-    ).first()
+    playlist = (
+        db.query(database.Playlist)
+        .filter(database.Playlist.id == playlist_id, database.Playlist.owner_id == user.id)
+        .first()
+    )
     if not playlist:
         return JSONResponse({"error": "Playlist not found"}, status_code=404)
 
@@ -418,10 +418,7 @@ async def set_playlist_public(playlist_id: int, payload: PublishPlaylistRequest,
     playlist.is_public = bool(payload.is_public)
     db.commit()
     schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
-    return JSONResponse({
-        "id": playlist.id,
-        "is_public": bool(playlist.is_public)
-    })
+    return JSONResponse({"id": playlist.id, "is_public": bool(playlist.is_public)})
 
 
 @router.post("/api/playlists/{playlist_id}/copy")
@@ -431,47 +428,37 @@ async def copy_public_playlist(playlist_id: int, request: Request, db: Session =
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-    source_playlist = db.query(database.Playlist).filter(
-        database.Playlist.id == playlist_id,
-        database.Playlist.is_public == True
-    ).first()
+    source_playlist = (
+        db.query(database.Playlist)
+        .filter(database.Playlist.id == playlist_id, database.Playlist.is_public == True)
+        .first()
+    )
     if not source_playlist:
         return JSONResponse({"error": "Public playlist not found"}, status_code=404)
 
     if source_playlist.owner_id == user.id and source_playlist.source_playlist_id is None:
         return JSONResponse({"error": "This is already your own playlist."}, status_code=400)
 
-    local_copy = db.query(database.Playlist).filter(
-        database.Playlist.owner_id == user.id,
-        database.Playlist.source_playlist_id == source_playlist.id
-    ).first()
+    local_copy = (
+        db.query(database.Playlist)
+        .filter(database.Playlist.owner_id == user.id, database.Playlist.source_playlist_id == source_playlist.id)
+        .first()
+    )
     source_owner = source_playlist.owner.username if source_playlist.owner else "Unknown"
     canonical_name = f"{source_playlist.name} - {source_owner}"
 
     action = "synced"
     if not local_copy:
-        copy_name = build_unique_copy_name(
-            db,
-            user.id,
-            canonical_name
-        )
+        copy_name = build_unique_copy_name(db, user.id, canonical_name)
         local_copy = database.Playlist(
-            name=copy_name,
-            owner_id=user.id,
-            source_playlist_id=source_playlist.id,
-            is_public=False
+            name=copy_name, owner_id=user.id, source_playlist_id=source_playlist.id, is_public=False
         )
         db.add(local_copy)
         db.commit()
         db.refresh(local_copy)
         action = "copied"
     else:
-        next_name = build_unique_copy_name(
-            db,
-            user.id,
-            canonical_name,
-            exclude_playlist_id=local_copy.id
-        )
+        next_name = build_unique_copy_name(db, user.id, canonical_name, exclude_playlist_id=local_copy.id)
         if local_copy.name != next_name:
             old_name = local_copy.name
             if local_copy.m3u_path and os.path.exists(local_copy.m3u_path):
@@ -489,12 +476,9 @@ async def copy_public_playlist(playlist_id: int, request: Request, db: Session =
     schedule_playlist_sync(db, user, force_now=True)
     schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
 
-    return JSONResponse({
-        "status": action,
-        "id": local_copy.id,
-        "name": local_copy.name,
-        "track_count": len(local_copy.items)
-    })
+    return JSONResponse(
+        {"status": action, "id": local_copy.id, "name": local_copy.name, "track_count": len(local_copy.items)}
+    )
 
 
 @router.get("/api/playlists/{playlist_id}")
@@ -503,7 +487,7 @@ async def get_playlist(playlist_id: int, request: Request, db: Session = Depends
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
+
     playlist = get_playlist_or_404(db, playlist_id, user)
 
     if not playlist:
@@ -512,9 +496,9 @@ async def get_playlist(playlist_id: int, request: Request, db: Session = Depends
     source_playlist_exists = False
     source_playlist_public = False
     if playlist.source_playlist_id:
-        source_playlist = db.query(database.Playlist).filter(
-            database.Playlist.id == playlist.source_playlist_id
-        ).first()
+        source_playlist = (
+            db.query(database.Playlist).filter(database.Playlist.id == playlist.source_playlist_id).first()
+        )
         source_playlist_exists = source_playlist is not None
         source_playlist_public = bool(source_playlist and source_playlist.is_public)
 
@@ -528,28 +512,30 @@ async def get_playlist(playlist_id: int, request: Request, db: Session = Depends
             "artist": t.artist,
             "album": t.album,
             "thumbnail": f"/api/cover/{t.id}",
-            "position": item.position
+            "position": item.position,
         }
         tracks.append(track_data)
         if tracks and thumbnail == "/static/img/default_cover.png":
-             thumbnail = track_data["thumbnail"]
-    
-    return JSONResponse({
-        "id": playlist.id,
-        "name": playlist.name,
-        "tracks": tracks,
-        "thumbnail": thumbnail,
-        "owner_username": playlist.owner.username if playlist.owner else "Unknown",
-        "is_public": bool(playlist.is_public),
-        "source_playlist_id": playlist.source_playlist_id,
-        "source_playlist_exists": source_playlist_exists,
-        "source_playlist_public": source_playlist_public,
-        "is_owner": playlist.owner_id == user.id,
-        "is_editable": playlist_is_editable_by_user(playlist, user),
-        "is_read_only": not playlist_is_editable_by_user(playlist, user),
-        "cover_track_id": playlist.cover_track_id,
-        "has_custom_cover": bool(playlist.cover_path),
-    })
+            thumbnail = track_data["thumbnail"]
+
+    return JSONResponse(
+        {
+            "id": playlist.id,
+            "name": playlist.name,
+            "tracks": tracks,
+            "thumbnail": thumbnail,
+            "owner_username": playlist.owner.username if playlist.owner else "Unknown",
+            "is_public": bool(playlist.is_public),
+            "source_playlist_id": playlist.source_playlist_id,
+            "source_playlist_exists": source_playlist_exists,
+            "source_playlist_public": source_playlist_public,
+            "is_owner": playlist.owner_id == user.id,
+            "is_editable": playlist_is_editable_by_user(playlist, user),
+            "is_read_only": not playlist_is_editable_by_user(playlist, user),
+            "cover_track_id": playlist.cover_track_id,
+            "has_custom_cover": bool(playlist.cover_path),
+        }
+    )
 
 
 @router.get("/api/playlists/{playlist_id}/cover")
@@ -572,9 +558,12 @@ async def get_playlist_cover(playlist_id: int, request: Request, db: Session = D
     if playlist.cover_track_id:
         return RedirectResponse(f"/api/cover/{playlist.cover_track_id}")
 
-    first_item = db.query(database.PlaylistItem).filter(
-        database.PlaylistItem.playlist_id == playlist.id
-    ).order_by(database.PlaylistItem.position).first()
+    first_item = (
+        db.query(database.PlaylistItem)
+        .filter(database.PlaylistItem.playlist_id == playlist.id)
+        .order_by(database.PlaylistItem.position)
+        .first()
+    )
     if first_item and first_item.track:
         return RedirectResponse(f"/api/cover/{first_item.track.id}")
 
@@ -592,16 +581,22 @@ async def upload_playlist_cover(
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-    playlist = db.query(database.Playlist).filter(
-        database.Playlist.id == playlist_id,
-        database.Playlist.owner_id == user.id,
-    ).first()
+    playlist = (
+        db.query(database.Playlist)
+        .filter(
+            database.Playlist.id == playlist_id,
+            database.Playlist.owner_id == user.id,
+        )
+        .first()
+    )
     if not playlist:
         return JSONResponse({"error": "Playlist not found"}, status_code=404)
 
     content = await cover_file.read()
     if len(content) > MAX_PLAYLIST_COVER_SIZE:
-        return JSONResponse({"error": f"Image too large. Max size: {MAX_PLAYLIST_COVER_SIZE // (1024 * 1024)}MB"}, status_code=400)
+        return JSONResponse(
+            {"error": f"Image too large. Max size: {MAX_PLAYLIST_COVER_SIZE // (1024 * 1024)}MB"}, status_code=400
+        )
 
     filename = cover_file.filename or ""
     ext = filename.lower().split(".")[-1] if "." in filename else ""
@@ -643,17 +638,25 @@ async def set_playlist_cover_from_track(
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-    playlist = db.query(database.Playlist).filter(
-        database.Playlist.id == playlist_id,
-        database.Playlist.owner_id == user.id,
-    ).first()
+    playlist = (
+        db.query(database.Playlist)
+        .filter(
+            database.Playlist.id == playlist_id,
+            database.Playlist.owner_id == user.id,
+        )
+        .first()
+    )
     if not playlist:
         return JSONResponse({"error": "Playlist not found"}, status_code=404)
 
-    item = db.query(database.PlaylistItem).filter(
-        database.PlaylistItem.playlist_id == playlist.id,
-        database.PlaylistItem.track_id == payload.track_id,
-    ).first()
+    item = (
+        db.query(database.PlaylistItem)
+        .filter(
+            database.PlaylistItem.playlist_id == playlist.id,
+            database.PlaylistItem.track_id == payload.track_id,
+        )
+        .first()
+    )
     if not item:
         return JSONResponse({"error": "Track is not part of this playlist"}, status_code=400)
 
@@ -671,10 +674,14 @@ async def reset_playlist_cover(playlist_id: int, request: Request, db: Session =
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-    playlist = db.query(database.Playlist).filter(
-        database.Playlist.id == playlist_id,
-        database.Playlist.owner_id == user.id,
-    ).first()
+    playlist = (
+        db.query(database.Playlist)
+        .filter(
+            database.Playlist.id == playlist_id,
+            database.Playlist.owner_id == user.id,
+        )
+        .first()
+    )
     if not playlist:
         return JSONResponse({"error": "Playlist not found"}, status_code=404)
 
@@ -692,50 +699,53 @@ async def add_to_playlist(playlist_id: int, req: AddToPlaylistRequest, request: 
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
-    playlist = db.query(database.Playlist).filter(
-        database.Playlist.id == playlist_id,
-        database.Playlist.owner_id == user.id
-    ).first()
-    
+
+    playlist = (
+        db.query(database.Playlist)
+        .filter(database.Playlist.id == playlist_id, database.Playlist.owner_id == user.id)
+        .first()
+    )
+
     if not playlist:
         return JSONResponse({"error": "Playlist not found"}, status_code=404)
 
     if not playlist_is_editable_by_user(playlist, user):
-        return JSONResponse({"error": "This playlist is read-only. Sync it from the public source instead."}, status_code=403)
-    
+        return JSONResponse(
+            {"error": "This playlist is read-only. Sync it from the public source instead."}, status_code=403
+        )
+
     # Check if track exists
     track = db.query(database.Track).filter(database.Track.id == req.track_id).first()
     if not track:
         return JSONResponse({"error": "Track not found"}, status_code=404)
-    
+
     # Check if already in playlist
-    existing = db.query(database.PlaylistItem).filter(
-        database.PlaylistItem.playlist_id == playlist_id,
-        database.PlaylistItem.track_id == req.track_id
-    ).first()
-    
+    existing = (
+        db.query(database.PlaylistItem)
+        .filter(database.PlaylistItem.playlist_id == playlist_id, database.PlaylistItem.track_id == req.track_id)
+        .first()
+    )
+
     if existing:
         return JSONResponse({"error": "Track already in playlist"}, status_code=400)
-    
+
     # Add at end
-    max_pos = db.query(func.max(database.PlaylistItem.position)).filter(
-        database.PlaylistItem.playlist_id == playlist_id
-    ).scalar() or 0
-    
-    item = database.PlaylistItem(
-        playlist_id=playlist_id,
-        track_id=req.track_id,
-        position=max_pos + 1
+    max_pos = (
+        db.query(func.max(database.PlaylistItem.position))
+        .filter(database.PlaylistItem.playlist_id == playlist_id)
+        .scalar()
+        or 0
     )
+
+    item = database.PlaylistItem(playlist_id=playlist_id, track_id=req.track_id, position=max_pos + 1)
     db.add(item)
     db.commit()
-    
+
     # Regenerate M3U
     generate_m3u_for_playlist(db, playlist, user.username)
     schedule_playlist_sync(db, user)
     schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
-    
+
     return JSONResponse({"status": "added", "position": max_pos + 1})
 
 
@@ -745,34 +755,38 @@ async def remove_from_playlist(playlist_id: int, track_id: int, request: Request
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
-    playlist = db.query(database.Playlist).filter(
-        database.Playlist.id == playlist_id,
-        database.Playlist.owner_id == user.id
-    ).first()
-    
+
+    playlist = (
+        db.query(database.Playlist)
+        .filter(database.Playlist.id == playlist_id, database.Playlist.owner_id == user.id)
+        .first()
+    )
+
     if not playlist:
         return JSONResponse({"error": "Playlist not found"}, status_code=404)
 
     if not playlist_is_editable_by_user(playlist, user):
-        return JSONResponse({"error": "This playlist is read-only. Sync it from the public source instead."}, status_code=403)
-    
-    item = db.query(database.PlaylistItem).filter(
-        database.PlaylistItem.playlist_id == playlist_id,
-        database.PlaylistItem.track_id == track_id
-    ).first()
-    
+        return JSONResponse(
+            {"error": "This playlist is read-only. Sync it from the public source instead."}, status_code=403
+        )
+
+    item = (
+        db.query(database.PlaylistItem)
+        .filter(database.PlaylistItem.playlist_id == playlist_id, database.PlaylistItem.track_id == track_id)
+        .first()
+    )
+
     if not item:
         return JSONResponse({"error": "Track not in playlist"}, status_code=404)
-    
+
     db.delete(item)
     db.commit()
-    
+
     # Regenerate M3U
     generate_m3u_for_playlist(db, playlist, user.username)
     schedule_playlist_sync(db, user)
     schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
-    
+
     return JSONResponse({"status": "removed"})
 
 
@@ -782,15 +796,16 @@ async def delete_playlist(playlist_id: int, request: Request, db: Session = Depe
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
-    playlist = db.query(database.Playlist).filter(
-        database.Playlist.id == playlist_id,
-        database.Playlist.owner_id == user.id
-    ).first()
-    
+
+    playlist = (
+        db.query(database.Playlist)
+        .filter(database.Playlist.id == playlist_id, database.Playlist.owner_id == user.id)
+        .first()
+    )
+
     if not playlist:
         return JSONResponse({"error": "Playlist not found"}, status_code=404)
-    
+
     # Delete M3U file
     if playlist.m3u_path and os.path.exists(playlist.m3u_path):
         try:
@@ -801,56 +816,59 @@ async def delete_playlist(playlist_id: int, request: Request, db: Session = Depe
 
     # Explicit Sync: Clean remote playlist immediately
     await clean_remote_playlist(user.username, playlist.name)
-    
+
     db.delete(playlist)
     db.commit()
 
     # Trigger scan for consistency
     schedule_playlist_sync(db, user, force_now=True)
     schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
-    
+
     return JSONResponse({"status": "deleted"})
 
 
 @router.put("/api/playlists/{playlist_id}")
-async def update_playlist(playlist_id: int, payload: PlaylistUpdateRequest, request: Request, db: Session = Depends(get_db)):
+async def update_playlist(
+    playlist_id: int, payload: PlaylistUpdateRequest, request: Request, db: Session = Depends(get_db)
+):
     """Update playlist name"""
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
-    playlist = db.query(database.Playlist).filter(
-        database.Playlist.id == playlist_id,
-        database.Playlist.owner_id == user.id
-    ).first()
-    
+
+    playlist = (
+        db.query(database.Playlist)
+        .filter(database.Playlist.id == playlist_id, database.Playlist.owner_id == user.id)
+        .first()
+    )
+
     if not playlist:
         return JSONResponse({"error": "Playlist not found"}, status_code=404)
 
     if not playlist_is_editable_by_user(playlist, user):
         return JSONResponse({"error": "Synced copies cannot be renamed manually."}, status_code=403)
-    
+
     old_name = playlist.name
-    
+
     # 1. Delete old M3U file
     if playlist.m3u_path and os.path.exists(playlist.m3u_path):
         try:
             os.remove(playlist.m3u_path)
         except:
             pass
-    
+
     # 2. Clean old remote playlist
     await clean_remote_playlist(user.username, old_name)
-    
+
     # 3. Update playlist name
     playlist.name = payload.name
     db.commit()
-    
+
     # 4. Generate new M3U
     generate_m3u_for_playlist(db, playlist, user.username)
-    
+
     # 5. Trigger scan
     schedule_playlist_sync(db, user, force_now=True)
     schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
-    
+
     return JSONResponse({"id": playlist.id, "name": playlist.name})

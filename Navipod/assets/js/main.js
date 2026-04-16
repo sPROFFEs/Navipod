@@ -18,21 +18,21 @@ import * as views from './modules/views.js';
 import * as admin from './modules/admin.js';
 
 function initUserMenu() {
-    const userMenu = document.getElementById('user-menu');
-    if (!userMenu || userMenu.dataset.bound === 'true') return;
-    userMenu.dataset.bound = 'true';
+  const userMenu = document.getElementById('user-menu');
+  if (!userMenu || userMenu.dataset.bound === 'true') return;
+  userMenu.dataset.bound = 'true';
 
-    document.addEventListener('click', (event) => {
-        if (!userMenu.hasAttribute('open')) return;
-        if (userMenu.contains(event.target)) return;
-        userMenu.removeAttribute('open');
-    });
+  document.addEventListener('click', (event) => {
+    if (!userMenu.hasAttribute('open')) return;
+    if (userMenu.contains(event.target)) return;
+    userMenu.removeAttribute('open');
+  });
 
-    document.addEventListener('keydown', (event) => {
-        if (event.key !== 'Escape') return;
-        if (!userMenu.hasAttribute('open')) return;
-        userMenu.removeAttribute('open');
-    });
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (!userMenu.hasAttribute('open')) return;
+    userMenu.removeAttribute('open');
+  });
 }
 
 // === EXPOSE FUNCTIONS TO WINDOW FOR HTML ONCLICK HANDLERS ===
@@ -143,57 +143,55 @@ window.adminFindDuplicates = admin.adminFindDuplicates;
 window.showDeleteTrackModal = admin.showDeleteTrackModal;
 window.adminDeleteTrack = admin.adminDeleteTrack;
 
-
 // === YOUTUBE API CALLBACK ===
 window.onYouTubeIframeAPIReady = () => {
-    player.setupYouTubePlayer();
+  player.setupYouTubePlayer();
 };
-
 
 // === INITIALIZATION ===
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('[MAIN] Navipod ES6 Modules Initialized');
+  console.log('[MAIN] Navipod ES6 Modules Initialized');
 
-    initUserMenu();
-    views.initSpaHistory();
+  initUserMenu();
+  views.initSpaHistory();
 
-    // Initialize YouTube API
-    player.initYoutubeAPI();
+  // Initialize YouTube API
+  player.initYoutubeAPI();
 
-    // Load user data (favorites, playlists)
-    views.loadUserData();
+  // Load user data (favorites, playlists)
+  views.loadUserData();
 
-    // Setup player controls
-    player.setupPlayer();
+  // Setup player controls
+  player.setupPlayer();
 
-    // Keep heartbeat quiet while backgrounded
-    views.initHeartbeatLifecycle();
+  // Keep heartbeat quiet while backgrounded
+  views.initHeartbeatLifecycle();
 
-    const restoredSession = await player.restorePlaybackSession();
+  const restoredSession = await player.restorePlaybackSession();
 
-    // Load initial view
-    // Load initial view only if we are on the root path
-    if (window.location.pathname === '/' || window.location.pathname === '/index.html') {
-        if (restoredSession?.view && restoredSession.view !== 'home') {
-            views.loadView(restoredSession.view, restoredSession.param ?? null, { replaceHistory: true });
-        } else {
-            views.loadView('home', null, { replaceHistory: true });
-        }
-    } else if (window.location.pathname === '/portal') {
-        if (restoredSession?.view && restoredSession.view !== 'home') {
-            views.loadView(restoredSession.view, restoredSession.param ?? null, { replaceHistory: true });
-        } else {
-            views.loadView('home', null, { replaceHistory: true });
-        }
+  // Load initial view
+  // Load initial view only if we are on the root path
+  if (window.location.pathname === '/' || window.location.pathname === '/index.html') {
+    if (restoredSession?.view && restoredSession.view !== 'home') {
+      views.loadView(restoredSession.view, restoredSession.param ?? null, { replaceHistory: true });
     } else {
-        // If we are on a different page (e.g. /admin/system), we just set the view state without rendering
-        // logic to highlight sidebar can be added here if needed
-        console.log('[MAIN] Preserving server-rendered content for path:', window.location.pathname);
-        if (window.location.pathname.includes('/admin/system')) state.setCurrentViewName('system_monitor');
+      views.loadView('home', null, { replaceHistory: true });
     }
+  } else if (window.location.pathname === '/portal') {
+    if (restoredSession?.view && restoredSession.view !== 'home') {
+      views.loadView(restoredSession.view, restoredSession.param ?? null, { replaceHistory: true });
+    } else {
+      views.loadView('home', null, { replaceHistory: true });
+    }
+  } else {
+    // If we are on a different page (e.g. /admin/system), we just set the view state without rendering
+    // logic to highlight sidebar can be added here if needed
+    console.log('[MAIN] Preserving server-rendered content for path:', window.location.pathname);
+    if (window.location.pathname.includes('/admin/system')) state.setCurrentViewName('system_monitor');
+  }
 
-    // Initialize Lucide icons
-    if (window.lucide) {
-        lucide.createIcons();
-    }
+  // Initialize Lucide icons
+  if (window.lucide) {
+    lucide.createIcons();
+  }
 });

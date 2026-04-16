@@ -1,0 +1,17 @@
+{
+  "scripts": {
+    "lint": "npm run lint:py && npm run lint:js",
+    "lint:py": "python -m ruff check Navipod/concierge/routers",
+    "lint:js": "eslint Navipod/assets/js",
+    "format:check": "npm run format:py:check && npm run format:js:check",
+    "format:py:check": "python -m ruff format --check Navipod/concierge/routers",
+    "format:py": "python -m ruff format Navipod/concierge/routers",
+    "format:js:check": "prettier --check Navipod/assets/js",
+    "format:js": "prettier --write Navipod/assets/js"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "eslint": "^9.39.1",
+    "prettier": "^3.7.4"
+  }
+}

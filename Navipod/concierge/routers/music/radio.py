@@ -1,18 +1,17 @@
 """
 Radio Garden integration endpoints.
 """
+
 import logging
-from fastapi import APIRouter, Request, Depends, Form
-from fastapi.responses import RedirectResponse, JSONResponse
-from sqlalchemy.orm import Session
+
 import httpx
-
-import database
 import manager
+from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import JSONResponse, RedirectResponse
 from shared_templates import templates
+from sqlalchemy.orm import Session
 
-from .core import get_db, get_current_user_safe
-
+from .core import get_current_user_safe, get_db
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -29,13 +28,7 @@ RG_HEADERS = {
 async def fetch_saved_radios_for_user(user):
     target_ip = manager.get_or_spawn_container(user.username)
     url = f"http://{target_ip}:4533/{user.username}/rest/getInternetRadioStations"
-    params = {
-        "u": user.username,
-        "p": "enc:000000",
-        "v": "1.16.1",
-        "c": "navipod-concierge",
-        "f": "json"
-    }
+    params = {"u": user.username, "p": "enc:000000", "v": "1.16.1", "c": "navipod-concierge", "f": "json"}
     headers = {"x-navidrome-user": user.username}
 
     async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
@@ -52,24 +45,25 @@ async def fetch_saved_radios_for_user(user):
 
 # --- HTML VIEW ---
 
+
 @router.get("/radio")
 async def radio_page(request: Request, db: Session = Depends(get_db)):
     """Radio browser page"""
     user = get_current_user_safe(db, request)
     if not user:
         return RedirectResponse("/login")
-    
+
     # Pool Status
     u_gb, l_gb, pct = manager.get_pool_status(db)
-    
-    return templates.TemplateResponse("radio.html", {
-        "request": request, 
-        "username": user.username,
-        "pool": {"used": u_gb, "limit": l_gb, "percent": pct}
-    })
+
+    return templates.TemplateResponse(
+        "radio.html",
+        {"request": request, "username": user.username, "pool": {"used": u_gb, "limit": l_gb, "percent": pct}},
+    )
 
 
 # --- RADIO GARDEN API PROXY ---
+
 
 @router.get("/api/radio/browse")
 async def browse_radio_garden():
@@ -95,7 +89,7 @@ async def get_playlist_content(playlist_path: str):
     """
     # Build URL from the frontend path
     url = f"https://radio.garden/api/ara/content/{playlist_path.lstrip('/')}"
-    
+
     async with httpx.AsyncClient(follow_redirects=True) as client:
         try:
             resp = await client.get(url, headers=RG_HEADERS, timeout=10)
@@ -111,7 +105,7 @@ async def get_playlist_content(playlist_path: str):
                     if items:
                         logger.info("Sending %s Radio Garden playlist items", len(items))
                         return items
-            
+
             logger.warning("No Radio Garden playlist items found")
             return []
         except Exception as e:
@@ -148,33 +142,37 @@ async def get_place_radios(place_id: str):
 
 
 @router.post("/api/radio/inject")
-async def inject_radio(request: Request, channel_id: str = Form(...), name: str = Form(...), db: Session = Depends(get_db)):
+async def inject_radio(
+    request: Request, channel_id: str = Form(...), name: str = Form(...), db: Session = Depends(get_db)
+):
     """Inject radio station into Navidrome"""
     # 1. Verify authentication
     user = get_current_user_safe(db, request)
-    if not user: 
+    if not user:
         return JSONResponse({"error": "Unauthorized - No session found"}, status_code=401)
 
     # 2. Resolve the final stream URL (capture Location header from 302)
     listen_url = f"https://radio.garden/api/ara/content/listen/{channel_id}/channel.mp3"
-    
+
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=10) as client:
             # Use stream=True to capture final URL after redirects without downloading infinite audio
             async with client.stream("GET", listen_url, headers=RG_HEADERS) as resp:
                 if resp.status_code != 200:
-                    logger.warning("Radio stream resolve failed with status %s for channel %s", resp.status_code, channel_id)
-                    return JSONResponse(
-                        {"error": f"Could not resolve radio (Error {resp.status_code} from Radio Garden)"}, 
-                        status_code=400
+                    logger.warning(
+                        "Radio stream resolve failed with status %s for channel %s", resp.status_code, channel_id
                     )
-                
+                    return JSONResponse(
+                        {"error": f"Could not resolve radio (Error {resp.status_code} from Radio Garden)"},
+                        status_code=400,
+                    )
+
                 real_stream_url = str(resp.url)
                 logger.info("Radio stream URL resolved for channel %s", channel_id)
-            
+
             # 3. Inject into Navidrome via gateway proxy
             gateway_url = f"http://localhost:8000/{user.username}/rest/createInternetRadioStation"
-            
+
             # Subsonic API parameters (v1.16.1)
             params = {
                 "v": "1.16.1",
@@ -182,22 +180,22 @@ async def inject_radio(request: Request, channel_id: str = Form(...), name: str 
                 "f": "json",
                 "streamUrl": real_stream_url,
                 "name": name,
-                "homepageUrl": "https://radio.garden"
+                "homepageUrl": "https://radio.garden",
             }
-            
+
             logger.info("Calling Navidrome radio gateway for user %s", user.username)
-            
+
             # Pass auth token for gateway authorization
             cookies = {"access_token": request.cookies.get("access_token")}
-            
+
             inject_resp = await client.get(gateway_url, params=params, cookies=cookies)
-            
+
             logger.info("Navidrome radio gateway status: %s", inject_resp.status_code)
-            
+
             # Parse JSON response correctly
             try:
                 result = inject_resp.json()
-                
+
                 # Subsonic API returns {"subsonic-response": {"status": "ok", ...}}
                 if result.get("subsonic-response", {}).get("status") == "ok":
                     logger.info("Radio added successfully: %s", name)
@@ -209,7 +207,7 @@ async def inject_radio(request: Request, channel_id: str = Form(...), name: str 
             except Exception as e:
                 logger.warning("Navidrome radio response parse error: %s", e)
                 return JSONResponse({"error": f"Invalid response from Navidrome: {str(e)}"}, status_code=500)
-                
+
     except httpx.TimeoutException:
         logger.warning("Radio inject timeout")
         return JSONResponse({"error": "Timeout connecting to Radio Garden or Navidrome"}, status_code=504)
@@ -222,9 +220,9 @@ async def inject_radio(request: Request, channel_id: str = Form(...), name: str 
 async def get_saved_radios(request: Request, db: Session = Depends(get_db)):
     """Fetch saved internet radio stations from Navidrome"""
     user = get_current_user_safe(db, request)
-    if not user: 
+    if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
+
     try:
         return JSONResponse(await fetch_saved_radios_for_user(user))
     except Exception as e:
@@ -236,22 +234,22 @@ async def get_saved_radios(request: Request, db: Session = Depends(get_db)):
 async def delete_saved_radio(radio_id: str, request: Request, db: Session = Depends(get_db)):
     """Delete an internet radio station from Navidrome"""
     user = get_current_user_safe(db, request)
-    if not user: 
+    if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
+
     try:
         target_ip = manager.get_or_spawn_container(user.username)
         url = f"http://{target_ip}:4533/{user.username}/rest/deleteInternetRadioStation"
         params = {
-            "u": user.username, 
-            "p": "enc:000000", 
-            "v": "1.16.1", 
-            "c": "navipod-concierge", 
+            "u": user.username,
+            "p": "enc:000000",
+            "v": "1.16.1",
+            "c": "navipod-concierge",
             "f": "json",
-            "id": radio_id
+            "id": radio_id,
         }
         headers = {"x-navidrome-user": user.username}
-        
+
         async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
             resp = await client.get(url, params=params, headers=headers)
             if resp.status_code == 200:

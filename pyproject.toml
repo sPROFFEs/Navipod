@@ -1,0 +1,22 @@
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = [
+    "docs",
+    "Navipod/concierge/tests",
+]
+
+[tool.ruff.lint]
+select = [
+    "E9",
+    "F",
+    "I",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"Navipod/concierge/routers/music/_shared.py" = ["F401"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"

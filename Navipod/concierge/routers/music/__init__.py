@@ -1,21 +1,23 @@
 """
 Music module - Aggregates all music-related routers.
 """
+
 from fastapi import APIRouter
 
-from . import core
-from . import streaming
-from . import downloads
-from . import radio
-from . import favorites
-from . import playlists
-from . import recommendations
-from . import search
-from . import sync
-from . import recent_activity
-from . import personalization
-from . import playback_state
-
+from . import (
+    core,
+    downloads,
+    favorites,
+    personalization,
+    playback_state,
+    playlists,
+    radio,
+    recent_activity,
+    recommendations,
+    search,
+    streaming,
+    sync,
+)
 
 # Create the main router that includes all sub-routers
 router = APIRouter()

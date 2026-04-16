@@ -1,17 +1,19 @@
-from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query, BackgroundTasks
-from fastapi.responses import RedirectResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-import database, auth, manager
-import psutil
+import errno
+import os
 import shutil
 import subprocess
-import os
-import errno
+
+import auth
+import database
+import manager
 import operations_service
-import track_identity
 import path_security
+import psutil
+import track_identity
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, RedirectResponse
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/admin")
 from shared_templates import templates
@@ -19,22 +21,28 @@ from shared_templates import templates
 MAX_DUPLICATE_VALUE_SCAN = 500
 TRACK_DELETE_ROOTS = ("/saas-data/pool", "/saas-data/users")
 
+
 def get_db():
     db = database.SessionLocal()
-    try: yield db
-    finally: db.close()
+    try:
+        yield db
+    finally:
+        db.close()
+
 
 # SECURITY DEPENDENCY
 def get_current_admin(request: Request, db: Session = Depends(get_db)):
     token = request.cookies.get("access_token")
-    if not token: raise HTTPException(status_code=401)
-    
+    if not token:
+        raise HTTPException(status_code=401)
+
     username = auth.get_username_from_token(token)
     user = auth.get_user_by_username(db, username)
-    
+
     if not user or not user.is_admin:
         raise HTTPException(status_code=403, detail="Access denied.")
     return user
+
 
 def get_dir_size(path):
     """Calculates total directory size in bytes."""
@@ -46,8 +54,10 @@ def get_dir_size(path):
                     total += entry.stat().st_size
                 elif entry.is_dir():
                     total += get_dir_size(entry.path)
-    except Exception: pass
+    except Exception:
+        pass
     return total
+
 
 # DASHBOARD VIEW
 @router.get("/")
@@ -59,32 +69,34 @@ async def admin_panel(request: Request, db: Session = Depends(get_db)):
 
     # Calculate total disk space for HTML 'max' attribute
     disk = shutil.disk_usage("/saas-data")
-    stats = {
-        "disk_total": int(disk.total / (1024**3))
-    }
+    stats = {"disk_total": int(disk.total / (1024**3))}
 
     users = db.query(database.User).all()
-    
+
     # Pool Status
     u_gb, l_gb, pct = manager.get_pool_status(db)
-    
-    return templates.TemplateResponse("admin.html", {
-        "request": request, 
-        "username": admin.username,
-        "is_admin": True,
-        "users": users,
-        "stats": stats,
-        "pool": {"used": u_gb, "limit": l_gb, "percent": pct}
-    })
+
+    return templates.TemplateResponse(
+        "admin.html",
+        {
+            "request": request,
+            "username": admin.username,
+            "is_admin": True,
+            "users": users,
+            "stats": stats,
+            "pool": {"used": u_gb, "limit": l_gb, "percent": pct},
+        },
+    )
+
 
 # API ACTIONS
 @router.post("/users/create")
 async def create_user(
-    username: str = Form(...), 
-    password: str = Form(...), 
+    username: str = Form(...),
+    password: str = Form(...),
     is_admin: bool = Form(False),
     db: Session = Depends(get_db),
-    admin: database.User = Depends(get_current_admin)
+    admin: database.User = Depends(get_current_admin),
 ):
     # 1. IF HERE (Validate complexity before creating)
     password = (password or "").strip()
@@ -92,26 +104,28 @@ async def create_user(
         return {"error": "Weak password: use 8 chars, uppercase, lowercase, numbers and symbols"}
 
     existing = auth.get_user_by_username(db, username)
-    if existing: return {"error": f"User {username} already exists"}
-    
+    if existing:
+        return {"error": f"User {username} already exists"}
+
     new_user = auth.create_user_in_db(db, username, password)
     if is_admin:
         new_user.is_admin = True
         db.commit()
-    
-    try: manager.provision_user_env(username)
-    except: pass
+
+    try:
+        manager.provision_user_env(username)
+    except:
+        pass
 
     return {"msg": f"User {username} created successfully"}
 
+
 @router.post("/users/delete")
 async def delete_user(
-    user_id: int = Form(...),
-    db: Session = Depends(get_db),
-    admin: database.User = Depends(get_current_admin)
+    user_id: int = Form(...), db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)
 ):
     user_del = db.query(database.User).filter(database.User.id == user_id).first()
-    
+
     # L0 Security: Do not delete current admin
     if not user_del or user_del.id == admin.id:
         return {"error": "Action not allowed: you cannot delete yourself"}
@@ -147,13 +161,14 @@ async def delete_user(
     except Exception as e:
         db.rollback()
         return {"error": f"Purge error: {str(e)}"}
-        
+
+
 @router.post("/users/reset-password")
 async def reset_user_password(
     user_id: int = Form(...),
     new_password: str = Form(...),
     db: Session = Depends(get_db),
-    admin: database.User = Depends(get_current_admin)
+    admin: database.User = Depends(get_current_admin),
 ):
     # 2. IF HERE (Validate complexity before resetting)
     new_password = (new_password or "").strip()
@@ -163,12 +178,13 @@ async def reset_user_password(
     user_to_edit = db.query(database.User).filter(database.User.id == user_id).first()
     if not user_to_edit:
         return {"error": "User not found"}
-    
+
     # Hash and update
     user_to_edit.hashed_password = auth.get_password_hash(new_password)
     db.commit()
-    
+
     return {"msg": f"Password for {user_to_edit.username} updated successfully"}
+
 
 @router.post("/system/flush-ram")
 async def flush_ram(db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
@@ -196,19 +212,19 @@ async def flush_ram(db: Session = Depends(get_db), admin: database.User = Depend
 @router.get("/system")
 async def system_monitor(request: Request, db: Session = Depends(get_db)):
     admin = get_current_admin(request, db)
-    
+
     # Disk Statistics on data path
     disk = shutil.disk_usage("/saas-data")
-    
+
     stats = {
         "cpu_usage": psutil.cpu_percent(interval=1),
         "ram": psutil.virtual_memory(),
         "disk_total": round(disk.total / (1024**3), 2),
         "disk_used": round(disk.used / (1024**3), 2),
         "disk_free": round(disk.free / (1024**3), 2),
-        "disk_percent": round((disk.used / disk.total) * 100, 1)
+        "disk_percent": round((disk.used / disk.total) * 100, 1),
     }
-    
+
     # Get Global Pool Status
     pool_used, pool_limit, pool_pct = manager.get_pool_status(db)
     build_info = operations_service.get_build_info()
@@ -218,21 +234,25 @@ async def system_monitor(request: Request, db: Session = Depends(get_db)):
     recent_jobs = operations_service.get_recent_admin_jobs(db, limit=8)
     active_lock = operations_service.get_active_operation_lock(db)
     timezone_options = operations_service.get_timezone_options()
-    
-    return templates.TemplateResponse("system_monitor.html", {
-        "request": request, 
-        "stats": stats,
-        "pool": {"used": pool_used, "limit": pool_limit, "percent": pool_pct},
-        "build": build_info,
-        "schema": schema_status,
-        "backups": backup_state,
-        "updates": update_state,
-        "timezone_options": timezone_options,
-        "admin_jobs": recent_jobs,
-        "active_lock": active_lock,
-        "username": admin.username,
-        "is_admin": True
-    })
+
+    return templates.TemplateResponse(
+        "system_monitor.html",
+        {
+            "request": request,
+            "stats": stats,
+            "pool": {"used": pool_used, "limit": pool_limit, "percent": pool_pct},
+            "build": build_info,
+            "schema": schema_status,
+            "backups": backup_state,
+            "updates": update_state,
+            "timezone_options": timezone_options,
+            "admin_jobs": recent_jobs,
+            "active_lock": active_lock,
+            "username": admin.username,
+            "is_admin": True,
+        },
+    )
+
 
 @router.get("/api/system-stats")
 async def api_system_stats(request: Request, db: Session = Depends(get_db)):
@@ -241,7 +261,7 @@ async def api_system_stats(request: Request, db: Session = Depends(get_db)):
     token = request.cookies.get("access_token")
     if not token:
         return {"error": "Unauthorized"}
-    
+
     try:
         username = auth.get_username_from_token(token)
         user = auth.get_user_by_username(db, username)
@@ -249,38 +269,34 @@ async def api_system_stats(request: Request, db: Session = Depends(get_db)):
             return {"error": "Forbidden"}
     except:
         return {"error": "Unauthorized"}
-    
+
     # Collect stats (faster CPU interval for polling)
-    disk = shutil.disk_usage("/saas-data")
     pool_used, pool_limit, pool_pct = manager.get_pool_status(db)
-    
+
     return {
         "cpu_usage": psutil.cpu_percent(interval=0.1),
         "ram": {
             "percent": psutil.virtual_memory().percent,
             "used_gb": round(psutil.virtual_memory().used / (1024**3), 2),
-            "total_gb": round(psutil.virtual_memory().total / (1024**3), 2)
+            "total_gb": round(psutil.virtual_memory().total / (1024**3), 2),
         },
-        "pool": {
-            "used": pool_used,
-            "limit": pool_limit,
-            "percent": pool_pct
-        }
+        "pool": {"used": pool_used, "limit": pool_limit, "percent": pool_pct},
     }
+
 
 @router.post("/system/purge-storage")
 async def purge_storage(db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
     """Delete download residue and temporary files."""
     import shutil
-    
+
     # Directorios a limpiar
-    paths_to_clean = ["/tmp", "/app/temp"] # Ajusta según tu Dockerfile
-    
+    paths_to_clean = ["/tmp", "/app/temp"]  # Ajusta según tu Dockerfile
+
     # Extensiones de archivos basura (descargas incompletas)
     trash_extensions = [".part", ".ytdl", ".tmp", ".cache"]
-    
+
     bytes_freed = 0
-    
+
     try:
         # 1. Limpiar carpetas temporales globales
         for path in paths_to_clean:
@@ -300,25 +316,31 @@ async def purge_storage(db: Session = Depends(get_db), admin: database.User = De
                     file_path = os.path.join(root, f)
                     bytes_freed += os.path.getsize(file_path)
                     os.remove(file_path)
-            
+
             # Eliminar carpetas .spotdl-cache que suelen pesar bastante
             for d in dirs:
                 if d == ".spotdl-cache":
                     dir_path = os.path.join(root, d)
-                    bytes_freed += sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(dir_path) for f in fs)
+                    bytes_freed += sum(
+                        os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(dir_path) for f in fs
+                    )
                     shutil.rmtree(dir_path)
 
         freed_gb = round(bytes_freed / (1024**3), 3)
         return RedirectResponse(f"/admin/system?msg=Storage purge completed. Freed {freed_gb} GB", status_code=303)
-    
+
     except Exception as e:
         return RedirectResponse(f"/admin/system?error=Storage purge failed: {str(e)}", status_code=303)
 
+
 @router.post("/system/pool-limit")
-async def update_pool_limit(limit_gb: int = Form(...), db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
+async def update_pool_limit(
+    limit_gb: int = Form(...), db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)
+):
     """Actualiza el límite total del Pool"""
     try:
         from database import SystemSettings
+
         settings = db.query(SystemSettings).first()
         if not settings:
             settings = SystemSettings(pool_limit_gb=limit_gb)
@@ -332,16 +354,16 @@ async def update_pool_limit(limit_gb: int = Form(...), db: Session = Depends(get
 
 
 @router.post("/system/backups/create")
-async def create_backup(request: Request, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
+async def create_backup(
+    request: Request, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)
+):
     job_id = operations_service.queue_backup(admin.username, mode="manual")
     return RedirectResponse(f"/admin/system?msg=Backup job #{job_id} queued", status_code=303)
 
 
 @router.post("/system/backups/restore")
 async def restore_backup(
-    slot: str = Form(...),
-    db: Session = Depends(get_db),
-    admin: database.User = Depends(get_current_admin)
+    slot: str = Form(...), db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)
 ):
     if slot not in {"current", "previous"}:
         return RedirectResponse("/admin/system?error=Invalid backup slot", status_code=303)
@@ -356,7 +378,7 @@ async def update_backup_settings(
     autobackup_minute: int = Form(0),
     autobackup_timezone: str = Form("UTC"),
     db: Session = Depends(get_db),
-    admin: database.User = Depends(get_current_admin)
+    admin: database.User = Depends(get_current_admin),
 ):
     enabled = str(autobackup_enabled).lower() in {"1", "true", "on", "yes"}
     operations_service.update_autobackup_settings(enabled, autobackup_hour, autobackup_minute, autobackup_timezone)
@@ -365,38 +387,49 @@ async def update_backup_settings(
 
 
 @router.post("/system/updates/check")
-async def check_updates(request: Request, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
+async def check_updates(
+    request: Request, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)
+):
     job_id = operations_service.queue_check_update(admin.username)
     return RedirectResponse(f"/admin/system/updates/jobs/{job_id}", status_code=303)
 
 
 @router.post("/system/updates/apply")
-async def apply_updates(request: Request, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
+async def apply_updates(
+    request: Request, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)
+):
     job_id = operations_service.queue_apply_update(admin.username)
     return RedirectResponse(f"/admin/system/updates/jobs/{job_id}", status_code=303)
 
 
 @router.get("/system/updates/jobs/{job_id}")
-async def update_job_progress_page(job_id: int, request: Request, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
+async def update_job_progress_page(
+    job_id: int, request: Request, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)
+):
     job = operations_service.get_admin_job(db, job_id)
     if not job:
         return RedirectResponse("/admin/system?error=Update job not found", status_code=303)
     pool_used, pool_limit, pool_pct = manager.get_pool_status(db)
     updater_monitor_url = operations_service.get_update_monitor_path(job_id)
     updater_job_endpoint = f"/updater/api/jobs/{job_id}?access={operations_service.get_update_monitor_token(job_id)}"
-    return templates.TemplateResponse("update_progress.html", {
-        "request": request,
-        "job": job,
-        "pool": {"used": pool_used, "limit": pool_limit, "percent": pool_pct},
-        "username": admin.username,
-        "is_admin": True,
-        "updater_monitor_url": updater_monitor_url,
-        "updater_job_endpoint": updater_job_endpoint,
-    })
+    return templates.TemplateResponse(
+        "update_progress.html",
+        {
+            "request": request,
+            "job": job,
+            "pool": {"used": pool_used, "limit": pool_limit, "percent": pool_pct},
+            "username": admin.username,
+            "is_admin": True,
+            "updater_monitor_url": updater_monitor_url,
+            "updater_job_endpoint": updater_job_endpoint,
+        },
+    )
 
 
 @router.get("/api/system/jobs/{job_id}")
-async def get_admin_job_status(job_id: int, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
+async def get_admin_job_status(
+    job_id: int, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)
+):
     job = operations_service.get_admin_job(db, job_id)
     if not job:
         return JSONResponse({"error": "Job not found"}, status_code=404)
@@ -424,6 +457,7 @@ async def get_update_notification(db: Session = Depends(get_db), admin: database
 
 
 # --- ADMIN LIBRARY MANAGEMENT ---
+
 
 def _serialize_track(track):
     return {
@@ -484,7 +518,10 @@ def _build_duplicate_scan_result(db: Session, limit_groups: int, progress_callba
     ]
     if source_id_dupes:
         tracks_by_source_id = _group_tracks_by_value(
-            db.query(Track).filter(Track.source_id.in_(source_id_dupes)).order_by(Track.source_id.asc(), Track.id.asc()).all(),
+            db.query(Track)
+            .filter(Track.source_id.in_(source_id_dupes))
+            .order_by(Track.source_id.asc(), Track.id.asc())
+            .all(),
             "source_id",
         )
         for source_id in source_id_dupes:
@@ -504,7 +541,10 @@ def _build_duplicate_scan_result(db: Session, limit_groups: int, progress_callba
     ]
     if hash_dupes:
         tracks_by_hash = _group_tracks_by_value(
-            db.query(Track).filter(Track.file_hash.in_(hash_dupes)).order_by(Track.file_hash.asc(), Track.id.asc()).all(),
+            db.query(Track)
+            .filter(Track.file_hash.in_(hash_dupes))
+            .order_by(Track.file_hash.asc(), Track.id.asc())
+            .all(),
             "file_hash",
         )
         for file_hash in hash_dupes:
@@ -528,7 +568,10 @@ def _build_duplicate_scan_result(db: Session, limit_groups: int, progress_callba
     ]
     if fingerprint_dupes:
         tracks_by_fingerprint = _group_tracks_by_value(
-            db.query(Track).filter(Track.fingerprint.in_(fingerprint_dupes)).order_by(Track.fingerprint.asc(), Track.id.asc()).all(),
+            db.query(Track)
+            .filter(Track.fingerprint.in_(fingerprint_dupes))
+            .order_by(Track.fingerprint.asc(), Track.id.asc())
+            .all(),
             "fingerprint",
         )
         for fingerprint in fingerprint_dupes:
@@ -536,7 +579,9 @@ def _build_duplicate_scan_result(db: Session, limit_groups: int, progress_callba
             if not tracks:
                 continue
             first_track = tracks[0]
-            if not track_identity.is_semantic_identity_valid(first_track.artist_norm or "", first_track.title_norm or ""):
+            if not track_identity.is_semantic_identity_valid(
+                first_track.artist_norm or "", first_track.title_norm or ""
+            ):
                 continue
             _append_duplicate_group(groups_by_members, "semantic", f"semantic:{fingerprint}", tracks)
 
@@ -544,11 +589,13 @@ def _build_duplicate_scan_result(db: Session, limit_groups: int, progress_callba
     groups = []
     for group in groups_by_members.values():
         display_key = " | ".join(group["keys"])
-        groups.append({
-            "key": display_key,
-            "reasons": group["reasons"],
-            "tracks": group["tracks"],
-        })
+        groups.append(
+            {
+                "key": display_key,
+                "reasons": group["reasons"],
+                "tracks": group["tracks"],
+            }
+        )
 
     groups.sort(key=lambda item: (-len(item["tracks"]), item["key"]))
     total_count = len(groups)
@@ -623,22 +670,28 @@ def _query_tracks_with_fts(db, raw_query: str, limit: int):
             LIMIT :limit
         """)
         rows = db.execute(stmt, {"query": normalized, "limit": limit}).fetchall()
-        return [{
-            "id": row.id,
-            "title": row.title or "Unknown",
-            "artist": row.artist or "Unknown",
-            "filepath": row.filepath,
-            "source_provider": row.source_provider or "unknown",
-        } for row in rows]
+        return [
+            {
+                "id": row.id,
+                "title": row.title or "Unknown",
+                "artist": row.artist or "Unknown",
+                "filepath": row.filepath,
+                "source_provider": row.source_provider or "unknown",
+            }
+            for row in rows
+        ]
     except Exception:
         return []
 
+
 @router.get("/api/library/search")
-async def admin_search_library(q: str = "", db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
+async def admin_search_library(
+    q: str = "", db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)
+):
     """Search all tracks in the Pool (Admin only)"""
-    from fastapi.responses import JSONResponse
     from database import Track
-    
+    from fastapi.responses import JSONResponse
+
     if not q:
         tracks = db.query(Track).order_by(Track.created_at.desc(), Track.id.desc()).limit(50).all()
         payload = [_serialize_track(t) for t in tracks]
@@ -646,30 +699,40 @@ async def admin_search_library(q: str = "", db: Session = Depends(get_db), admin
         payload = _query_tracks_with_fts(db, q, 100)
         if not payload:
             query = q.lower()
-            tracks = db.query(Track).filter(
-                (Track.title.ilike(f"%{query}%")) | (Track.artist.ilike(f"%{query}%")) | (Track.album.ilike(f"%{query}%"))
-            ).order_by(Track.created_at.desc(), Track.id.desc()).limit(100).all()
+            tracks = (
+                db.query(Track)
+                .filter(
+                    (Track.title.ilike(f"%{query}%"))
+                    | (Track.artist.ilike(f"%{query}%"))
+                    | (Track.album.ilike(f"%{query}%"))
+                )
+                .order_by(Track.created_at.desc(), Track.id.desc())
+                .limit(100)
+                .all()
+            )
             payload = [_serialize_track(t) for t in tracks]
-    
+
     return JSONResponse(payload)
 
 
 @router.delete("/api/library/track/{track_id}")
-async def admin_delete_track(track_id: int, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
+async def admin_delete_track(
+    track_id: int, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)
+):
     """Delete a track from DB and disk (Admin only)"""
-    from fastapi.responses import JSONResponse
     from database import Track
-    
+    from fastapi.responses import JSONResponse
+
     track = db.query(Track).filter(Track.id == track_id).first()
     if not track:
         raise HTTPException(status_code=404, detail="Track not found")
-    
+
     filepath = track.filepath
-    
+
     # Delete from database (cascades to playlist items)
     db.delete(track)
     db.commit()
-    
+
     # Delete file from disk only if the DB path is inside an allowed media root.
     safe_filepath = None
     if filepath:
@@ -684,10 +747,12 @@ async def admin_delete_track(track_id: int, db: Session = Depends(get_db), admin
 
     if filepath and not safe_filepath:
         manager.invalidate_pool_status_cache()
-        return JSONResponse({
-            "success": True,
-            "warning": "DB deleted but file removal was skipped because the path is outside allowed media roots",
-        })
+        return JSONResponse(
+            {
+                "success": True,
+                "warning": "DB deleted but file removal was skipped because the path is outside allowed media roots",
+            }
+        )
 
     if safe_filepath:
         try:
@@ -695,7 +760,7 @@ async def admin_delete_track(track_id: int, db: Session = Depends(get_db), admin
             manager.invalidate_pool_status_cache()
         except Exception as e:
             return JSONResponse({"success": True, "warning": f"DB deleted but file removal failed: {str(e)}"})
-    
+
     return JSONResponse({"success": True, "message": "Track deleted successfully"})
 
 

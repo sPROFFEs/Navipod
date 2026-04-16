@@ -1,22 +1,22 @@
 """
 Download management endpoints.
 """
+
 import logging
 import os
-from urllib.parse import urlparse, parse_qs
-from fastapi import APIRouter, Request, Depends, Form, BackgroundTasks
-from fastapi.responses import RedirectResponse, JSONResponse
-from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from urllib.parse import parse_qs, urlparse
 
 import database
-import manager
 import downloader_service
+import manager
 import metadata_service
 import source_registry
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
+from fastapi.responses import JSONResponse, RedirectResponse
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-from .core import get_db, get_current_user_safe
-
+from .core import get_current_user_safe, get_db
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -26,6 +26,7 @@ TERMINAL_DOWNLOAD_STATUSES = ("completed", "finished", "failed", "error")
 
 
 # --- PYDANTIC MODELS ---
+
 
 class DownloadRequest(BaseModel):
     url: str
@@ -43,9 +44,10 @@ def _serialize_download_job(job, target: str | None = None):
     resolved_track = getattr(job, "resolved_track", None)
     resolved_track_title = None
     if resolved_track:
-        resolved_track_title = " - ".join(
-            part for part in [resolved_track.artist, resolved_track.title] if part
-        ).strip() or resolved_track.title
+        resolved_track_title = (
+            " - ".join(part for part in [resolved_track.artist, resolved_track.title] if part).strip()
+            or resolved_track.title
+        )
 
     return {
         "id": job.id,
@@ -120,6 +122,7 @@ async def _resolve_download_url(user, req: DownloadRequest) -> tuple[str, str]:
 
 # --- BACKGROUND TASK ---
 
+
 async def run_download_in_background(job_id: int, user_id: int):
     """Process a download job in the background"""
     bg_db = database.SessionLocal()
@@ -133,31 +136,32 @@ async def run_download_in_background(job_id: int, user_id: int):
 
 
 def _prune_terminal_download_jobs(db: Session, user_id: int, keep: int = DOWNLOAD_JOB_HISTORY_LIMIT):
-    terminal_jobs = db.query(database.DownloadJob.id).filter(
-        database.DownloadJob.user_id == user_id,
-        database.DownloadJob.status.in_(TERMINAL_DOWNLOAD_STATUSES)
-    ).order_by(database.DownloadJob.created_at.desc(), database.DownloadJob.id.desc()).all()
+    terminal_jobs = (
+        db.query(database.DownloadJob.id)
+        .filter(database.DownloadJob.user_id == user_id, database.DownloadJob.status.in_(TERMINAL_DOWNLOAD_STATUSES))
+        .order_by(database.DownloadJob.created_at.desc(), database.DownloadJob.id.desc())
+        .all()
+    )
 
     stale_ids = [row.id for row in terminal_jobs[keep:]]
     if not stale_ids:
         return 0
 
-    deleted = db.query(database.DownloadJob).filter(
-        database.DownloadJob.user_id == user_id,
-        database.DownloadJob.id.in_(stale_ids)
-    ).delete(synchronize_session=False)
+    deleted = (
+        db.query(database.DownloadJob)
+        .filter(database.DownloadJob.user_id == user_id, database.DownloadJob.id.in_(stale_ids))
+        .delete(synchronize_session=False)
+    )
     db.commit()
     return deleted
 
 
 # --- ENDPOINTS ---
 
+
 @router.post("/api/download")
 async def trigger_download(
-    req: DownloadRequest, 
-    background_tasks: BackgroundTasks,
-    request: Request,
-    db: Session = Depends(get_db)
+    req: DownloadRequest, background_tasks: BackgroundTasks, request: Request, db: Session = Depends(get_db)
 ):
     """Trigger download from external URL"""
     user = get_current_user_safe(db, request)
@@ -165,13 +169,12 @@ async def trigger_download(
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
     _prune_terminal_download_jobs(db, user.id)
-    
+
     # Pre-check global pool quota for immediate feedback
     pool_usage = manager.get_pool_status(db)
     if pool_usage[0] >= pool_usage[1]:  # used_gb >= limit_gb
         return JSONResponse(
-            {"error": f"Global pool limit reached ({pool_usage[1]}GB). Please delete some tracks."}, 
-            status_code=403
+            {"error": f"Global pool limit reached ({pool_usage[1]}GB). Please delete some tracks."}, status_code=403
         )
 
     resolved_url, resolution_mode = await _resolve_download_url(user, req)
@@ -194,11 +197,11 @@ async def trigger_download(
     db.add(job)
     db.commit()
     db.refresh(job)
-    
+
     # Trigger Background Task using the correct service
     dm = downloader_service.DownloadManager(db, user.id)
     background_tasks.add_task(dm.process_download, job.id)
-    
+
     message = "Download queued"
     if resolution_mode == "spotify-resolved":
         message = "Download queued using Spotify metadata fallback"
@@ -223,23 +226,25 @@ async def downloads_status(request: Request, db: Session = Depends(get_db)):
 
     _prune_terminal_download_jobs(db, user.id)
 
-    jobs = db.query(database.DownloadJob).filter(
-        database.DownloadJob.user_id == user.id
-    ).order_by(database.DownloadJob.created_at.desc()).limit(10).all()
+    jobs = (
+        db.query(database.DownloadJob)
+        .filter(database.DownloadJob.user_id == user.id)
+        .order_by(database.DownloadJob.created_at.desc())
+        .limit(10)
+        .all()
+    )
 
-    target_playlist_ids = {
-        job.target_modern_playlist_id
-        for job in jobs
-        if job.target_modern_playlist_id
-    }
+    target_playlist_ids = {job.target_modern_playlist_id for job in jobs if job.target_modern_playlist_id}
     playlist_names = {}
     if target_playlist_ids:
         playlist_names = {
             row.id: row.name
-            for row in db.query(database.Playlist.id, database.Playlist.name).filter(
+            for row in db.query(database.Playlist.id, database.Playlist.name)
+            .filter(
                 database.Playlist.id.in_(target_playlist_ids),
                 database.Playlist.owner_id == user.id,
-            ).all()
+            )
+            .all()
         }
 
     clean_jobs = []
@@ -253,22 +258,29 @@ async def downloads_status(request: Request, db: Session = Depends(get_db)):
         elif job.target_playlist_id:
             target = f"Legacy playlist #{job.target_playlist_id}"
 
-        current_file = os.path.basename(job.current_file) if job.current_file and "/" in job.current_file else job.current_file
+        current_file = (
+            os.path.basename(job.current_file) if job.current_file and "/" in job.current_file else job.current_file
+        )
 
-        clean_jobs.append({
-            **_serialize_download_job(job, target=target),
-            "current_file": current_file,
-        })
+        clean_jobs.append(
+            {
+                **_serialize_download_job(job, target=target),
+                "current_file": current_file,
+            }
+        )
     return JSONResponse(clean_jobs)
 
 
 @router.post("/api/downloads/start")
 async def start_download(
-    request: Request, background_tasks: BackgroundTasks,
-    url: str = Form(...), target_mode: str = Form(...),
-    target_playlist_id: int = Form(None), new_playlist_name: str = Form(None),
+    request: Request,
+    background_tasks: BackgroundTasks,
+    url: str = Form(...),
+    target_mode: str = Form(...),
+    target_playlist_id: int = Form(None),
+    new_playlist_name: str = Form(None),
     is_playlist: str = Form("false"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Start download from form submission"""
     user = get_current_user_safe(db, request)
@@ -276,13 +288,13 @@ async def start_download(
         return RedirectResponse("/login")
 
     _prune_terminal_download_jobs(db, user.id)
-    
+
     playlist_mode = is_playlist.lower() == "true"
-    
+
     # --- CRITICAL DESTINATION FIX ---
     if new_playlist_name and new_playlist_name.strip():
         target_mode = "new"
-    
+
     if playlist_mode and target_mode != "new" and target_mode != "existing":
         target_mode = "new"
         new_playlist_name = "Playlist Importada"  # Security fallback
@@ -292,7 +304,7 @@ async def start_download(
     if not playlist_mode and ("youtube.com" in url or "youtu.be" in url):
         parsed = urlparse(url)
         query = parse_qs(parsed.query)
-        if 'v' in query:
+        if "v" in query:
             clean_url = f"https://www.youtube.com/watch?v={query['v'][0]}"
         elif parsed.netloc == "youtu.be":
             clean_url = f"https://www.youtube.com/watch?v={parsed.path.lstrip('/')}"
@@ -306,22 +318,26 @@ async def start_download(
         resolution_mode="youtube-clean-url" if clean_url != url else "original",
         status="pending",
     )
-    
+
     # Assign destination logic
     if target_mode == "existing" and target_playlist_id:
-        playlist = db.query(database.Playlist).filter(
-            database.Playlist.id == target_playlist_id,
-            database.Playlist.owner_id == user.id,
-        ).first()
+        playlist = (
+            db.query(database.Playlist)
+            .filter(
+                database.Playlist.id == target_playlist_id,
+                database.Playlist.owner_id == user.id,
+            )
+            .first()
+        )
         if playlist:
             job.target_modern_playlist_id = playlist.id
     elif target_mode == "new" and new_playlist_name:
         job.new_playlist_name = new_playlist_name
-    
+
     db.add(job)
     db.commit()
     db.refresh(job)
-    
+
     background_tasks.add_task(run_download_in_background, job.id, user.id)
     return RedirectResponse("/downloads", status_code=303)
 
@@ -334,10 +350,13 @@ async def list_download_jobs(request: Request, db: Session = Depends(get_db)):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
     _prune_terminal_download_jobs(db, user.id)
-    
-    jobs = db.query(database.DownloadJob).filter(
-        database.DownloadJob.user_id == user.id
-    ).order_by(database.DownloadJob.created_at.desc()).limit(50).all()
-    
-    return JSONResponse([_serialize_download_job(j) for j in jobs])
 
+    jobs = (
+        db.query(database.DownloadJob)
+        .filter(database.DownloadJob.user_id == user.id)
+        .order_by(database.DownloadJob.created_at.desc())
+        .limit(50)
+        .all()
+    )
+
+    return JSONResponse([_serialize_download_job(j) for j in jobs])

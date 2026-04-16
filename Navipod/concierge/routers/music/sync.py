@@ -1,22 +1,21 @@
 """
 Sync state and heartbeat for multi-user scenarios.
 """
+
 import hashlib
 import logging
-import re
-from fastapi import APIRouter, Request, Depends
-from fastapi.responses import JSONResponse, Response, RedirectResponse, StreamingResponse
-from sqlalchemy.orm import Session
-import httpx
 
 import database
+import httpx
 import spotify_service
-import youtube_service
 import track_identity
+import youtube_service
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
+from sqlalchemy.orm import Session
 
-from .core import get_db, get_current_user_safe
+from .core import get_current_user_safe, get_db
 from .favorites import schedule_navidrome_sync
-
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -32,45 +31,34 @@ async def get_sync_state(request: Request, db: Session = Depends(get_db)):
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
+
     try:
         # Get counts
-        fav_count = db.query(database.UserFavorite).filter(
-            database.UserFavorite.user_id == user.id
-        ).count()
-        
-        playlist_count = db.query(database.Playlist).filter(
-            database.Playlist.owner_id == user.id
-        ).count()
-        
+        fav_count = db.query(database.UserFavorite).filter(database.UserFavorite.user_id == user.id).count()
+
+        playlist_count = db.query(database.Playlist).filter(database.Playlist.owner_id == user.id).count()
+
         # Get favorite IDs for quick state comparison
-        fav_ids = db.query(database.UserFavorite.track_id).filter(
-            database.UserFavorite.user_id == user.id
-        ).all()
+        fav_ids = db.query(database.UserFavorite.track_id).filter(database.UserFavorite.user_id == user.id).all()
         fav_id_list = sorted([f[0] for f in fav_ids])
-        
+
         # Get playlist data including item counts for change detection
-        playlists = db.query(database.Playlist).filter(
-            database.Playlist.owner_id == user.id
-        ).all()
-        
+        playlists = db.query(database.Playlist).filter(database.Playlist.owner_id == user.id).all()
+
         playlist_state = []
         for p in playlists:
             item_count = len(p.items) if p.items else 0
             playlist_state.append((p.id, p.name, item_count))
         playlist_state = sorted(playlist_state)
-        
+
         # Create version hash
         state_str = f"favs:{fav_id_list}|playlists:{playlist_state}"
         version_hash = hashlib.md5(state_str.encode()).hexdigest()[:12]
-        
-        return JSONResponse({
-            "fav_count": fav_count,
-            "fav_ids": fav_id_list,
-            "playlist_count": playlist_count,
-            "version": version_hash
-        })
-        
+
+        return JSONResponse(
+            {"fav_count": fav_count, "fav_ids": fav_id_list, "playlist_count": playlist_count, "version": version_hash}
+        )
+
     except Exception as e:
         logger.warning("Sync-state endpoint error: %s", e)
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -94,27 +82,24 @@ async def check_duplicate(url: str, request: Request, db: Session = Depends(get_
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
+
     source_id = track_identity.extract_source_id_from_url(url)
     if not source_id:
         return JSONResponse({"exists": False})
-    
+
     existing = db.query(database.Track).filter(database.Track.source_id == source_id).first()
     if existing:
-        return JSONResponse({
-            "exists": True,
-            "track": {
-                "id": existing.id,
-                "title": existing.title,
-                "artist": existing.artist
-            }
-        })
-    
+        return JSONResponse(
+            {"exists": True, "track": {"id": existing.id, "title": existing.title, "artist": existing.artist}}
+        )
+
     return JSONResponse({"exists": False})
 
 
 @router.get("/api/playback/preview")
-async def preview_playback(request: Request, url: str = None, title: str = None, spotify_id: str = None, db: Session = Depends(get_db)):
+async def preview_playback(
+    request: Request, url: str = None, title: str = None, spotify_id: str = None, db: Session = Depends(get_db)
+):
     """
     Hybrid Preview Handler:
     1. Spotify: Direct Redirect (CDN allows CORS) - Best performance
@@ -142,7 +127,7 @@ async def preview_playback(request: Request, url: str = None, title: str = None,
 
     # --- STRATEGY 2: YOUTUBE (Streaming Proxy) ---
     target_url = None
-    
+
     # A. Direct URL
     if url and ("youtube.com" in url or "youtu.be" in url):
         try:
@@ -158,10 +143,10 @@ async def preview_playback(request: Request, url: str = None, title: str = None,
             clean_query = title
             if spotify_id:
                 clean_query += " audio"  # Hint for better match
-            
+
             yt_res = await youtube_service.youtube_service.search_videos(clean_query, limit=1)
             if yt_res:
-                target_url = await youtube_service.youtube_service.get_audio_stream_url(yt_res[0]['id'])
+                target_url = await youtube_service.youtube_service.get_audio_stream_url(yt_res[0]["id"])
         except:
             pass
 
@@ -183,17 +168,17 @@ async def preview_playback(request: Request, url: str = None, title: str = None,
                     if resp.status_code >= 400:
                         logger.warning("Preview proxy remote error %s for %s", resp.status_code, target_url[:60])
                         return
-                    
+
                     async for chunk in resp.aiter_bytes(chunk_size=16384):
                         yield chunk
-            except (httpx.RequestError, OSError, RuntimeError, GeneratorExit) as e:
+            except (httpx.RequestError, OSError, RuntimeError, GeneratorExit):
                 # Client disconnected or network error - suppress noise
                 pass
             except Exception as e:
                 logger.warning("Preview proxy runtime error: %s", e)
 
-    return StreamingResponse(stream_generator(), media_type="audio/mpeg", headers={
-        "Accept-Ranges": "bytes",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive"
-    })
+    return StreamingResponse(
+        stream_generator(),
+        media_type="audio/mpeg",
+        headers={"Accept-Ranges": "bytes", "Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )

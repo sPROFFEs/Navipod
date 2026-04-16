@@ -1,25 +1,26 @@
 """
 Core utilities and shared dependencies for music routers.
 """
-import os
-from fastapi import APIRouter, Request, Depends
-from fastapi.responses import RedirectResponse, JSONResponse, Response
-from sqlalchemy.orm import Session
-from PIL import Image
+
 import io
-import httpx
+import os
 
-import database
 import auth
-import utils
+import database
+import httpx
 import manager
+import utils
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse, RedirectResponse, Response
+from PIL import Image
 from shared_templates import templates
-
+from sqlalchemy.orm import Session
 
 router = APIRouter()
 
 
 # --- SHARED DEPENDENCIES ---
+
 
 def get_db():
     """Database session dependency"""
@@ -43,6 +44,7 @@ def get_current_user_safe(db: Session, request: Request):
 
 # --- UTILITY ENDPOINTS ---
 
+
 @router.get("/api/proxy-image")
 async def proxy_image(url: str):
     """Proxy and optimize external images"""
@@ -51,23 +53,22 @@ async def proxy_image(url: str):
 
     async with httpx.AsyncClient() as client:
         resp = await client.get(url)
-        
+
     # Process image with Pillow
     img = Image.open(io.BytesIO(resp.content))
     img.thumbnail((300, 300))  # Resize to card size
-    
+
     img_io = io.BytesIO()
     img.save(img_io, format="WEBP", quality=80)  # Convert to WebP
     img_io.seek(0)
-    
+
     return Response(
-        content=img_io.getvalue(), 
-        media_type="image/webp",
-        headers={"Cache-Control": "public, max-age=604800"}
+        content=img_io.getvalue(), media_type="image/webp", headers={"Cache-Control": "public, max-age=604800"}
     )
 
 
 # --- HTML VIEWS ---
+
 
 @router.get("/downloads")
 async def downloads_page(request: Request, db: Session = Depends(get_db)):
@@ -82,7 +83,7 @@ async def downloads_page(request: Request, db: Session = Depends(get_db)):
         physical_folders = [f for f in os.listdir(music_root) if os.path.isdir(os.path.join(music_root, f))]
         db_playlists = db.query(database.Playlist).filter(database.Playlist.owner_id == user.id).all()
         db_names = [p.name for p in db_playlists]
-        
+
         changes = False
         for folder in physical_folders:
             if folder not in db_names:
@@ -93,16 +94,19 @@ async def downloads_page(request: Request, db: Session = Depends(get_db)):
             db.commit()
 
     playlists = db.query(database.Playlist).filter(database.Playlist.owner_id == user.id).all()
-    
+
     # Global Quota
     u_gb, l_gb, pct = manager.get_pool_status(db)
 
-    return templates.TemplateResponse("downloads.html", {
-        "request": request, 
-        "username": user.username, 
-        "playlists": playlists,
-        "pool": {"used": u_gb, "limit": l_gb, "percent": pct}
-    })
+    return templates.TemplateResponse(
+        "downloads.html",
+        {
+            "request": request,
+            "username": user.username,
+            "playlists": playlists,
+            "pool": {"used": u_gb, "limit": l_gb, "percent": pct},
+        },
+    )
 
 
 @router.get("/library")
@@ -111,15 +115,14 @@ async def library_page(request: Request, db: Session = Depends(get_db)):
     user = get_current_user_safe(db, request)
     if not user:
         return RedirectResponse("/login")
-    
+
     # Global Quota
     u_gb, l_gb, pct = manager.get_pool_status(db)
-    
-    return templates.TemplateResponse("library.html", {
-        "request": request, 
-        "username": user.username,
-        "pool": {"used": u_gb, "limit": l_gb, "percent": pct}
-    })
+
+    return templates.TemplateResponse(
+        "library.html",
+        {"request": request, "username": user.username, "pool": {"used": u_gb, "limit": l_gb, "percent": pct}},
+    )
 
 
 @router.get("/search")
@@ -128,16 +131,19 @@ async def search_page(request: Request, db: Session = Depends(get_db)):
     user = get_current_user_safe(db, request)
     if not user:
         return RedirectResponse("/login")
-    
+
     # Need playlists for the modal dropdown
     playlists = db.query(database.Playlist).filter(database.Playlist.owner_id == user.id).all()
-    
+
     # Pool Status
     u_gb, l_gb, pct = manager.get_pool_status(db)
 
-    return templates.TemplateResponse("search.html", {
-        "request": request, 
-        "username": user.username, 
-        "playlists": playlists,
-        "pool": {"used": u_gb, "limit": l_gb, "percent": pct}
-    })
+    return templates.TemplateResponse(
+        "search.html",
+        {
+            "request": request,
+            "username": user.username,
+            "playlists": playlists,
+            "pool": {"used": u_gb, "limit": l_gb, "percent": pct},
+        },
+    )

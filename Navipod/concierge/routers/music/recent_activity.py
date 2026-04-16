@@ -1,17 +1,16 @@
 """
 Recent playlists and saved radios tracking per user.
 """
+
 from __future__ import annotations
 
+import personalization_service
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-import personalization_service
-
-from .core import get_db, get_current_user_safe
-
+from .core import get_current_user_safe, get_db
 
 router = APIRouter()
 

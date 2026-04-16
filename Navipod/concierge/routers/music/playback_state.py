@@ -1,20 +1,19 @@
 """
 Persistent playback queue state per user.
 """
+
 from __future__ import annotations
 
 import json
 from typing import Any
 
+import database
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-import database
-
-from .core import get_db, get_current_user_safe
-
+from .core import get_current_user_safe, get_db
 
 router = APIRouter()
 
@@ -132,21 +131,19 @@ async def get_playback_queue_state(request: Request, db: Session = Depends(get_d
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-    row = db.query(database.PlaybackQueueState).filter(
-        database.PlaybackQueueState.user_id == user.id
-    ).first()
+    row = db.query(database.PlaybackQueueState).filter(database.PlaybackQueueState.user_id == user.id).first()
     return JSONResponse(_serialize_state(row))
 
 
 @router.put("/api/playback/queue-state")
-async def save_playback_queue_state(payload: PlaybackQueueStateRequest, request: Request, db: Session = Depends(get_db)):
+async def save_playback_queue_state(
+    payload: PlaybackQueueStateRequest, request: Request, db: Session = Depends(get_db)
+):
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-    existing = db.query(database.PlaybackQueueState).filter(
-        database.PlaybackQueueState.user_id == user.id
-    ).first()
+    existing = db.query(database.PlaybackQueueState).filter(database.PlaybackQueueState.user_id == user.id).first()
 
     if not payload.persist_enabled:
         if existing:
@@ -181,9 +178,7 @@ async def clear_playback_queue_state(request: Request, db: Session = Depends(get
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-    row = db.query(database.PlaybackQueueState).filter(
-        database.PlaybackQueueState.user_id == user.id
-    ).first()
+    row = db.query(database.PlaybackQueueState).filter(database.PlaybackQueueState.user_id == user.id).first()
     if row:
         db.delete(row)
         db.commit()

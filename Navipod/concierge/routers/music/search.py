@@ -1,25 +1,25 @@
 """
 Unified search: local library plus remote providers.
 """
+
 import logging
-from fastapi import APIRouter, Request, Depends
-from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from pydantic import BaseModel
 
 import database
+import metadata_cache
+import metadata_service
 import spotify_service
 import youtube_service
-import metadata_service
-import metadata_cache
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
 from lastfm_service import lastfm_service
-from musicbrainz_service import musicbrainz_service
 from limiter import limiter
+from musicbrainz_service import musicbrainz_service
+from pydantic import BaseModel
 from search_utils import build_fts_query, spotify_source_candidates, youtube_source_candidates
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-from .core import get_db, get_current_user_safe
-
+from .core import get_current_user_safe, get_db
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -42,10 +42,12 @@ def _search_local_tracks(db: Session, raw_query: str, limit: int = 50):
         except Exception:
             pass
 
-    return db.query(database.Track).filter(
-        (database.Track.title.ilike(f"%{raw_query}%")) |
-        (database.Track.artist.ilike(f"%{raw_query}%"))
-    ).limit(limit).all()
+    return (
+        db.query(database.Track)
+        .filter((database.Track.title.ilike(f"%{raw_query}%")) | (database.Track.artist.ilike(f"%{raw_query}%")))
+        .limit(limit)
+        .all()
+    )
 
 
 def _fetch_existing_source_ids(db: Session, candidate_ids: set[str]) -> set[str]:
@@ -54,6 +56,8 @@ def _fetch_existing_source_ids(db: Session, candidate_ids: set[str]) -> set[str]
         return set()
     rows = db.query(database.Track.source_id).filter(database.Track.source_id.in_(normalized)).all()
     return {row[0] for row in rows if row and row[0]}
+
+
 def _cover_proxy(artist: str, title: str) -> str:
     return f"/api/cover/resolve?artist={artist}&title={title}"
 
@@ -85,7 +89,7 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
 
     # 1. LOCAL SEARCH (Database)
     local_tracks = _search_local_tracks(db, q, limit=50) if source in ["all", "local"] else []
-    
+
     for t in local_tracks:
         if source in ["all", "local"]:
             res = {
@@ -98,7 +102,7 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
                 "thumbnail": f"/api/cover/{t.id}",
                 "source": "local",
                 "is_local": True,
-                "file_hash": t.file_hash
+                "file_hash": t.file_hash,
             }
             results.append(res)
         if t.source_id:
@@ -106,31 +110,29 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
 
     # 2. REMOTE SEARCH (If requested)
     remote_results = []
-    
+
     # YouTube Search
     if source in ["all", "youtube"]:
         try:
             yt_items = await youtube_service.youtube_service.search_videos(q, limit=20)
             youtube_existing_ids = _fetch_existing_source_ids(
                 db,
-                {
-                    candidate
-                    for item in yt_items
-                    for candidate in youtube_source_candidates(item.get("id"))
-                },
+                {candidate for item in yt_items for candidate in youtube_source_candidates(item.get("id"))},
             )
             for item in yt_items:
-                vid = item['id']
+                vid = item["id"]
                 if not youtube_source_candidates(vid).intersection(local_ids | youtube_existing_ids):
-                    remote_results.append({
-                        "id": item.get('url') or f"https://www.youtube.com/watch?v={item['id']}",
-                        "title": item.get('title', 'Unknown'),
-                        "artist": item.get('artist', 'YouTube'),
-                        "album": "YouTube",
-                        "thumbnail": item.get('image', '/static/img/default_cover.png'),
-                        "is_local": False,
-                        "source": "youtube"
-                    })
+                    remote_results.append(
+                        {
+                            "id": item.get("url") or f"https://www.youtube.com/watch?v={item['id']}",
+                            "title": item.get("title", "Unknown"),
+                            "artist": item.get("artist", "YouTube"),
+                            "album": "YouTube",
+                            "thumbnail": item.get("image", "/static/img/default_cover.png"),
+                            "is_local": False,
+                            "source": "youtube",
+                        }
+                    )
         except Exception as e:
             logger.warning("Unified search YouTube error: %s", e)
 
@@ -151,7 +153,9 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
                     {
                         candidate
                         for item in sp_items
-                        for candidate in spotify_source_candidates(item.get("id") if isinstance(item.get("id"), str) else "")
+                        for candidate in spotify_source_candidates(
+                            item.get("id") if isinstance(item.get("id"), str) else ""
+                        )
                     },
                 )
                 for item in sp_items:
@@ -163,21 +167,23 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
                         dedup_id = f"spotify:track:{normalized_id}"
 
                     if dedup_id and dedup_id not in (local_ids | spotify_existing_ids):
-                        title = item.get('name') or item.get('title') or 'Unknown'
-                        artist = item.get('artist', 'Unknown')
-                        album = item.get('album') or source_name.title()
-                        remote_id = item.get('url') or f"https://open.spotify.com/track/{item.get('id')}"
+                        title = item.get("name") or item.get("title") or "Unknown"
+                        artist = item.get("artist", "Unknown")
+                        album = item.get("album") or source_name.title()
+                        remote_id = item.get("url") or f"https://open.spotify.com/track/{item.get('id')}"
 
-                        remote_results.append({
-                            "id": remote_id,
-                            "title": title,
-                            "artist": artist,
-                            "album": album,
-                            "thumbnail": item.get('image', '/static/img/default_cover.png'),
-                            "preview_url": item.get('preview_url'),
-                            "is_local": False,
-                            "source": source_name
-                        })
+                        remote_results.append(
+                            {
+                                "id": remote_id,
+                                "title": title,
+                                "artist": artist,
+                                "album": album,
+                                "thumbnail": item.get("image", "/static/img/default_cover.png"),
+                                "preview_url": item.get("preview_url"),
+                                "is_local": False,
+                                "source": source_name,
+                            }
+                        )
         except Exception as e:
             logger.warning("Unified search Spotify error: %s", e)
 
@@ -189,21 +195,23 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
             if lastfm_key:
                 lfm_items = await lastfm_service.search_tracks(lastfm_key, q, limit=20)
                 for item in lfm_items:
-                    title = item.get('name') or item.get('title') or 'Unknown'
-                    artist = item.get('artist', 'Unknown')
-                    dedup_id = item.get('id', '')
+                    title = item.get("name") or item.get("title") or "Unknown"
+                    artist = item.get("artist", "Unknown")
+                    dedup_id = item.get("id", "")
                     if dedup_id and dedup_id not in local_ids:
                         # Use proxy for cover art (Last.fm track.search images are often blank)
-                        thumbnail = item.get('image') or _cover_proxy(artist, title)
-                        remote_results.append({
-                            "id": f"ytsearch1:{artist} {title} official audio",
-                            "title": title,
-                            "artist": artist,
-                            "album": item.get('album') or "Last.fm",
-                            "thumbnail": thumbnail,
-                            "is_local": False,
-                            "source": "lastfm"
-                        })
+                        thumbnail = item.get("image") or _cover_proxy(artist, title)
+                        remote_results.append(
+                            {
+                                "id": f"ytsearch1:{artist} {title} official audio",
+                                "title": title,
+                                "artist": artist,
+                                "album": item.get("album") or "Last.fm",
+                                "thumbnail": thumbnail,
+                                "is_local": False,
+                                "source": "lastfm",
+                            }
+                        )
         except Exception as e:
             logger.warning("Unified search Last.fm error: %s", e)
 
@@ -213,20 +221,22 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
             settings = user.download_settings
             mb_items = await musicbrainz_service.search_recordings(q, limit=20)
             for item in mb_items:
-                title = item.get('name') or 'Unknown'
-                artist = item.get('artist', 'Unknown')
-                dedup_id = item.get('id', '')
+                title = item.get("name") or "Unknown"
+                artist = item.get("artist", "Unknown")
+                dedup_id = item.get("id", "")
                 if dedup_id and dedup_id not in local_ids:
                     thumbnail = _cover_proxy(artist, title)
-                    remote_results.append({
-                        "id": f"ytsearch1:{artist} {title} official audio",
-                        "title": title,
-                        "artist": artist,
-                        "album": item.get('album') or "MusicBrainz",
-                        "thumbnail": thumbnail,
-                        "is_local": False,
-                        "source": "musicbrainz"
-                    })
+                    remote_results.append(
+                        {
+                            "id": f"ytsearch1:{artist} {title} official audio",
+                            "title": title,
+                            "artist": artist,
+                            "album": item.get("album") or "MusicBrainz",
+                            "thumbnail": thumbnail,
+                            "is_local": False,
+                            "source": "musicbrainz",
+                        }
+                    )
         except Exception as e:
             logger.warning("Unified search MusicBrainz error: %s", e)
 
@@ -239,7 +249,7 @@ async def api_search(source: str, q: str, request: Request, db: Session = Depend
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse([], status_code=401)
-    
+
     if not q:
         return JSONResponse([])
 
@@ -250,7 +260,7 @@ async def api_search(source: str, q: str, request: Request, db: Session = Depend
             settings = user.download_settings
             if not settings or not settings.spotify_client_id or not settings.spotify_client_secret:
                 return JSONResponse({"error": "No providers configured"}, status_code=400)
-            
+
             items = await spotify_service.spotify_service.search_tracks(
                 settings.spotify_client_id,
                 settings.spotify_client_secret,
@@ -275,7 +285,7 @@ async def api_search(source: str, q: str, request: Request, db: Session = Depend
         elif source == "musicbrainz":
             items = await musicbrainz_service.search_recordings(q, limit=20)
             return JSONResponse(items)
-            
+
     except Exception as e:
         logger.warning("Search endpoint error: %s", e)
         return JSONResponse({"error": str(e)}, status_code=500)
