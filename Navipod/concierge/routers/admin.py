@@ -1,4 +1,3 @@
-import errno
 import os
 import shutil
 import subprocess
@@ -184,29 +183,6 @@ async def reset_user_password(
     db.commit()
 
     return {"msg": f"Password for {user_to_edit.username} updated successfully"}
-
-
-@router.post("/system/flush-ram")
-async def flush_ram(db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
-    """Clears RAM cache (Requires root privileges on host)"""
-    try:
-        # Sincroniza y limpia caches
-        subprocess.run(["sync"], check=True)
-        # Nota: En Docker, esto solo funciona si el contenedor tiene privilegios o mapeo de /proc
-        # Si falla, es normal por restricciones de seguridad de Docker.
-        with open("/proc/sys/vm/drop_caches", "w", encoding="utf-8") as drop_caches:
-            drop_caches.write("3\n")
-        return RedirectResponse("/admin/system?msg=RAM Cache cleared successfully", status_code=303)
-    except OSError as e:
-        if e.errno in {errno.EROFS, errno.EPERM, errno.EACCES}:
-            return RedirectResponse(
-                "/admin/system?msg=RAM cache flush is not available in this container. "
-                "The host exposes /proc/sys/vm/drop_caches as read-only; no action was taken.",
-                status_code=303,
-            )
-        return RedirectResponse(f"/admin/system?error=Could not clear RAM: {str(e)}", status_code=303)
-    except Exception as e:
-        return RedirectResponse(f"/admin/system?error=Could not clear RAM: {str(e)}", status_code=303)
 
 
 @router.get("/system")

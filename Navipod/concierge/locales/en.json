@@ -157,7 +157,6 @@
     "monitor.badge": "Real-time Server Metrics",
     "monitor.header": "System Status",
     "monitor.purge_trash": "Clear Trash",
-    "monitor.flush_ram": "Flush RAM",
     "monitor.admin_link": "Admin Panel",
     "monitor.cpu_load": "CPU USAGE",
     "monitor.ram_usage": "MEMORY USAGE",

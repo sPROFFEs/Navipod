@@ -13,11 +13,6 @@
                     <i data-lucide="trash-2"></i><span>{{ _("monitor.purge_trash") }}</span>
                 </button>
             </form>
-            <form action="/admin/system/flush-ram" method="post" class="monitor-form" data-confirm="Clear Linux page cache for the host? This may have little effect inside Docker depending on privileges." data-title="Flush RAM cache">
-                <button type="submit" class="monitor-danger">
-                    <i data-lucide="zap"></i><span>{{ _("monitor.flush_ram") }}</span>
-                </button>
-            </form>
             <a href="/admin" class="monitor-button">
                 <i data-lucide="users"></i><span>{{ _("monitor.admin_link") }}</span>
             </a>

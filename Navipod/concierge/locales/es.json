@@ -155,7 +155,6 @@
     "monitor.badge": "Estado del Servidor en Tiempo Real",
     "monitor.header": "Estado del Sistema",
     "monitor.purge_trash": "Limpiar Basura",
-    "monitor.flush_ram": "Liberar RAM",
     "monitor.admin_link": "Panel Admin",
     "monitor.cpu_load": "USO DE CPU",
     "monitor.ram_usage": "USO DE MEMORIA",
