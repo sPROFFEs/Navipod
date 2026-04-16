@@ -184,8 +184,13 @@ export async function adminFindDuplicates() {
             return;
         }
 
+        const truncatedNote = data.truncated
+            ? `<div class="admin-feedback">Showing ${data.returned_count || data.groups.length} of ${data.count} groups. Refine cleanup in batches to keep the admin panel responsive.</div>`
+            : '';
+
         container.innerHTML = `
             <div class="admin-duplicate-summary">${data.count} duplicate groups found</div>
+            ${truncatedNote}
             <div class="admin-duplicate-groups">
                 ${data.groups.map((group) => `
                     <section class="admin-duplicate-group">

@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     BACKUP_SCHEDULER_POLL_SECONDS: int = 60
     UPDATE_SOURCE_REPO_URL: str = "https://github.com/sPROFFEs/Navipod"
     UPDATE_SOURCE_BRANCH: str = "main"
-    UPDATE_MANAGED_SERVICES: str = "concierge nginx tunnel"
+    UPDATE_MANAGED_SERVICES: str = "concierge"
     
     # Allowed Hosts (CORS & TrustedHost)
     DOMAIN: str = "localhost"

@@ -6,6 +6,7 @@ from datetime import datetime, timezone, timedelta
 import database
 
 ADMIN_JOB_RETENTION_LIMIT = 200
+ADMIN_JOB_LOG_LIMIT = 200
 GLOBAL_OPERATION_LOCK = "admin-global-operation"
 LOCK_TIMEOUT_MINUTES = 120
 
@@ -159,13 +160,17 @@ def update_admin_job_progress(job_id: int, *, message=None, status=None, phase=N
             details["phase"] = phase
         if progress is not None:
             details["progress"] = progress
+        details["last_heartbeat_at"] = utcnow().isoformat()
         if extra:
             details.update(extra)
         if message:
-            details.setdefault("logs", []).append({
+            logs = details.setdefault("logs", [])
+            logs.append({
                 "at": utcnow().isoformat(),
                 "message": message,
             })
+            if len(logs) > ADMIN_JOB_LOG_LIMIT:
+                details["logs"] = logs[-ADMIN_JOB_LOG_LIMIT:]
             job.message = message
         if status:
             job.status = status

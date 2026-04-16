@@ -284,9 +284,10 @@
 }
 .monitor-pool-form-row {
     display: grid;
-    grid-template-columns: minmax(200px, 320px) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(118px, max-content);
     gap: 12px;
     align-items: end;
+    min-width: 0;
 }
 .monitor-backup-form {
     display: grid;
@@ -606,6 +607,11 @@
     .monitor-pool-form-row,
     .monitor-backup-form-row { grid-template-columns: 1fr; }
     .monitor-card-value strong { font-size: 2rem; }
+}
+@media (max-width: 1120px) {
+    .monitor-grid.columns-2 .monitor-pool-form-row {
+        grid-template-columns: 1fr;
+    }
 }
 
 /* Admin + System polish */
