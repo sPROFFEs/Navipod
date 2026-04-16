@@ -1,9 +1,9 @@
 import os
 import time
 import socket
+import threading
 import docker
 
-client = docker.from_env()
 client = docker.from_env()
 from navipod_config import settings
 DATA_ROOT = f"{settings.MUSIC_ROOT}" # Ruta interna del contenedor (/saas-data/users) 
@@ -12,6 +12,12 @@ DATA_ROOT = f"{settings.MUSIC_ROOT}" # Ruta interna del contenedor (/saas-data/u
 # Avoids saturating the system with constant Health Checks
 # Estructura: { "username": ("172.xx.xx.xx", timestamp) }
 ip_cache = {}
+_pool_status_lock = threading.Lock()
+_pool_status_cache = {
+    "measure_root": None,
+    "used_bytes": 0,
+    "timestamp": 0.0,
+}
 
 def provision_user_env(username: str):
     """Creates folders and initial configuration"""
@@ -156,21 +162,49 @@ def get_dir_size(path):
         pass
     return total
 
-def get_pool_status(db):
+def invalidate_pool_status_cache():
+    with _pool_status_lock:
+        _pool_status_cache["timestamp"] = 0.0
+
+
+def _measure_pool_bytes(force_refresh: bool = False):
+    measure_root = os.path.dirname(DATA_ROOT.rstrip('/'))
+    if not measure_root or measure_root == "/":
+        measure_root = "/saas-data"
+
+    now = time.time()
+    ttl = max(int(getattr(settings, "POOL_STATUS_CACHE_TTL_SECONDS", 60) or 0), 0)
+
+    with _pool_status_lock:
+        cache_fresh = (
+            not force_refresh
+            and ttl > 0
+            and _pool_status_cache["measure_root"] == measure_root
+            and now - float(_pool_status_cache["timestamp"] or 0) < ttl
+        )
+        if cache_fresh:
+            return int(_pool_status_cache["used_bytes"] or 0)
+
+    used_bytes = get_dir_size(measure_root)
+    with _pool_status_lock:
+        _pool_status_cache.update({
+            "measure_root": measure_root,
+            "used_bytes": used_bytes,
+            "timestamp": time.time(),
+        })
+    return used_bytes
+
+
+def get_pool_status(db, force_refresh: bool = False):
     """
     Retorna (used_gb, limit_gb, percent) del Global Pool.
     Calcula el uso total de HOST_DATA_ROOT (/saas-data).
     Lee el limit_gb de SystemSettings.
     """
     try:
-        # 1. Calcular uso total del disco (Global)
-        # Usamos DATA_ROOT que apunta a /saas-data/users, pero idealmente queremos todo /saas-data
-        # Ajuste: DATA_ROOT es /saas-data/users según config.
-        # Vamos un nivel arriba para medir todo (pool + users)
-        measure_root = os.path.dirname(DATA_ROOT.rstrip('/'))
-        if not measure_root or measure_root == "/": measure_root = "/saas-data"
-
-        used_bytes = get_dir_size(measure_root)
+        # 1. Calcular uso total del disco (Global). This recursive scan is
+        # cached because admin/system screens poll it frequently.
+        used_bytes = _measure_pool_bytes(force_refresh=force_refresh)
         used_gb = used_bytes / (1024**3)
         
         # 2. Obtener Límite Global

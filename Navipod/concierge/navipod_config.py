@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     COMPOSE_ENV_FILE: str = "/saas-data/config/navipod.env"
     RUNTIME_ENV_FILE: str = "/run/navipod/.env"
     CONCURRENT_DOWNLOADS: int = 3
+    POOL_STATUS_CACHE_TTL_SECONDS: int = 60
     COOKIE_SECURE: bool = True
     BACKUP_SCHEDULER_POLL_SECONDS: int = 60
     UPDATE_SOURCE_REPO_URL: str = "https://github.com/sPROFFEs/Navipod"

@@ -12,6 +12,7 @@ import database
 import manager
 import downloader_service
 import metadata_service
+import source_registry
 
 from .core import get_db, get_current_user_safe
 
@@ -33,26 +34,7 @@ class DownloadRequest(BaseModel):
 
 
 def _infer_source_label(raw_source: str | None, raw_url: str | None) -> str:
-    source = (raw_source or "").strip().lower()
-    if source in {"spotify", "youtube", "musicbrainz", "lastfm", "soundcloud", "audius", "jamendo"}:
-        return source
-
-    url = (raw_url or "").strip().lower()
-    if "spotify.com" in url:
-        return "spotify"
-    if "youtube.com" in url or "youtu.be" in url:
-        return "youtube"
-    if "musicbrainz.org" in url:
-        return "musicbrainz"
-    if "last.fm" in url:
-        return "lastfm"
-    if "soundcloud.com" in url:
-        return "soundcloud"
-    if "audius.co" in url:
-        return "audius"
-    if "jamendo.com" in url:
-        return "jamendo"
-    return "external"
+    return source_registry.infer_source(raw_source, raw_url)
 
 
 async def _resolve_download_url(user, req: DownloadRequest) -> tuple[str, str]:

@@ -20,6 +20,7 @@ import httpx
 import mutagen
 from mutagen.easyid3 import EasyID3
 import track_identity
+import source_registry
 try:
     from mutagen.id3 import ID3, APIC
 except ImportError:
@@ -178,6 +179,7 @@ class DownloadManager:
             self.db.add(track)
             self.db.commit()
             self.db.refresh(track)
+            manager.invalidate_pool_status_cache()
             return track
         except Exception:
             self.db.rollback()
@@ -487,7 +489,7 @@ class DownloadManager:
                             source_id=source_id,
                             file_hash=file_hash,
                             identity=identity,
-                            source_provider=(job.requested_source or "download"),
+                            source_provider=source_registry.normalize_source(job.requested_source, default="download"),
                         )
 
                     # E. Link to Playlist (Only if requested)

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Depends, Form, HTTPException
+from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -14,6 +14,9 @@ import path_security
 
 router = APIRouter(prefix="/admin")
 from shared_templates import templates
+
+MAX_DUPLICATE_VALUE_SCAN = 500
+TRACK_DELETE_ROOTS = ("/saas-data/pool", "/saas-data/users")
 
 def get_db():
     db = database.SessionLocal()
@@ -130,6 +133,7 @@ async def delete_user(
         # 4. DB PURGE
         db.delete(user_del)
         db.commit()
+        manager.invalidate_pool_status_cache()
 
         if bytes_to_free > 1024**3:
             freed_str = f"{round(bytes_to_free / 1024**3, 2)} GB"
@@ -508,10 +512,29 @@ async def admin_delete_track(track_id: int, db: Session = Depends(get_db), admin
     db.delete(track)
     db.commit()
     
-    # Delete file from disk
-    if filepath and os.path.exists(filepath):
+    # Delete file from disk only if the DB path is inside an allowed media root.
+    safe_filepath = None
+    if filepath:
+        for root in TRACK_DELETE_ROOTS:
+            try:
+                candidate = path_security.resolve_under(filepath, root)
+                if candidate.exists() and candidate.is_file():
+                    safe_filepath = candidate
+                    break
+            except path_security.UnsafePathError:
+                continue
+
+    if filepath and not safe_filepath:
+        manager.invalidate_pool_status_cache()
+        return JSONResponse({
+            "success": True,
+            "warning": "DB deleted but file removal was skipped because the path is outside allowed media roots",
+        })
+
+    if safe_filepath:
         try:
-            os.remove(filepath)
+            safe_filepath.unlink()
+            manager.invalidate_pool_status_cache()
         except Exception as e:
             return JSONResponse({"success": True, "warning": f"DB deleted but file removal failed: {str(e)}"})
     
@@ -519,7 +542,11 @@ async def admin_delete_track(track_id: int, db: Session = Depends(get_db), admin
 
 
 @router.get("/api/library/duplicates")
-async def admin_find_duplicates(db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
+async def admin_find_duplicates(
+    limit_groups: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    admin: database.User = Depends(get_current_admin),
+):
     """Find duplicate tracks by source_id, file_hash, or semantic fingerprint (Admin only)"""
     from fastapi.responses import JSONResponse
     from database import Track
@@ -527,7 +554,16 @@ async def admin_find_duplicates(db: Session = Depends(get_db), admin: database.U
     
     groups_by_members = {}
 
-    source_id_dupes = [row[0] for row in db.query(Track.source_id).filter(Track.source_id.isnot(None)).group_by(Track.source_id).having(func.count() > 1).all()]
+    source_id_dupes = [
+        row[0]
+        for row in db.query(Track.source_id)
+        .filter(Track.source_id.isnot(None))
+        .group_by(Track.source_id)
+        .having(func.count() > 1)
+        .order_by(func.count().desc())
+        .limit(MAX_DUPLICATE_VALUE_SCAN)
+        .all()
+    ]
     if source_id_dupes:
         tracks_by_source_id = _group_tracks_by_value(
             db.query(Track).filter(Track.source_id.in_(source_id_dupes)).order_by(Track.source_id.asc(), Track.id.asc()).all(),
@@ -537,7 +573,16 @@ async def admin_find_duplicates(db: Session = Depends(get_db), admin: database.U
             tracks = tracks_by_source_id.get(source_id, [])
             _append_duplicate_group(groups_by_members, "source_id", f"source_id:{source_id}", tracks)
 
-    hash_dupes = [row[0] for row in db.query(Track.file_hash).filter(Track.file_hash.isnot(None)).group_by(Track.file_hash).having(func.count() > 1).all()]
+    hash_dupes = [
+        row[0]
+        for row in db.query(Track.file_hash)
+        .filter(Track.file_hash.isnot(None))
+        .group_by(Track.file_hash)
+        .having(func.count() > 1)
+        .order_by(func.count().desc())
+        .limit(MAX_DUPLICATE_VALUE_SCAN)
+        .all()
+    ]
     if hash_dupes:
         tracks_by_hash = _group_tracks_by_value(
             db.query(Track).filter(Track.file_hash.in_(hash_dupes)).order_by(Track.file_hash.asc(), Track.id.asc()).all(),
@@ -557,6 +602,8 @@ async def admin_find_duplicates(db: Session = Depends(get_db), admin: database.U
         )
         .group_by(Track.fingerprint)
         .having(func.count() > 1)
+        .order_by(func.count().desc())
+        .limit(MAX_DUPLICATE_VALUE_SCAN)
         .all()
     ]
     if fingerprint_dupes:
@@ -583,4 +630,10 @@ async def admin_find_duplicates(db: Session = Depends(get_db), admin: database.U
         })
 
     groups.sort(key=lambda item: (-len(item["tracks"]), item["key"]))
-    return JSONResponse({"count": len(groups), "groups": groups})
+    total_count = len(groups)
+    return JSONResponse({
+        "count": total_count,
+        "returned_count": min(total_count, limit_groups),
+        "truncated": total_count > limit_groups,
+        "groups": groups[:limit_groups],
+    })

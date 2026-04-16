@@ -18,8 +18,8 @@ USER_ACTIVITY_DB_NAME = "user_activity.db"
 MIX_CACHE_NAME = "personalized_mixes.json"
 LEGACY_RECENT_CACHE_NAME = "recent_activity.json"
 TOP_POOL_CACHE_NAME = "top_pool_tracks.json"
-MIX_CACHE_VERSION = 3
-TOP_POOL_CACHE_VERSION = 2
+MIX_CACHE_VERSION = 4
+TOP_POOL_CACHE_VERSION = 3
 MIX_CACHE_TTL_SECONDS = 12 * 3600
 RECENT_ITEMS_LIMIT = 3
 RECENT_HISTORY_LIMIT = 12
@@ -41,12 +41,12 @@ MIX_DEFINITIONS = [
 ]
 
 MIX_THUMBNAILS = {
-    "repeat": "/assets/img/repeat.png",
-    "deep_cuts": "/assets/img/deep.png",
-    "favorites": "/assets/img/fav.png",
-    "rediscovery": "/assets/img/rediscovery.png",
-    "top_pool_tracks": "/assets/img/top.png",
-    "latest_pool_additions": "/assets/img/last.png",
+    "repeat": "/assets/img/repeat.webp",
+    "deep_cuts": "/assets/img/deep.webp",
+    "favorites": "/assets/img/fav.webp",
+    "rediscovery": "/assets/img/rediscovery.webp",
+    "top_pool_tracks": "/assets/img/top.webp",
+    "latest_pool_additions": "/assets/img/last.webp",
 }
 
 
