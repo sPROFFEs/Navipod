@@ -3,6 +3,7 @@ import os
 import shutil
 import stat
 import subprocess
+from pathlib import Path
 
 import auth
 import database
@@ -78,9 +79,52 @@ def _validate_username_path_segment(username: str) -> None:
         raise ValueError("Unsafe username path segment")
 
 
+def _get_host_data_root() -> Path:
+    """Resolve the host path mounted as /saas-data in this running container."""
+    container_name = os.getenv("SELF_CONTAINER_NAME", "concierge")
+    try:
+        container = manager.client.containers.get(container_name)
+        container.reload()
+        for mount in container.attrs.get("Mounts", []):
+            if mount.get("Destination") == "/saas-data" and mount.get("Source"):
+                return Path(mount["Source"]).resolve()
+    except Exception as e:
+        logger.warning("Could not inspect host data root from container %s: %s", container_name, e)
+
+    return Path(settings.HOST_DATA_ROOT).resolve()
+
+
+def _remove_user_container(username: str) -> None:
+    _validate_username_path_segment(username)
+    container_name = f"navidrome-{username}"
+    remove_result = subprocess.run(
+        ["docker", "rm", "-f", container_name],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    remove_output = f"{remove_result.stdout or ''}\n{remove_result.stderr or ''}".strip()
+    if remove_result.returncode != 0 and "No such container" not in remove_output:
+        raise RuntimeError(f"Could not remove {container_name}: {remove_output or remove_result.returncode}")
+
+    inspect_result = subprocess.run(
+        ["docker", "container", "inspect", container_name],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if inspect_result.returncode == 0:
+        raise RuntimeError(f"Container still exists after removal: {container_name}")
+
+    manager.ip_cache.pop(username, None)
+
+
 def _purge_user_data_with_docker(username: str) -> None:
     _validate_username_path_segment(username)
-    host_users_root = path_security.safe_child_path(settings.HOST_DATA_ROOT, "users")
+    host_data_root = _get_host_data_root()
+    host_users_root = path_security.safe_child_path(host_data_root, "users")
     host_user_path = path_security.safe_child_path(host_users_root, username)
 
     result = subprocess.run(
@@ -205,12 +249,8 @@ async def delete_user(
     try:
         user_data_path = path_security.safe_child_path(users_root, username)
 
-        # 1. DOCKER PURGE
-        container_remove = subprocess.run(
-            ["docker", "rm", "-f", f"navidrome-{username}"], check=False, capture_output=True, text=True
-        )
-        if container_remove.returncode != 0:
-            logger.warning("Navidrome container remove for %s returned %s", username, container_remove.returncode)
+        # 1. DOCKER PURGE. This is fatal: do not delete DB state if the user container remains alive.
+        _remove_user_container(username)
 
         # 2. CALCULATE SPACE (Before deleting)
         if user_data_path.exists():
