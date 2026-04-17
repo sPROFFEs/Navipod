@@ -77,7 +77,8 @@ async def browse_radio_garden():
             content = resp.json().get("data", {}).get("content", [])
             # Extract playlist items with their URLs
             return [item for item in content if item["type"] == "playlist-excerpt"]
-        except:
+        except Exception as e:
+            logger.debug("Radio Garden browse failed: %s", e)
             return []
 
 
@@ -121,7 +122,8 @@ async def search_radio_garden(q: str):
         try:
             resp = await client.get(url, headers=RG_HEADERS)
             return resp.json().get("hits", {}).get("hits", [])
-        except:
+        except Exception as e:
+            logger.debug("Radio Garden search failed for %s: %s", q, e)
             return []
 
 
@@ -137,7 +139,8 @@ async def get_place_radios(place_id: str):
                 if s.get("itemsType") == "channel":
                     return s.get("items", [])
             return []
-        except:
+        except Exception as e:
+            logger.debug("Radio Garden place lookup failed for %s: %s", place_id, e)
             return []
 
 

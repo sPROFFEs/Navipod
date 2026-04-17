@@ -122,8 +122,8 @@ async def preview_playback(
             if preview_url:
                 # Spotify CDN allows remote playback, so redirect is fine/better
                 return RedirectResponse(preview_url)
-        except Exception:
-            pass  # Fallback to YouTube if Spotify fails
+        except Exception as e:
+            logger.debug("Spotify preview lookup failed; falling back to YouTube: %s", e)
 
     # --- STRATEGY 2: YOUTUBE (Streaming Proxy) ---
     target_url = None
@@ -133,8 +133,8 @@ async def preview_playback(
         try:
             video_id = url.split("v=")[-1].split("&")[0] if "v=" in url else url.split("/")[-1]
             target_url = await youtube_service.youtube_service.get_audio_stream_url(video_id)
-        except:
-            pass
+        except Exception as e:
+            logger.debug("Direct YouTube preview stream lookup failed for %s: %s", url, e)
 
     # B. Search Fallback (Title)
     elif title:
@@ -147,8 +147,8 @@ async def preview_playback(
             yt_res = await youtube_service.youtube_service.search_videos(clean_query, limit=1)
             if yt_res:
                 target_url = await youtube_service.youtube_service.get_audio_stream_url(yt_res[0]["id"])
-        except:
-            pass
+        except Exception as e:
+            logger.debug("YouTube preview search fallback failed for %s: %s", clean_query, e)
 
     if not target_url:
         return Response(content="Preview not found", status_code=404)

@@ -50,8 +50,8 @@ def get_user_country(request: Request) -> str:
             else:
                 lang_map = {"es": "ES", "en": "US", "fr": "FR", "de": "DE", "it": "IT", "pt": "PT"}
                 return lang_map.get(primary.lower(), "US")
-        except:
-            pass
+        except Exception as e:
+            logger.debug("Accept-Language country parse failed for %s: %s", accept_lang, e)
 
     return "US"
 
@@ -115,8 +115,8 @@ async def get_navidrome_seeds(user, db: Session, limit: int = 5):
                     items = [items]
                 for s in items:
                     add_seed(s.get("title"), s.get("artist"))
-        except:
-            pass
+        except Exception as e:
+            logger.debug("Navidrome top-songs seed lookup failed for %s: %s", user.username, e)
 
         # B. RECENTLY ADDED
         try:
@@ -129,8 +129,8 @@ async def get_navidrome_seeds(user, db: Session, limit: int = 5):
                     albums = [albums]
                 for a in albums:
                     add_seed("", a.get("artist"))
-        except:
-            pass
+        except Exception as e:
+            logger.debug("Navidrome recent-albums seed lookup failed for %s: %s", user.username, e)
 
     # Return shuffled mix
     if seeds:
@@ -239,8 +239,8 @@ async def get_youtube_recommendations(request: Request, db: Session = Depends(ge
                 query_override = f"{seed['artist']} top songs official"
 
             logger.info("Using YouTube personalized mix for %s: %s", user.username, query_override)
-    except:
-        pass
+    except Exception as e:
+        logger.debug("YouTube personalization seed lookup failed for %s: %s", user.username, e)
 
     trending = await youtube_service.youtube_service.get_trending_music(
         country=country, cookie_path=cookie_path, query_override=query_override, cache_path=user_cache_path

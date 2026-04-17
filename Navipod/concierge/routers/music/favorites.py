@@ -31,8 +31,8 @@ def generate_favorites_m3u(db: Session, user):
         os.makedirs(playlist_dir, mode=0o777, exist_ok=True)
         try:
             os.chmod(playlist_dir, 0o777)
-        except:
-            pass
+        except OSError as e:
+            logger.debug("Could not chmod favorites playlist directory %s: %s", playlist_dir, e)
         m3u_path = f"{playlist_dir}/Liked Songs.m3u"
 
         with open(m3u_path, "w", encoding="utf-8") as f:

@@ -80,8 +80,8 @@ def parse_metadata_preferences(raw_value: str) -> str:
         if isinstance(loaded, list):
             normalized = [str(v).strip().lower() for v in loaded if str(v).strip()]
             return json.dumps(normalized or DEFAULT_METADATA_PREFERENCES)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Metadata preferences JSON parse failed; falling back to comma parsing: %s", e)
 
     normalized = [v.strip().lower() for v in raw_value.split(",") if v.strip()]
     return json.dumps(normalized or DEFAULT_METADATA_PREFERENCES)
@@ -442,8 +442,8 @@ async def upload_avatar(request: Request, avatar_file: UploadFile = File(...), d
             if user.avatar_path and os.path.exists(user.avatar_path):
                 try:
                     os.remove(user.avatar_path)
-                except:
-                    pass
+                except OSError as e:
+                    logger.warning("Failed to remove previous avatar for user %s: %s", user.username, e)
 
             # Save as WebP for optimal size
             img.save(avatar_path, "WEBP", quality=85)

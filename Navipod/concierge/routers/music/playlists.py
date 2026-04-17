@@ -249,8 +249,8 @@ def generate_m3u_for_playlist(db: Session, playlist, username: str):
         os.makedirs(playlist_dir, mode=0o777, exist_ok=True)
         try:
             os.chmod(playlist_dir, 0o777)
-        except:
-            pass
+        except OSError as e:
+            logger.debug("Could not chmod playlist directory %s: %s", playlist_dir, e)
 
         # Sanitize playlist name for filename
         safe_name = "".join(c for c in playlist.name if c.isalnum() or c in " -_").strip()
@@ -854,8 +854,8 @@ async def update_playlist(
     if playlist.m3u_path and os.path.exists(playlist.m3u_path):
         try:
             os.remove(playlist.m3u_path)
-        except:
-            pass
+        except OSError as e:
+            logger.warning("Error removing old playlist file before rename: %s", e)
 
     # 2. Clean old remote playlist
     await clean_remote_playlist(user.username, old_name)

@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 import subprocess
@@ -16,6 +17,8 @@ from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/admin")
 from shared_templates import templates
+
+logger = logging.getLogger(__name__)
 
 MAX_DUPLICATE_VALUE_SCAN = 500
 TRACK_DELETE_ROOTS = ("/saas-data/pool", "/saas-data/users")
@@ -53,8 +56,8 @@ def get_dir_size(path):
                     total += entry.stat().st_size
                 elif entry.is_dir():
                     total += get_dir_size(entry.path)
-    except Exception:
-        pass
+    except OSError as e:
+        logger.debug("Skipping unreadable path while measuring directory size for %s: %s", path, e)
     return total
 
 
@@ -63,7 +66,7 @@ def get_dir_size(path):
 async def admin_panel(request: Request, db: Session = Depends(get_db)):
     try:
         admin = get_current_admin(request, db)
-    except:
+    except HTTPException:
         return RedirectResponse("/portal")
 
     # Calculate total disk space for HTML 'max' attribute
@@ -113,8 +116,8 @@ async def create_user(
 
     try:
         manager.provision_user_env(username)
-    except:
-        pass
+    except Exception as e:
+        logger.warning("Failed to provision user environment for %s: %s", username, e)
 
     return {"msg": f"User {username} created successfully"}
 
@@ -243,7 +246,8 @@ async def api_system_stats(request: Request, db: Session = Depends(get_db)):
         user = auth.get_user_by_username(db, username)
         if not user or not user.is_admin:
             return {"error": "Forbidden"}
-    except:
+    except Exception as e:
+        logger.debug("System stats auth check failed: %s", e)
         return {"error": "Unauthorized"}
 
     # Collect stats (faster CPU interval for polling)
