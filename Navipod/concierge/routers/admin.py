@@ -1,6 +1,7 @@
 import logging
 import os
 import shutil
+import stat
 import subprocess
 
 import auth
@@ -12,6 +13,7 @@ import psutil
 import track_identity
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse
+from navipod_config import settings
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -22,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 MAX_DUPLICATE_VALUE_SCAN = 500
 TRACK_DELETE_ROOTS = ("/saas-data/pool", "/saas-data/users")
+DOCKER_PURGE_IMAGE = "alpine:3.20"
 
 
 def get_db():
@@ -59,6 +62,69 @@ def get_dir_size(path):
     except OSError as e:
         logger.debug("Skipping unreadable path while measuring directory size for %s: %s", path, e)
     return total
+
+
+def _rmtree_permission_retry(func, path, exc_info):
+    exc = exc_info[1]
+    if not isinstance(exc, PermissionError):
+        raise exc
+
+    os.chmod(path, stat.S_IRWXU)
+    func(path)
+
+
+def _validate_username_path_segment(username: str) -> None:
+    if not username or username in {".", ".."} or "/" in username or "\\" in username:
+        raise ValueError("Unsafe username path segment")
+
+
+def _purge_user_data_with_docker(username: str) -> None:
+    _validate_username_path_segment(username)
+    host_users_root = path_security.safe_child_path(settings.HOST_DATA_ROOT, "users")
+    host_user_path = path_security.safe_child_path(host_users_root, username)
+
+    result = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--entrypoint",
+            "sh",
+            "-e",
+            f"TARGET_NAME={username}",
+            "-v",
+            f"{host_users_root}:/users:rw",
+            DOCKER_PURGE_IMAGE,
+            "-c",
+            'chmod -R u+rwX "/users/$TARGET_NAME" 2>/dev/null || true; rm -rf -- "/users/$TARGET_NAME"',
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    if result.returncode != 0:
+        stderr = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(f"Docker data purge failed for {host_user_path}: {stderr or result.returncode}")
+
+
+def _purge_user_data(username: str, user_data_path) -> None:
+    if not user_data_path.exists():
+        return
+
+    try:
+        shutil.rmtree(user_data_path, onerror=_rmtree_permission_retry)
+    except PermissionError as e:
+        logger.warning("Local user data purge hit permission error for %s, retrying via Docker: %s", username, e)
+        _purge_user_data_with_docker(username)
+    except OSError as e:
+        logger.warning("Local user data purge failed for %s, retrying via Docker: %s", username, e)
+        _purge_user_data_with_docker(username)
+
+    if user_data_path.exists():
+        raise RuntimeError(f"User data path still exists after purge: {user_data_path}")
 
 
 # DASHBOARD VIEW
@@ -140,13 +206,17 @@ async def delete_user(
         user_data_path = path_security.safe_child_path(users_root, username)
 
         # 1. DOCKER PURGE
-        subprocess.run(["docker", "rm", "-f", f"navidrome-{username}"], check=False, capture_output=True)
+        container_remove = subprocess.run(
+            ["docker", "rm", "-f", f"navidrome-{username}"], check=False, capture_output=True, text=True
+        )
+        if container_remove.returncode != 0:
+            logger.warning("Navidrome container remove for %s returned %s", username, container_remove.returncode)
 
         # 2. CALCULATE SPACE (Before deleting)
         if user_data_path.exists():
             bytes_to_free = get_dir_size(user_data_path)
             # 3. DISK PURGE with an explicit path guard under /saas-data/users.
-            shutil.rmtree(user_data_path)
+            _purge_user_data(username, user_data_path)
 
         # 4. DB PURGE
         db.delete(user_del)
