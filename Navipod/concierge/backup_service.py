@@ -6,6 +6,7 @@ import logging
 import os
 import shutil
 import sqlite3
+import subprocess
 import tempfile
 import zipfile
 from datetime import datetime
@@ -19,6 +20,7 @@ from personalization_service import MIX_CACHE_NAME, USER_ACTIVITY_DB_NAME
 from wrapped_service import WRAPPED_SUMMARY_DB_NAME, get_wrapped_summary_db_path
 
 logger = logging.getLogger(__name__)
+BACKUP_PERMISSION_HELPER_IMAGE = "alpine:3.20"
 
 
 def _upsert_backup_artifact(db, slot, *, filename=None, file_path=None, size_bytes=0, created_at=None, manifest=None):
@@ -112,6 +114,7 @@ def _build_backup_manifest(triggered_by: str | None, mode: str):
 
 
 def _rotate_current_to_previous(db):
+    _normalize_backup_permissions()
     current_path = ops.BACKUP_ROOT / ops.CURRENT_BACKUP_NAME
     previous_path = ops.BACKUP_ROOT / ops.PREVIOUS_BACKUP_NAME
     current_artifact = db.query(database.BackupArtifact).filter(database.BackupArtifact.slot == "current").first()
@@ -121,6 +124,7 @@ def _rotate_current_to_previous(db):
     if previous_path.exists():
         previous_path.unlink()
     shutil.copy2(current_path, previous_path)
+    _set_backup_file_permissions(previous_path)
     _upsert_backup_artifact(
         db,
         "previous",
@@ -130,6 +134,95 @@ def _rotate_current_to_previous(db):
         created_at=current_artifact.created_at,
         manifest=json.loads(current_artifact.manifest_json or "{}"),
     )
+
+
+def _set_backup_file_permissions(path: Path) -> None:
+    try:
+        path.chmod(0o664)
+    except OSError as e:
+        logger.debug("Could not chmod backup artifact %s: %s", path, e)
+
+
+def _get_host_backup_root() -> Path | None:
+    container_name = os.getenv("SELF_CONTAINER_NAME", "concierge")
+    try:
+        completed = subprocess.run(
+            ["docker", "inspect", "--format", "{{json .Mounts}}", container_name],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if completed.returncode != 0:
+            return None
+
+        mounts = json.loads((completed.stdout or "").strip() or "[]")
+        for mount in mounts:
+            if mount.get("Destination") != "/saas-data" or not mount.get("Source"):
+                continue
+            try:
+                relative_backup = ops.BACKUP_ROOT.relative_to(Path("/saas-data"))
+            except ValueError:
+                relative_backup = Path("backups")
+            return (Path(mount["Source"]) / relative_backup).resolve()
+    except Exception as e:
+        logger.debug("Could not resolve host backup root from container mounts: %s", e)
+    return None
+
+
+def _normalize_backup_permissions_with_docker() -> bool:
+    host_backup_root = _get_host_backup_root()
+    if not host_backup_root:
+        return False
+
+    result = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "-v",
+            f"{host_backup_root}:/backups:rw",
+            BACKUP_PERMISSION_HELPER_IMAGE,
+            "sh",
+            "-c",
+            "mkdir -p /backups && chown -R 1000:1000 /backups && chmod -R u+rwX,g+rwX /backups",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if result.returncode != 0:
+        logger.warning("Backup permission helper failed: %s", (result.stderr or result.stdout or "").strip())
+        return False
+    return True
+
+
+def _backup_artifacts_accessible() -> bool:
+    if not os.access(ops.BACKUP_ROOT, os.R_OK | os.W_OK | os.X_OK):
+        return False
+    for backup_file in ops.BACKUP_ROOT.glob("navipod-backup-*.zip"):
+        if not os.access(backup_file, os.R_OK | os.W_OK):
+            return False
+    return True
+
+
+def _normalize_backup_permissions() -> None:
+    ops.ensure_runtime_dirs()
+    try:
+        ops.BACKUP_ROOT.chmod(0o775)
+        for backup_file in ops.BACKUP_ROOT.glob("navipod-backup-*.zip"):
+            _set_backup_file_permissions(backup_file)
+    except OSError as e:
+        logger.warning("Backup permission normalization needs Docker fallback: %s", e)
+        _normalize_backup_permissions_with_docker()
+        return
+
+    if not _backup_artifacts_accessible():
+        logger.warning("Backup artifacts are not accessible after local chmod; retrying permission fix via Docker")
+        _normalize_backup_permissions_with_docker()
 
 
 def _write_sqlite_db_to_zip(zf: zipfile.ZipFile, source_path: Path, arcname: str) -> None:
@@ -194,6 +287,7 @@ def _write_backup_zip(target_path: Path, manifest: dict):
                 raise RuntimeError("Backup archive integrity check failed")
     finally:
         temp_db_path.unlink(missing_ok=True)
+    _set_backup_file_permissions(target_path)
 
 
 def run_backup_job(job_id: int, triggered_by: str | None, mode: str = "manual"):
@@ -207,7 +301,7 @@ def run_backup_job(job_id: int, triggered_by: str | None, mode: str = "manual"):
             return
 
         update_admin_job(job_id, status="running", message="Creating backup archive")
-        ops.ensure_runtime_dirs()
+        _normalize_backup_permissions()
         manifest = _build_backup_manifest(triggered_by, mode)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".zip", dir=ops.BACKUP_ROOT) as tmp:
             temp_path = Path(tmp.name)
@@ -219,6 +313,7 @@ def run_backup_job(job_id: int, triggered_by: str | None, mode: str = "manual"):
         current_path = ops.BACKUP_ROOT / ops.CURRENT_BACKUP_NAME
         shutil.move(str(temp_path), current_path)
         temp_path = None
+        _set_backup_file_permissions(current_path)
 
         _upsert_backup_artifact(
             db,
