@@ -12,6 +12,7 @@
     bgFadeTimer: null,
     intervalMs: 7600,
     audio: new Audio(),
+    preloadedSrc: '',
     introAudio: new Audio('/assets/wrapped_story/audio/light-transition.mp3'),
     backgroundAudio: new Audio('/assets/wrapped_story/audio/wrapped-background.mp3')
   };
@@ -145,7 +146,7 @@
   function startBackgroundAudio() {
     state.backgroundAudio
       .play()
-      .then(() => fadeAudio(state.backgroundAudio, 0.1, 1200))
+      .then(() => fadeAudio(state.backgroundAudio, 0.11, 2200))
       .catch(showSoundPrompt);
   }
 
@@ -183,6 +184,16 @@
   }
 
   function renderIntro() {
+    const word = 'NAVIPOD';
+    const letters = word
+      .split('')
+      .map((ch, i) => {
+        const isLast = i === word.length - 1;
+        const delay = (1.25 + i * 0.08).toFixed(2);
+        return `<span class="intro-letter${isLast ? ' glow-pulse' : ''}" style="animation-delay:${delay}s">${ch}</span>`;
+      })
+      .join('');
+
     const intro = document.createElement('div');
     intro.className = 'story-intro';
     intro.innerHTML = `
@@ -193,7 +204,7 @@
           ${introHelper(3)}
         </div>
       </div>
-      <div class="story-intro-word">Navipod</div>`;
+      <div class="story-intro-word" aria-label="Navipod">${letters}</div>`;
     root.appendChild(intro);
     state.introAudio.play().catch(showSoundPrompt);
     window.setTimeout(() => {
@@ -498,6 +509,7 @@
   }
 
   function renderProgress() {
+    root.style.setProperty('--story-interval', `${state.intervalMs}ms`);
     progress.innerHTML = state.slides
       .map((_, index) => {
         const cls = index < state.index ? 'done' : index === state.index ? 'active' : '';
@@ -506,18 +518,29 @@
       .join('');
   }
 
-  function renderSlide() {
+  function renderSlide(direction = 1) {
     const slide = state.slides[state.index];
     if (!slide) return;
+
+    const existingArticle = stage.querySelector('.story-slide');
     stopAudio();
     setSlideTheme();
     renderProgress();
-    stage.innerHTML = `<article class="story-slide ${slide.className || ''}" data-slide="${state.index}">
+
+    const article = document.createElement('article');
+    article.className = `story-slide ${slide.className || ''}${direction < 0 ? ' slide-enter-left' : ''}`;
+    article.dataset.slide = String(state.index);
+    article.innerHTML = `
         <div class="story-kicker">${esc(slide.kicker)}</div>
         <h1 class="story-title">${slide.title}</h1>
         ${slide.copy ? `<p class="story-copy">${esc(slide.copy)}</p>` : ''}
-        ${slide.html || ''}
-    </article>`;
+        ${slide.html || ''}`;
+
+    if (existingArticle) {
+      existingArticle.classList.add('slide-exit');
+      existingArticle.addEventListener('animationend', () => existingArticle.remove(), { once: true });
+    }
+    stage.appendChild(article);
     bindSlideActions();
     playSlideAudio(slide);
     scheduleNext();
@@ -526,31 +549,40 @@
   function stopAudio() {
     window.clearTimeout(state.audioTimer);
     state.audio.pause();
-    state.audio.removeAttribute('src');
-    state.audio.load();
-    fadeAudio(state.backgroundAudio, 0.1, 600);
+    // Only clear the src if it's not the pre-loaded track we want to keep buffered
+    if (state.audio.src && state.audio.src !== state.preloadedSrc) {
+      state.audio.removeAttribute('src');
+      state.audio.load();
+    }
+    fadeAudio(state.backgroundAudio, 0.11, 600);
   }
 
   function playSlideAudio(slide) {
     if (!slide.audioSrc) return;
+    const alreadyLoaded = state.audio.src && (state.audio.src === slide.audioSrc || state.audio.src.endsWith(slide.audioSrc));
     fadeAudio(state.backgroundAudio, 0.025, 450);
-    state.audio.src = slide.audioSrc;
-    state.audio.volume = 0.18;
-    state.audio.addEventListener(
-      'loadedmetadata',
-      () => {
-        const duration = Number(state.audio.duration || slide.audioDuration || 0);
-        if (Number.isFinite(duration) && duration > 18) {
-          const maxStart = Math.max(0, duration - state.intervalMs / 1000 - 2);
-          state.audio.currentTime = Math.floor(Math.random() * maxStart);
-        }
-        state.audio.play().catch(() => {});
-        state.audioTimer = window.setTimeout(() => {
-          state.audio.pause();
-        }, state.intervalMs - 400);
-      },
-      { once: true }
-    );
+    if (!alreadyLoaded) {
+      state.audio.src = slide.audioSrc;
+      state.audio.volume = 0.18;
+    } else {
+      state.audio.volume = 0.18;
+    }
+    const startPlayback = () => {
+      const duration = Number(state.audio.duration || slide.audioDuration || 0);
+      if (Number.isFinite(duration) && duration > 18) {
+        const maxStart = Math.max(0, duration - state.intervalMs / 1000 - 2);
+        state.audio.currentTime = Math.floor(Math.random() * maxStart);
+      }
+      state.audio.play().catch(() => {});
+      state.audioTimer = window.setTimeout(() => {
+        state.audio.pause();
+      }, state.intervalMs - 400);
+    };
+    if (state.audio.readyState >= 2) {
+      startPlayback();
+    } else {
+      state.audio.addEventListener('loadedmetadata', startPlayback, { once: true });
+    }
   }
 
   function bindSlideActions() {
@@ -583,7 +615,7 @@
     const nextIndex = Math.min(Math.max(state.index + direction, 0), state.slides.length - 1);
     if (nextIndex === state.index) return;
     state.index = nextIndex;
-    renderSlide();
+    renderSlide(direction);
   }
 
   async function init() {
@@ -633,8 +665,19 @@
 
     state.year = Number(wrapped.year || state.year);
     state.slides = buildSlides(wrapped, party);
+
+    // Pre-load the top song audio so it plays instantly when its slide appears
+    const topSong = wrapped.top_songs_playlist?.tracks?.[0];
+    const topSrc = trackStream(topSong);
+    if (topSrc) {
+      state.preloadedSrc = topSrc;
+      state.audio.src = topSrc;
+      state.audio.preload = 'auto';
+      state.audio.load();
+    }
+
     renderIntro();
-    renderSlide();
+    renderSlide(1);
   }
 
   init();
