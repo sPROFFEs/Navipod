@@ -3,6 +3,7 @@ import os
 import shutil
 import stat
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 import auth
@@ -508,6 +509,19 @@ async def update_wrapped_settings(
     )
     state = "enabled" if enabled else "disabled"
     return RedirectResponse(f"/admin/system?msg=Wrapped {state}", status_code=303)
+
+
+@router.post("/system/wrapped/regenerate")
+async def regenerate_wrapped_now(
+    background_tasks: BackgroundTasks,
+    year: int | None = Form(None),
+    db: Session = Depends(get_db),
+    admin: database.User = Depends(get_current_admin),
+):
+    target_year = year or datetime.utcnow().year
+    job_id = wrapped_service.queue_wrapped_regeneration(admin.username, target_year)
+    background_tasks.add_task(wrapped_service.run_wrapped_regeneration_job, job_id, target_year)
+    return RedirectResponse(f"/admin/system/updates/jobs/{job_id}", status_code=303)
 
 
 @router.post("/system/updates/check")

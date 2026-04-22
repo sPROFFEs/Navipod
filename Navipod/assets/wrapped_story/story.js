@@ -9,8 +9,11 @@
     paused: false,
     timer: null,
     audioTimer: null,
+    bgFadeTimer: null,
     intervalMs: 7600,
-    audio: new Audio()
+    audio: new Audio(),
+    introAudio: new Audio('/assets/wrapped_story/audio/light-transition.mp3'),
+    backgroundAudio: new Audio('/assets/wrapped_story/audio/wrapped-background.mp3')
   };
   const maxReasonableMinutes = 365 * 24 * 60;
 
@@ -23,6 +26,10 @@
   const pause = document.getElementById('story-pause');
   const close = document.getElementById('story-close');
   const resumeTop = document.getElementById('story-resume-top');
+
+  state.backgroundAudio.loop = true;
+  state.backgroundAudio.volume = 0;
+  state.introAudio.volume = 0.8;
 
   function esc(value) {
     return String(value ?? '')
@@ -89,12 +96,72 @@
     return icons[name] || '';
   }
 
+  function fadeAudio(audio, targetVolume, duration = 900) {
+    window.clearInterval(state.bgFadeTimer);
+    const startVolume = Number(audio.volume || 0);
+    const startedAt = window.performance.now();
+    state.bgFadeTimer = window.setInterval(() => {
+      const pct = Math.min(1, (window.performance.now() - startedAt) / duration);
+      audio.volume = Math.max(0, Math.min(1, startVolume + (targetVolume - startVolume) * pct));
+      if (pct >= 1) window.clearInterval(state.bgFadeTimer);
+    }, 50);
+  }
+
+  function startBackgroundAudio() {
+    state.backgroundAudio
+      .play()
+      .then(() => fadeAudio(state.backgroundAudio, 0.16, 1200))
+      .catch(showSoundPrompt);
+  }
+
+  function showSoundPrompt() {
+    if (document.getElementById('story-sound-enable')) return;
+    const button = document.createElement('button');
+    button.id = 'story-sound-enable';
+    button.className = 'story-sound-enable';
+    button.type = 'button';
+    button.textContent = 'Enable sound';
+    button.addEventListener(
+      'click',
+      () => {
+        button.remove();
+        state.introAudio.play().catch(() => {});
+        startBackgroundAudio();
+      },
+      { once: true }
+    );
+    root.appendChild(button);
+  }
+
+  function renderIntro() {
+    const intro = document.createElement('div');
+    intro.className = 'story-intro';
+    intro.innerHTML = `
+      <div class="story-intro-mark" aria-hidden="true">
+        <span></span><span></span><span></span>
+      </div>
+      <div class="story-intro-word">Navipod</div>`;
+    root.appendChild(intro);
+    state.introAudio.play().catch(showSoundPrompt);
+    window.setTimeout(() => {
+      intro.classList.add('leaving');
+      startBackgroundAudio();
+    }, 3100);
+    window.setTimeout(() => intro.remove(), 4300);
+  }
+
   function createPanels() {
     bg.innerHTML = Array.from({ length: 12 }, (_, index) => {
       const hue = index * 6;
       return `<div class="story-panel" style="--panel-index:${index}; filter:hue-rotate(${hue}deg); z-index:${12 - index};"></div>`;
     }).join('');
     requestAnimationFrame(() => root.classList.add('ready'));
+  }
+
+  function setSlideTheme() {
+    root.dataset.slide = String(state.index);
+    bg.style.setProperty('--story-shift', `${state.index * 18}deg`);
+    bg.style.setProperty('--story-drift', `${(state.index % 5) * 4}vw`);
   }
 
   async function fetchJson(url) {
@@ -250,6 +317,7 @@
     const slide = state.slides[state.index];
     if (!slide) return;
     stopAudio();
+    setSlideTheme();
     renderProgress();
     stage.innerHTML = `<article class="story-slide ${slide.className || ''}" data-slide="${state.index}">
         <div class="story-kicker">${esc(slide.kicker)}</div>
@@ -267,10 +335,12 @@
     state.audio.pause();
     state.audio.removeAttribute('src');
     state.audio.load();
+    fadeAudio(state.backgroundAudio, 0.16, 600);
   }
 
   function playSlideAudio(slide) {
     if (!slide.audioSrc) return;
+    fadeAudio(state.backgroundAudio, 0.045, 450);
     state.audio.src = slide.audioSrc;
     state.audio.volume = 0.34;
     state.audio.addEventListener(
@@ -339,8 +409,12 @@
       pause.innerHTML = icon(state.paused ? 'play' : 'pause');
       if (state.paused) {
         state.audio.pause();
+        state.backgroundAudio.pause();
       } else if (state.audio.src) {
         state.audio.play().catch(() => {});
+        state.backgroundAudio.play().catch(showSoundPrompt);
+      } else {
+        state.backgroundAudio.play().catch(showSoundPrompt);
       }
       scheduleNext();
     });
@@ -362,6 +436,7 @@
 
     state.year = Number(wrapped.year || state.year);
     state.slides = buildSlides(wrapped, party);
+    renderIntro();
     renderSlide();
   }
 

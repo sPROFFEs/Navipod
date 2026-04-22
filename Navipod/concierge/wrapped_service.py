@@ -151,6 +151,7 @@ def get_wrapped_settings(db: Session) -> dict[str, Any]:
         "visible_until_time_input": _display_time(settings.wrapped_visible_until, scheduler_tz),
         "timezone": ops.get_scheduler_timezone_name(settings),
         "artist_clip_message": settings.wrapped_artist_clip_message or DEFAULT_ARTIST_CLIP_MESSAGE,
+        "year": normalize_year(),
     }
 
 

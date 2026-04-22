@@ -34,6 +34,11 @@ body {
   z-index: -1;
   overflow: hidden;
   background: #000;
+  filter: hue-rotate(var(--story-shift, 0deg));
+  transition:
+    filter 740ms ease,
+    transform 740ms ease;
+  transform: translateX(var(--story-drift, 0));
 }
 
 .story-panel {
@@ -53,12 +58,29 @@ body {
   );
   animation: story-panel-spin 15s linear infinite;
   animation-delay: calc(var(--panel-index) * -0.22s);
+  transition:
+    width 740ms ease,
+    height 740ms ease,
+    opacity 740ms ease;
 }
 
 .story-root.ready .story-panel {
-  width: calc(105vw - (var(--panel-index) * 5vw));
-  height: calc(105vh - (var(--panel-index) * 5vh));
+  width: calc(112vw - (var(--panel-index) * 5vw));
+  height: calc(112vh - (var(--panel-index) * 5vh));
   transform: translate(-50%, -50%) rotate(calc(var(--panel-index) * 4deg));
+}
+
+.story-root[data-slide='1'] .story-panel,
+.story-root[data-slide='4'] .story-panel,
+.story-root[data-slide='7'] .story-panel {
+  opacity: 0.74;
+}
+
+.story-root[data-slide='2'] .story-panel,
+.story-root[data-slide='5'] .story-panel,
+.story-root[data-slide='8'] .story-panel {
+  width: calc(128vw - (var(--panel-index) * 4vw));
+  height: calc(98vh - (var(--panel-index) * 3vh));
 }
 
 .story-topbar,
@@ -192,8 +214,9 @@ body {
 }
 
 .story-slide-feature .story-title {
-  font-size: clamp(2.25rem, 7.2vw, 5.6rem);
-  line-height: 0.98;
+  font-size: clamp(1.95rem, 5.8vw, 4.5rem);
+  line-height: 1.02;
+  letter-spacing: -0.055em;
 }
 
 .story-user-intro,
@@ -219,6 +242,7 @@ body {
 .story-feature-track {
   display: grid;
   grid-template-columns: clamp(82px, 14vw, 150px) minmax(0, 1fr);
+  align-items: center;
 }
 
 .story-feature-track img {
@@ -230,6 +254,82 @@ body {
 
 .story-feature-track span {
   min-width: 0;
+  max-width: 16ch;
+}
+
+.story-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 52% 44%, rgba(255, 0, 211, 0.26), transparent 30%), #050505;
+  animation: story-intro-zoom 3.8s ease-in forwards;
+}
+
+.story-intro.leaving {
+  pointer-events: none;
+}
+
+.story-intro-mark {
+  position: relative;
+  width: 148px;
+  height: 220px;
+  filter: drop-shadow(0 0 34px rgba(255, 0, 211, 0.42));
+}
+
+.story-intro-mark span {
+  position: absolute;
+  top: 0;
+  width: 38px;
+  height: 100%;
+  background: linear-gradient(180deg, #ff2c2c, #ff00d3 52%, #ff95ec);
+  box-shadow: 0 0 22px rgba(255, 0, 211, 0.56);
+}
+
+.story-intro-mark span:nth-child(1) {
+  left: 8px;
+  animation: story-intro-stem 1.4s ease-out both;
+}
+
+.story-intro-mark span:nth-child(2) {
+  left: 55px;
+  height: 118%;
+  transform: rotate(-20deg);
+  transform-origin: center;
+  animation: story-intro-diagonal 1.4s 0.2s ease-out both;
+}
+
+.story-intro-mark span:nth-child(3) {
+  right: 8px;
+  animation: story-intro-stem 1.4s 0.4s ease-out both;
+}
+
+.story-intro-word {
+  position: absolute;
+  top: calc(50% + 148px);
+  color: var(--story-fg);
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0;
+  animation: story-intro-word 1.2s 1.25s ease-out forwards;
+}
+
+.story-sound-enable {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 30;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--story-border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.58);
+  color: var(--story-fg);
+  font: inherit;
+  cursor: pointer;
 }
 
 .story-copy {
@@ -360,6 +460,45 @@ body {
   }
 }
 
+@keyframes story-intro-stem {
+  0% {
+    opacity: 0;
+    transform: translateY(80%) scaleY(0.15);
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes story-intro-diagonal {
+  0% {
+    opacity: 0;
+    transform: translateY(80%) rotate(-20deg) scaleY(0.15);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(-20deg);
+  }
+}
+
+@keyframes story-intro-word {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes story-intro-zoom {
+  0%,
+  72% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(9);
+  }
+}
+
 @keyframes story-slide-in {
   to {
     opacity: 1;
@@ -422,6 +561,15 @@ body {
   .story-user-intro {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .story-intro-mark {
+    width: 110px;
+    height: 164px;
+  }
+
+  .story-intro-mark span {
+    width: 28px;
   }
 }
 
