@@ -10,14 +10,15 @@
     timer: null,
     audioTimer: null,
     bgFadeTimer: null,
-    intervalMs: 7600,
+    intervalMs: 10000,
     audio: new Audio(),
     preloadedSrc: '',
+    topTrackReady: false,
     introAudio: new Audio('/assets/wrapped_story/audio/light-transition.mp3'),
     backgroundAudio: new Audio('/assets/wrapped_story/audio/wrapped-background.mp3')
   };
   const maxReasonableMinutes = 365 * 24 * 60;
-  const backgroundCycleMs = 42000;
+  const backgroundCycleMs = 60000;
 
   const root = document.getElementById('story-root');
   const bg = document.getElementById('story-bg');
@@ -214,146 +215,75 @@
     window.setTimeout(() => intro.remove(), 4300);
   }
 
-  function gradient(stopPosition = 100, angle = 105) {
-    return `linear-gradient(${angle}deg, rgba(255, 180, 200, 1) 0%, rgba(255, 74, 220, 1) 8%, rgba(255, 0, 211, 1) 22%, rgba(255, 0, 52, 1) 72%, rgba(0, 0, 0, 1) ${stopPosition}%)`;
-  }
+  /* ---- Background: 6 soft orbs that drift smoothly ---- */
+  const orbCount = 6;
+  const orbColors = [
+    'radial-gradient(circle, rgba(255,0,211,0.55) 0%, rgba(255,0,211,0) 70%)',
+    'radial-gradient(circle, rgba(255,74,220,0.45) 0%, rgba(255,74,220,0) 70%)',
+    'radial-gradient(circle, rgba(255,44,44,0.4) 0%, rgba(255,44,44,0) 70%)',
+    'radial-gradient(circle, rgba(255,180,200,0.5) 0%, rgba(255,180,200,0) 70%)',
+    'radial-gradient(circle, rgba(200,0,180,0.35) 0%, rgba(200,0,180,0) 70%)',
+    'radial-gradient(circle, rgba(255,100,180,0.4) 0%, rgba(255,100,180,0) 70%)'
+  ];
 
   function createPanels() {
-    bg.innerHTML = `${Array.from({ length: 12 }, (_, index) => {
-      return `<div class="story-panel story-panel-primary" style="--panel-index:${index}; z-index:${24 - index};"></div>`;
-    }).join('')}${Array.from({ length: 12 }, (_, index) => {
-      return `<div class="story-panel story-panel-secondary" style="--panel-index:${index}; z-index:${12 - index};"></div>`;
-    }).join('')}`;
+    bg.innerHTML = Array.from({ length: orbCount }, (_, i) => {
+      return `<div class="story-orb" style="--orb-index:${i}"></div>`;
+    }).join('');
     requestAnimationFrame(() => {
       root.classList.add('ready');
-      animateBackground(0);
+      animateBackground();
     });
   }
 
-  function animateBackground(slideIndex) {
-    const panels = [...bg.querySelectorAll('.story-panel')];
-    const panelCount = 12;
-    const viewportWidth = window.innerWidth || 1200;
-    const viewportHeight = window.innerHeight || 800;
-    const cellWidth = viewportWidth / panelCount;
-    const cellHeight = viewportHeight / panelCount;
-    const slideTotal = Math.max(1, state.slides.length);
-    const baseOffset = ((slideIndex % slideTotal) / slideTotal) * backgroundCycleMs;
+  function animateBackground() {
+    const orbs = [...bg.querySelectorAll('.story-orb')];
+    const vw = window.innerWidth || 1200;
+    const vh = window.innerHeight || 800;
 
-    state.bgAnimations?.forEach((animation) => animation.cancel());
-    state.bgAnimations = panels.map((panel) => {
-      const index = Number(panel.style.getPropertyValue('--panel-index') || 0);
-      const isSecondary = panel.classList.contains('story-panel-secondary');
-      const stop = 100 - index;
-      const wide = viewportWidth - cellWidth * (panelCount - index) + cellWidth;
-      const tall = viewportHeight - cellHeight * (panelCount - index) + cellHeight;
-      const secondarySize = viewportWidth - cellWidth * index + cellWidth;
+    state.bgAnimations?.forEach((a) => a.cancel());
+    state.bgAnimations = orbs.map((orb, i) => {
+      const size = Math.max(vw, vh) * (0.6 + i * 0.12);
+      orb.style.width = `${size}px`;
+      orb.style.height = `${size}px`;
+      orb.style.background = orbColors[i % orbColors.length];
 
-      const primaryFrames = [
-        {
-          width: '0px',
-          height: '0px',
-          transform: `translate(${cellWidth * 5.5}px, ${cellHeight * 5.5}px) rotate(-360deg)`,
-          background: gradient(stop, 105),
-          opacity: 0.95,
-          offset: 0
-        },
-        {
-          width: `${wide}px`,
-          height: `${tall}px`,
-          transform: `translate(0px, ${-cellHeight / 1.33 + ((panelCount - index) * cellHeight) / 1.33}px) rotate(0deg)`,
-          background: gradient(stop, 105),
-          opacity: 0.95,
-          offset: 0.14
-        },
-        {
-          width: `${wide}px`,
-          height: `${tall}px`,
-          transform: `translate(0px, ${-cellHeight / 1.33 + ((panelCount - index) * cellHeight) / 1.33}px) rotate(${60 - (index + 1) * 5}deg)`,
-          background: gradient(stop, 90),
-          opacity: 0.92,
-          offset: 0.36
-        },
-        {
-          width: `${wide}px`,
-          height: `${wide}px`,
-          transform: `translate(${-cellWidth / 2 + ((panelCount - index) * cellWidth) / 2}px, ${viewportHeight - ((panelCount - index) * cellHeight) / 4}px) rotate(${810 + index * 2}deg)`,
-          background: gradient(100, 90),
-          opacity: index === 0 ? 0 : 0.9,
-          offset: 0.5
-        },
-        {
-          width: `${wide}px`,
-          height: `${wide}px`,
-          transform: `translate(${-cellWidth * 1.2}px, ${viewportHeight - ((panelCount - index) * cellHeight) / 2}px) rotate(${1180 + index * 3}deg)`,
-          background: gradient(100, 90),
-          opacity: 0.88,
-          offset: 0.78
-        },
-        {
-          width: `${wide}px`,
-          height: `${wide}px`,
-          transform: `translate(${-cellWidth * 5.2}px, ${viewportHeight - ((panelCount - index) * cellHeight) / 2 + cellHeight * 4}px) rotate(${1500 + index * 3}deg)`,
-          background: gradient(100, 90),
-          opacity: 0.85,
-          offset: 1
-        }
-      ];
+      // Each orb traces a unique slow elliptical path
+      const rx = vw * (0.15 + (i % 3) * 0.12);
+      const ry = vh * (0.1 + ((i + 1) % 4) * 0.08);
+      const cx = vw * 0.5 - size / 2 + (i - orbCount / 2) * (vw * 0.08);
+      const cy = vh * 0.5 - size / 2 + ((i % 2 === 0 ? -1 : 1) * vh * 0.06);
+      const phaseOffset = i * (360 / orbCount);
 
-      const secondaryFrames = [
-        {
-          width: '0px',
-          height: '0px',
-          transform: `translate(${cellWidth * 5.5}px, ${cellHeight * 5.5}px) rotate(-360deg)`,
-          background: gradient(100, 105),
-          opacity: 0,
-          offset: 0
-        },
-        {
-          width: `${secondarySize}px`,
-          height: `${secondarySize}px`,
-          transform: `translate(${-cellWidth / 2 + (index * cellWidth) / 2}px, ${(index * cellHeight) / 4 - secondarySize}px) rotate(-90deg)`,
-          background: gradient(100, 90),
-          opacity: 0.86,
-          offset: 0.44
-        },
-        {
-          width: `${secondarySize}px`,
-          height: `${secondarySize}px`,
-          transform: `translate(${viewportWidth * 1.1 - secondarySize * 1.2}px, ${(index * cellHeight) / 2 - secondarySize}px) rotate(300deg)`,
-          background: gradient(100, 90),
-          opacity: 0.9,
-          offset: 0.66
-        },
-        {
-          width: `${secondarySize}px`,
-          height: `${secondarySize}px`,
-          transform: `translate(${viewportWidth * 1.1 - secondarySize * 1.2 + secondarySize * 2}px, ${(index * cellHeight) / 2 - secondarySize * 3}px) rotate(675deg)`,
-          background: gradient(100, 90),
-          opacity: 0.88,
-          offset: 1
-        }
-      ];
-
-      const animation = panel.animate(isSecondary ? secondaryFrames : primaryFrames, {
-        duration: backgroundCycleMs,
-        iterations: Infinity,
-        easing: 'linear'
+      const steps = 5;
+      const frames = Array.from({ length: steps + 1 }, (_, k) => {
+        const angle = ((phaseOffset + (k / steps) * 360) * Math.PI) / 180;
+        const x = cx + Math.cos(angle) * rx;
+        const y = cy + Math.sin(angle) * ry;
+        const rot = (k / steps) * (i % 2 === 0 ? 15 : -15);
+        return {
+          transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) rotate(${rot.toFixed(1)}deg)`,
+          opacity: 0.7 + Math.sin(angle) * 0.15,
+          offset: k / steps
+        };
       });
-      animation.currentTime = baseOffset + index * 55;
+
+      const duration = backgroundCycleMs + i * 4000;
+      const animation = orb.animate(frames, {
+        duration,
+        iterations: Infinity,
+        easing: 'linear',
+        direction: i % 2 === 0 ? 'normal' : 'reverse'
+      });
+      animation.currentTime = i * 3200;
       return animation;
     });
   }
 
   function setSlideTheme() {
     root.dataset.slide = String(state.index);
-    bg.style.setProperty('--story-hue', `${state.index * 7}deg`);
-    state.bgAnimations?.forEach((animation, index) => {
-      animation.playbackRate = state.paused ? 0 : 1;
-      animation.currentTime =
-        ((state.index % Math.max(1, state.slides.length)) / Math.max(1, state.slides.length)) * backgroundCycleMs +
-        index * 55;
-    });
+    // Only change hue — the CSS transition handles the smooth interpolation
+    bg.style.setProperty('--story-hue', `${(state.index * 18) % 360}deg`);
   }
 
   function setBackgroundPaused(paused) {
@@ -573,24 +503,24 @@
   function stopAudio() {
     window.clearTimeout(state.audioTimer);
     state.audio.pause();
-    // Only clear the src if it's not the pre-loaded track we want to keep buffered
-    if (state.audio.src && state.audio.src !== state.preloadedSrc) {
-      state.audio.removeAttribute('src');
-      state.audio.load();
-    }
+    state.audio.currentTime = 0;
     fadeAudio(state.backgroundAudio, 0.11, 600);
   }
 
   function playSlideAudio(slide) {
     if (!slide.audioSrc) return;
-    const alreadyLoaded = state.audio.src && (state.audio.src === slide.audioSrc || state.audio.src.endsWith(slide.audioSrc));
     fadeAudio(state.backgroundAudio, 0.025, 450);
-    if (!alreadyLoaded) {
+
+    // If this is the pre-loaded top track, use it directly
+    const isPreloaded = state.topTrackReady && state.preloadedSrc &&
+      (slide.audioSrc === state.preloadedSrc || slide.audioSrc.endsWith(state.preloadedSrc) || state.preloadedSrc.endsWith(slide.audioSrc));
+
+    if (!isPreloaded) {
       state.audio.src = slide.audioSrc;
-      state.audio.volume = 0.18;
-    } else {
-      state.audio.volume = 0.18;
+      state.audio.load();
     }
+    state.audio.volume = 0.18;
+
     const startPlayback = () => {
       const duration = Number(state.audio.duration || slide.audioDuration || 0);
       if (Number.isFinite(duration) && duration > 18) {
@@ -602,10 +532,12 @@
         state.audio.pause();
       }, state.intervalMs - 400);
     };
-    if (state.audio.readyState >= 2) {
+
+    // readyState 4 = HAVE_ENOUGH_DATA (fully buffered)
+    if (state.audio.readyState >= 3) {
       startPlayback();
     } else {
-      state.audio.addEventListener('loadedmetadata', startPlayback, { once: true });
+      state.audio.addEventListener('canplay', startPlayback, { once: true });
     }
   }
 
@@ -671,7 +603,7 @@
       }
       scheduleNext();
     });
-    window.addEventListener('resize', () => animateBackground(state.index));
+    window.addEventListener('resize', () => animateBackground());
     window.addEventListener('keydown', (event) => {
       if (event.key === 'ArrowLeft') go(-1);
       if (event.key === 'ArrowRight' || event.key === ' ') go(1);
@@ -691,14 +623,23 @@
     state.year = Number(wrapped.year || state.year);
     state.slides = buildSlides(wrapped, party);
 
-    // Pre-load the top song audio so it plays instantly when its slide appears
+    // Aggressively pre-load the top song audio into a buffer
     const topSong = wrapped.top_songs_playlist?.tracks?.[0];
     const topSrc = trackStream(topSong);
     if (topSrc) {
       state.preloadedSrc = topSrc;
-      state.audio.src = topSrc;
       state.audio.preload = 'auto';
+      state.audio.src = topSrc;
       state.audio.load();
+      // Wait for full buffer or timeout (3s max during intro)
+      const bufferReady = new Promise((resolve) => {
+        state.audio.addEventListener('canplaythrough', () => {
+          state.topTrackReady = true;
+          resolve();
+        }, { once: true });
+        window.setTimeout(resolve, 3000);
+      });
+      bufferReady.catch(() => {});
     }
 
     renderIntro();

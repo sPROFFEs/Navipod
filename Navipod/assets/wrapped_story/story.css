@@ -33,27 +33,19 @@ body {
   inset: 0;
   z-index: -1;
   overflow: hidden;
-  background: #000;
+  background: #0a0a0a;
   filter: hue-rotate(var(--story-hue, 0deg));
-  transition: filter 800ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: filter 1.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.story-panel {
+.story-orb {
   position: absolute;
   top: 0;
   left: 0;
-  width: 0;
-  height: 0;
-  transform-origin: center center;
-  opacity: 0.9;
-  background: linear-gradient(
-    105deg,
-    var(--story-panel-a) 0%,
-    var(--story-panel-b) 22%,
-    var(--story-panel-c) 72%,
-    #000 100%
-  );
-  will-change: transform, width, height, opacity;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  will-change: transform, opacity;
 }
 
 .story-topbar,
