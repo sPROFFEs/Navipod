@@ -316,14 +316,14 @@ export async function renderHome(container) {
 
 function createWrappedHomeCard(wrapped) {
   const year = Number(wrapped.year || new Date().getFullYear());
-  const minutes = Number(wrapped.minutes_listened || 0).toLocaleString();
+  const listenedTime = formatListeningDuration(wrapped.minutes_listened);
   const topSong = wrapped.top_songs?.[0];
   const topArtist = wrapped.top_artists?.[0]?.artist || 'your library';
   return `
         <section class="wrapped-home-card">
             <div>
                 <h2>Navipod Wrapped ${year}</h2>
-                <p>${minutes} minutes listened · Top artist: ${ui.escHtml(topArtist)}</p>
+                <p>${listenedTime} listened · Top artist: ${ui.escHtml(topArtist)}</p>
                 ${topSong ? `<p class="wrapped-home-sub">#1 song: ${ui.escHtml(topSong.title)} — ${ui.escHtml(topSong.artist)}</p>` : ''}
             </div>
             <a class="btn-secondary-lg" href="/wrapped/story/${year}">
@@ -331,6 +331,31 @@ function createWrappedHomeCard(wrapped) {
                 <span>Watch Wrapped</span>
             </a>
         </section>`;
+}
+
+function formatUnit(value, singular, plural) {
+  const formatted = Number.isInteger(value)
+    ? value.toLocaleString()
+    : value.toLocaleString(undefined, { maximumFractionDigits: 1 });
+  return `${formatted} ${value === 1 ? singular : plural}`;
+}
+
+function formatListeningDuration(minutes) {
+  const parsed = Number(minutes || 0);
+  if (!Number.isFinite(parsed) || parsed <= 0) return '0 seconds';
+
+  const seconds = parsed * 60;
+  if (seconds < 60) return formatUnit(Math.round(seconds), 'second', 'seconds');
+  if (parsed < 60) return formatUnit(Math.round(parsed), 'minute', 'minutes');
+
+  const hours = parsed / 60;
+  if (hours < 24) return formatUnit(Number(hours.toFixed(hours >= 10 ? 0 : 1)), 'hour', 'hours');
+
+  const days = hours / 24;
+  if (days < 365) return formatUnit(Number(days.toFixed(days >= 10 ? 0 : 1)), 'day', 'days');
+
+  const years = days / 365;
+  return formatUnit(Number(years.toFixed(years >= 10 ? 0 : 1)), 'year', 'years');
 }
 
 function renderWrappedSprint(sprint = []) {
@@ -366,7 +391,7 @@ function renderWrappedParty(party) {
                         .slice(0, 5)
                         .map(
                           (item) =>
-                            `<li><span>#${item.rank} ${ui.escHtml(item.username)}</span><strong>${Number(item.minutes_listened || 0).toLocaleString()} min</strong></li>`
+                            `<li><span>#${item.rank} ${ui.escHtml(item.username)}</span><strong>${formatListeningDuration(item.minutes_listened)}</strong></li>`
                         )
                         .join('')}</ol>`
                     : '<p>No user ranking yet.</p>'
@@ -407,13 +432,14 @@ export async function renderWrapped(container, yearParam = null) {
     source: 'local'
   }));
   state.setCurrentViewList(tracks);
+  const listenedTime = formatListeningDuration(wrapped.minutes_listened);
 
   container.innerHTML = `
         <section class="wrapped-shell wrapped-enter">
             <div class="wrapped-summary">
                 <div>
                     <h1>Navipod Wrapped ${ui.escHtml(String(wrapped.year))}</h1>
-                    <p>${Number(wrapped.minutes_listened || 0).toLocaleString()} minutes listened · ${wrapped.event_count || 0} tracked listens</p>
+                    <p>${listenedTime} listened · ${wrapped.event_count || 0} tracked listens</p>
                 </div>
                 <div class="wrapped-actions">
                     <a class="btn-secondary-lg" href="/wrapped/story/${year}">
@@ -427,7 +453,7 @@ export async function renderWrapped(container, yearParam = null) {
                 </div>
             </div>
             <div class="wrapped-stats">
-                <div><span>Minutes</span><strong>${Number(wrapped.minutes_listened || 0).toLocaleString()}</strong></div>
+                <div><span>Listened</span><strong>${listenedTime}</strong></div>
                 <div><span>Top artist</span><strong>${ui.escHtml(topArtists[0]?.artist || 'No data')}</strong></div>
                 <div><span>Top song</span><strong>${ui.escHtml(tracks[0]?.title || 'No data')}</strong></div>
             </div>

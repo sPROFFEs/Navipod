@@ -16,6 +16,7 @@
     backgroundAudio: new Audio('/assets/wrapped_story/audio/wrapped-background.mp3')
   };
   const maxReasonableMinutes = 365 * 24 * 60;
+  const backgroundCycleMs = 42000;
 
   const root = document.getElementById('story-root');
   const bg = document.getElementById('story-bg');
@@ -29,7 +30,7 @@
 
   state.backgroundAudio.loop = true;
   state.backgroundAudio.volume = 0;
-  state.introAudio.volume = 0.8;
+  state.introAudio.volume = 0.54;
 
   function esc(value) {
     return String(value ?? '')
@@ -44,6 +45,35 @@
     const parsed = Number(value || 0);
     if (!Number.isFinite(parsed) || parsed < 0) return '0';
     return parsed.toLocaleString();
+  }
+
+  function durationUnit(value, singular, plural) {
+    const formatted = Number.isInteger(value)
+      ? value.toLocaleString()
+      : value.toLocaleString(undefined, { maximumFractionDigits: 1 });
+    return {
+      value: formatted,
+      unit: value === 1 ? singular : plural,
+      label: `${formatted} ${value === 1 ? singular : plural}`
+    };
+  }
+
+  function listeningDuration(minutes) {
+    const parsed = Number(minutes || 0);
+    if (!Number.isFinite(parsed) || parsed <= 0) return durationUnit(0, 'second', 'seconds');
+
+    const seconds = parsed * 60;
+    if (seconds < 60) return durationUnit(Math.round(seconds), 'second', 'seconds');
+    if (parsed < 60) return durationUnit(Math.round(parsed), 'minute', 'minutes');
+
+    const hours = parsed / 60;
+    if (hours < 24) return durationUnit(Number(hours.toFixed(hours >= 10 ? 0 : 1)), 'hour', 'hours');
+
+    const days = hours / 24;
+    if (days < 365) return durationUnit(Number(days.toFixed(days >= 10 ? 0 : 1)), 'day', 'days');
+
+    const years = days / 365;
+    return durationUnit(Number(years.toFixed(years >= 10 ? 0 : 1)), 'year', 'years');
   }
 
   function validMinutes(value) {
@@ -110,7 +140,7 @@
   function startBackgroundAudio() {
     state.backgroundAudio
       .play()
-      .then(() => fadeAudio(state.backgroundAudio, 0.16, 1200))
+      .then(() => fadeAudio(state.backgroundAudio, 0.1, 1200))
       .catch(showSoundPrompt);
   }
 
@@ -133,12 +163,30 @@
     root.appendChild(button);
   }
 
+  function brushSpans(prefix, count) {
+    return Array.from({ length: count }, (_, index) => {
+      const variable = prefix === 'lamp' ? '--lamp-index' : '--fur-index';
+      return `<span class="${prefix}-${index + 1}" style="${variable}:${index + 1}"></span>`;
+    }).join('');
+  }
+
+  function introHelper(number, withLights = false) {
+    return `<div class="story-intro-helper-${number}">
+      <div class="story-intro-brush">${brushSpans('fur', 31)}</div>
+      ${withLights ? `<div class="story-intro-lights">${brushSpans('lamp', 28)}</div>` : ''}
+    </div>`;
+  }
+
   function renderIntro() {
     const intro = document.createElement('div');
     intro.className = 'story-intro';
     intro.innerHTML = `
-      <div class="story-intro-mark" aria-hidden="true">
-        <span></span><span></span><span></span>
+      <div class="story-intro-container" aria-hidden="true">
+        <div class="story-intro-logo" data-letter="N">
+          ${introHelper(1, true)}
+          ${introHelper(2)}
+          ${introHelper(3)}
+        </div>
       </div>
       <div class="story-intro-word">Navipod</div>`;
     root.appendChild(intro);
@@ -150,18 +198,157 @@
     window.setTimeout(() => intro.remove(), 4300);
   }
 
+  function gradient(stopPosition = 100, angle = 105) {
+    return `linear-gradient(${angle}deg, rgba(255, 180, 200, 1) 0%, rgba(255, 74, 220, 1) 8%, rgba(255, 0, 211, 1) 22%, rgba(255, 0, 52, 1) 72%, rgba(0, 0, 0, 1) ${stopPosition}%)`;
+  }
+
   function createPanels() {
-    bg.innerHTML = Array.from({ length: 12 }, (_, index) => {
-      const hue = index * 6;
-      return `<div class="story-panel" style="--panel-index:${index}; filter:hue-rotate(${hue}deg); z-index:${12 - index};"></div>`;
-    }).join('');
-    requestAnimationFrame(() => root.classList.add('ready'));
+    bg.innerHTML = `${Array.from({ length: 12 }, (_, index) => {
+      return `<div class="story-panel story-panel-primary" style="--panel-index:${index}; z-index:${24 - index};"></div>`;
+    }).join('')}${Array.from({ length: 12 }, (_, index) => {
+      return `<div class="story-panel story-panel-secondary" style="--panel-index:${index}; z-index:${12 - index};"></div>`;
+    }).join('')}`;
+    requestAnimationFrame(() => {
+      root.classList.add('ready');
+      animateBackground(0);
+    });
+  }
+
+  function animateBackground(slideIndex) {
+    const panels = [...bg.querySelectorAll('.story-panel')];
+    const panelCount = 12;
+    const viewportWidth = window.innerWidth || 1200;
+    const viewportHeight = window.innerHeight || 800;
+    const cellWidth = viewportWidth / panelCount;
+    const cellHeight = viewportHeight / panelCount;
+    const slideTotal = Math.max(1, state.slides.length);
+    const baseOffset = ((slideIndex % slideTotal) / slideTotal) * backgroundCycleMs;
+
+    state.bgAnimations?.forEach((animation) => animation.cancel());
+    state.bgAnimations = panels.map((panel) => {
+      const index = Number(panel.style.getPropertyValue('--panel-index') || 0);
+      const isSecondary = panel.classList.contains('story-panel-secondary');
+      const stop = 100 - index;
+      const wide = viewportWidth - cellWidth * (panelCount - index) + cellWidth;
+      const tall = viewportHeight - cellHeight * (panelCount - index) + cellHeight;
+      const secondarySize = viewportWidth - cellWidth * index + cellWidth;
+
+      const primaryFrames = [
+        {
+          width: '0px',
+          height: '0px',
+          transform: `translate(${cellWidth * 5.5}px, ${cellHeight * 5.5}px) rotate(-360deg)`,
+          background: gradient(stop, 105),
+          opacity: 0.95,
+          offset: 0
+        },
+        {
+          width: `${wide}px`,
+          height: `${tall}px`,
+          transform: `translate(0px, ${-cellHeight / 1.33 + ((panelCount - index) * cellHeight) / 1.33}px) rotate(0deg)`,
+          background: gradient(stop, 105),
+          opacity: 0.95,
+          offset: 0.14
+        },
+        {
+          width: `${wide}px`,
+          height: `${tall}px`,
+          transform: `translate(0px, ${-cellHeight / 1.33 + ((panelCount - index) * cellHeight) / 1.33}px) rotate(${60 - (index + 1) * 5}deg)`,
+          background: gradient(stop, 90),
+          opacity: 0.92,
+          offset: 0.36
+        },
+        {
+          width: `${wide}px`,
+          height: `${wide}px`,
+          transform: `translate(${-cellWidth / 2 + ((panelCount - index) * cellWidth) / 2}px, ${viewportHeight - ((panelCount - index) * cellHeight) / 4}px) rotate(${810 + index * 2}deg)`,
+          background: gradient(100, 90),
+          opacity: index === 0 ? 0 : 0.9,
+          offset: 0.5
+        },
+        {
+          width: `${wide}px`,
+          height: `${wide}px`,
+          transform: `translate(${-cellWidth * 1.2}px, ${viewportHeight - ((panelCount - index) * cellHeight) / 2}px) rotate(${1180 + index * 3}deg)`,
+          background: gradient(100, 90),
+          opacity: 0.88,
+          offset: 0.78
+        },
+        {
+          width: `${wide}px`,
+          height: `${wide}px`,
+          transform: `translate(${-cellWidth * 5.2}px, ${viewportHeight - ((panelCount - index) * cellHeight) / 2 + cellHeight * 4}px) rotate(${1500 + index * 3}deg)`,
+          background: gradient(100, 90),
+          opacity: 0.85,
+          offset: 1
+        }
+      ];
+
+      const secondaryFrames = [
+        {
+          width: '0px',
+          height: '0px',
+          transform: `translate(${cellWidth * 5.5}px, ${cellHeight * 5.5}px) rotate(-360deg)`,
+          background: gradient(100, 105),
+          opacity: 0,
+          offset: 0
+        },
+        {
+          width: `${secondarySize}px`,
+          height: `${secondarySize}px`,
+          transform: `translate(${-cellWidth / 2 + (index * cellWidth) / 2}px, ${(index * cellHeight) / 4 - secondarySize}px) rotate(-90deg)`,
+          background: gradient(100, 90),
+          opacity: 0.86,
+          offset: 0.44
+        },
+        {
+          width: `${secondarySize}px`,
+          height: `${secondarySize}px`,
+          transform: `translate(${viewportWidth * 1.1 - secondarySize * 1.2}px, ${(index * cellHeight) / 2 - secondarySize}px) rotate(300deg)`,
+          background: gradient(100, 90),
+          opacity: 0.9,
+          offset: 0.66
+        },
+        {
+          width: `${secondarySize}px`,
+          height: `${secondarySize}px`,
+          transform: `translate(${viewportWidth * 1.1 - secondarySize * 1.2 + secondarySize * 2}px, ${(index * cellHeight) / 2 - secondarySize * 3}px) rotate(675deg)`,
+          background: gradient(100, 90),
+          opacity: 0.88,
+          offset: 1
+        }
+      ];
+
+      const animation = panel.animate(isSecondary ? secondaryFrames : primaryFrames, {
+        duration: backgroundCycleMs,
+        iterations: Infinity,
+        easing: 'linear'
+      });
+      animation.currentTime = baseOffset + index * 55;
+      return animation;
+    });
   }
 
   function setSlideTheme() {
     root.dataset.slide = String(state.index);
-    bg.style.setProperty('--story-shift', `${state.index * 18}deg`);
-    bg.style.setProperty('--story-drift', `${(state.index % 5) * 4}vw`);
+    bg.style.setProperty('--story-hue', `${state.index * 7}deg`);
+    state.bgAnimations?.forEach((animation, index) => {
+      animation.playbackRate = state.paused ? 0 : 1;
+      animation.currentTime =
+        ((state.index % Math.max(1, state.slides.length)) / Math.max(1, state.slides.length)) * backgroundCycleMs +
+        index * 55;
+    });
+  }
+
+  function setBackgroundPaused(paused) {
+    state.bgAnimations?.forEach((animation) => {
+      animation.playbackRate = paused ? 0 : 1;
+      if (paused) {
+        animation.pause();
+      } else {
+        animation.play();
+      }
+    });
   }
 
   async function fetchJson(url) {
@@ -213,6 +400,7 @@
     const sprint = sprintLeader(wrapped.top_artist_sprint);
     const partyMinutes = party?.most_minutes_listened || [];
     const repeaters = party?.biggest_repeaters || [];
+    const personalDuration = listeningDuration(wrapped.minutes_listened);
 
     return [
       {
@@ -223,7 +411,7 @@
       },
       {
         kicker: 'Minutes listened',
-        title: `<span class="story-big-number">${number(wrapped.minutes_listened)}</span>`,
+        title: `<span class="story-duration"><span class="story-big-number">${esc(personalDuration.value)}</span><span>${esc(personalDuration.unit)}</span></span>`,
         copy: `${number(wrapped.event_count)} tracked listens across your library.`
       },
       {
@@ -271,7 +459,7 @@
         html: listItems(
           partyMinutes.filter((item) => validMinutes(item.minutes_listened)).slice(0, 5),
           (item, index) => {
-            return userRow(item, index, `${number(item.minutes_listened)} min`);
+            return userRow(item, index, listeningDuration(item.minutes_listened).label);
           }
         ),
         className: 'story-slide-list'
@@ -335,14 +523,14 @@
     state.audio.pause();
     state.audio.removeAttribute('src');
     state.audio.load();
-    fadeAudio(state.backgroundAudio, 0.16, 600);
+    fadeAudio(state.backgroundAudio, 0.1, 600);
   }
 
   function playSlideAudio(slide) {
     if (!slide.audioSrc) return;
-    fadeAudio(state.backgroundAudio, 0.045, 450);
+    fadeAudio(state.backgroundAudio, 0.025, 450);
     state.audio.src = slide.audioSrc;
-    state.audio.volume = 0.34;
+    state.audio.volume = 0.18;
     state.audio.addEventListener(
       'loadedmetadata',
       () => {
@@ -410,14 +598,18 @@
       if (state.paused) {
         state.audio.pause();
         state.backgroundAudio.pause();
+        setBackgroundPaused(true);
       } else if (state.audio.src) {
         state.audio.play().catch(() => {});
         state.backgroundAudio.play().catch(showSoundPrompt);
+        setBackgroundPaused(false);
       } else {
         state.backgroundAudio.play().catch(showSoundPrompt);
+        setBackgroundPaused(false);
       }
       scheduleNext();
     });
+    window.addEventListener('resize', () => animateBackground(state.index));
     window.addEventListener('keydown', (event) => {
       if (event.key === 'ArrowLeft') go(-1);
       if (event.key === 'ArrowRight' || event.key === ' ') go(1);
