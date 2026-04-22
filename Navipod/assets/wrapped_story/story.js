@@ -1,4 +1,4 @@
-/* global window, document, requestAnimationFrame, fetch */
+/* global window, document, requestAnimationFrame, fetch, Audio */
 
 (function () {
   const state = {
@@ -8,8 +8,11 @@
     index: 0,
     paused: false,
     timer: null,
-    intervalMs: 7600
+    audioTimer: null,
+    intervalMs: 7600,
+    audio: new Audio()
   };
+  const maxReasonableMinutes = 365 * 24 * 60;
 
   const root = document.getElementById('story-root');
   const bg = document.getElementById('story-bg');
@@ -31,7 +34,59 @@
   }
 
   function number(value) {
-    return Number(value || 0).toLocaleString();
+    const parsed = Number(value || 0);
+    if (!Number.isFinite(parsed) || parsed < 0) return '0';
+    return parsed.toLocaleString();
+  }
+
+  function validMinutes(value) {
+    const parsed = Number(value || 0);
+    return Number.isFinite(parsed) && parsed > 0 && parsed <= maxReasonableMinutes;
+  }
+
+  function validCount(value) {
+    const parsed = Number(value || 0);
+    return Number.isFinite(parsed) && parsed > 0 && parsed < 1000000;
+  }
+
+  function avatarUrl(username) {
+    return `/user/avatar/${encodeURIComponent(username || '?')}`;
+  }
+
+  function trackCover(track) {
+    const id = track?.db_id || track?.id;
+    return id ? `/api/cover/${encodeURIComponent(id)}` : '/static/img/default_cover.png';
+  }
+
+  function trackStream(track) {
+    const id = track?.db_id || track?.id;
+    return id ? `/api/stream/${encodeURIComponent(id)}` : '';
+  }
+
+  function initials(value) {
+    return String(value || '?')
+      .trim()
+      .slice(0, 2)
+      .toUpperCase();
+  }
+
+  function repeatIcon() {
+    return `<svg class="story-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="m17 2 4 4-4 4"></path>
+      <path d="M3 11V9a3 3 0 0 1 3-3h15"></path>
+      <path d="m7 22-4-4 4-4"></path>
+      <path d="M21 13v2a3 3 0 0 1-3 3H3"></path>
+    </svg>`;
+  }
+
+  function icon(name) {
+    const icons = {
+      prev: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"></path></svg>',
+      next: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>',
+      pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14"></path><path d="M16 5v14"></path></svg>',
+      play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg>'
+    };
+    return icons[name] || '';
   }
 
   function createPanels() {
@@ -48,9 +103,27 @@
     return res.json();
   }
 
-  function listItems(items, mapper) {
+  function listItems(items, mapper, className = '') {
     if (!items.length) return '<p class="story-copy">No data yet.</p>';
-    return `<ol class="story-list">${items.map(mapper).join('')}</ol>`;
+    return `<ol class="story-list ${className}">${items.map(mapper).join('')}</ol>`;
+  }
+
+  function trackRow(track, index) {
+    return `<li class="story-list-with-art">
+      <span class="story-rank">#${index + 1}</span>
+      <img class="story-thumb" src="${trackCover(track)}" alt="">
+      <strong>${esc(track.title)}</strong>
+      <em>${number(track.stream_count)} plays</em>
+    </li>`;
+  }
+
+  function userRow(item, index, value) {
+    return `<li class="story-list-with-avatar">
+      <span class="story-rank">#${index + 1}</span>
+      <img class="story-avatar" src="${avatarUrl(item.username)}" alt="">
+      <strong>${esc(item.username || 'Unknown')}</strong>
+      <em>${esc(value)}</em>
+    </li>`;
   }
 
   function sprintLeader(sprint) {
@@ -77,8 +150,9 @@
     return [
       {
         kicker: `Navipod Wrapped ${wrapped.year}`,
-        title: esc(state.username || 'Your year'),
-        copy: 'A fast pass through what actually played, repeated and survived the year.'
+        title: `<span class="story-user-intro"><img src="${avatarUrl(state.username)}" alt="">${esc(state.username || 'Your year')}</span>`,
+        copy: 'A fast pass through what actually played, repeated and survived the year.',
+        className: 'story-slide-intro'
       },
       {
         kicker: 'Minutes listened',
@@ -87,50 +161,68 @@
       },
       {
         kicker: 'Your top song',
-        title: esc(topSong?.title || 'No data'),
+        title: topSong
+          ? `<span class="story-feature-track"><img src="${trackCover(topSong)}" alt=""><span>${esc(topSong.title)}</span></span>`
+          : 'No data',
         copy: topSong
           ? `${esc(topSong.artist || 'Unknown Artist')} - ${number(topSong.stream_count)} plays`
-          : 'Play more tracks and this slide will fill itself.'
+          : 'Play more tracks and this slide will fill itself.',
+        className: 'story-slide-feature',
+        audioSrc: trackStream(topSong),
+        audioDuration: Number(topSong?.duration || 0)
       },
       {
         kicker: 'Top songs',
-        title: 'The repeat list',
-        html: listItems(topSongs.slice(0, 5), (track, index) => {
-          return `<li><span>#${index + 1}</span><strong>${esc(track.title)}</strong><em>${number(track.stream_count)} plays</em></li>`;
-        })
+        title: `${repeatIcon()}<span>The repeat list</span>`,
+        html: listItems(topSongs.slice(0, 5), trackRow, 'story-list-media'),
+        className: 'story-slide-list'
       },
       {
         kicker: 'Top artists',
         title: esc(topArtist?.artist || 'No data'),
         html: listItems(topArtists.slice(0, 5), (artist, index) => {
-          return `<li><span>#${index + 1}</span><strong>${esc(artist.artist)}</strong><em>${number(artist.stream_count)} plays</em></li>`;
-        })
+          return `<li class="story-list-with-art">
+            <span class="story-rank">#${index + 1}</span>
+            <span class="story-artist-mark">${esc(initials(artist.artist))}</span>
+            <strong>${esc(artist.artist)}</strong>
+            <em>${number(artist.stream_count)} plays</em>
+          </li>`;
+        }),
+        className: 'story-slide-list'
       },
       {
         kicker: 'Top artist sprint',
         title: 'Who led each month',
         html: listItems(sprint, (item) => {
           return `<li><span>${esc(item.month)}</span><strong>${esc(item.artist)}</strong><em>${number(item.plays)} plays</em></li>`;
-        })
+        }),
+        className: 'story-slide-list story-slide-sprint'
       },
       {
         kicker: 'Wrapped Party',
         title: 'Most minutes',
-        html: listItems(partyMinutes.slice(0, 5), (item) => {
-          return `<li><span>#${item.rank}</span><strong>${esc(item.username)}</strong><em>${number(item.minutes_listened)} min</em></li>`;
-        })
+        html: listItems(
+          partyMinutes.filter((item) => validMinutes(item.minutes_listened)).slice(0, 5),
+          (item, index) => {
+            return userRow(item, index, `${number(item.minutes_listened)} min`);
+          }
+        ),
+        className: 'story-slide-list'
       },
       {
         kicker: 'Wrapped Party',
         title: 'Biggest repeaters',
-        html: listItems(repeaters.slice(0, 5), (item, index) => {
-          return `<li><span>#${index + 1}</span><strong>${esc(item.username)}</strong><em>${number(item.stream_count)} plays</em></li>`;
-        })
+        copy: 'Users whose #1 song got the most repeated plays.',
+        html: listItems(repeaters.filter((item) => validCount(item.stream_count)).slice(0, 5), (item, index) => {
+          return userRow(item, index, `${number(item.stream_count)} plays`);
+        }),
+        className: 'story-slide-list'
       },
       {
         kicker: wrapped.artist_clip?.title || 'A message from Navipod',
         title: 'For the record',
-        copy: wrapped.artist_clip?.message || ''
+        copy: wrapped.artist_clip?.message || '',
+        className: 'story-slide-copy'
       },
       {
         kicker: 'Done',
@@ -139,7 +231,8 @@
         html: `<div class="story-actions">
             <a class="story-action" href="#" id="story-save-playlist">Save Top Songs</a>
             <a class="story-action secondary" href="/wrapped/${state.year}">Resume</a>
-        </div>`
+        </div>`,
+        className: 'story-slide-copy'
       }
     ];
   }
@@ -156,15 +249,45 @@
   function renderSlide() {
     const slide = state.slides[state.index];
     if (!slide) return;
+    stopAudio();
     renderProgress();
-    stage.innerHTML = `<article class="story-slide" data-slide="${state.index}">
+    stage.innerHTML = `<article class="story-slide ${slide.className || ''}" data-slide="${state.index}">
         <div class="story-kicker">${esc(slide.kicker)}</div>
         <h1 class="story-title">${slide.title}</h1>
         ${slide.copy ? `<p class="story-copy">${esc(slide.copy)}</p>` : ''}
         ${slide.html || ''}
     </article>`;
     bindSlideActions();
+    playSlideAudio(slide);
     scheduleNext();
+  }
+
+  function stopAudio() {
+    window.clearTimeout(state.audioTimer);
+    state.audio.pause();
+    state.audio.removeAttribute('src');
+    state.audio.load();
+  }
+
+  function playSlideAudio(slide) {
+    if (!slide.audioSrc) return;
+    state.audio.src = slide.audioSrc;
+    state.audio.volume = 0.34;
+    state.audio.addEventListener(
+      'loadedmetadata',
+      () => {
+        const duration = Number(state.audio.duration || slide.audioDuration || 0);
+        if (Number.isFinite(duration) && duration > 18) {
+          const maxStart = Math.max(0, duration - state.intervalMs / 1000 - 2);
+          state.audio.currentTime = Math.floor(Math.random() * maxStart);
+        }
+        state.audio.play().catch(() => {});
+        state.audioTimer = window.setTimeout(() => {
+          state.audio.pause();
+        }, state.intervalMs - 400);
+      },
+      { once: true }
+    );
   }
 
   function bindSlideActions() {
@@ -208,9 +331,17 @@
     });
     prev.addEventListener('click', () => go(-1));
     next.addEventListener('click', () => go(1));
+    prev.innerHTML = icon('prev');
+    next.innerHTML = icon('next');
+    pause.innerHTML = icon('pause');
     pause.addEventListener('click', () => {
       state.paused = !state.paused;
-      pause.textContent = state.paused ? 'Play' : 'Pause';
+      pause.innerHTML = icon(state.paused ? 'play' : 'pause');
+      if (state.paused) {
+        state.audio.pause();
+      } else if (state.audio.src) {
+        state.audio.play().catch(() => {});
+      }
       scheduleNext();
     });
     window.addEventListener('keydown', (event) => {

@@ -5,6 +5,7 @@ import logging
 import sqlite3
 from collections import defaultdict
 from datetime import datetime, timezone
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ WRAPPED_SUMMARY_DB_NAME = "wrapped_summary.db"
 WRAPPED_SUMMARY_VERSION = 1
 WRAPPED_TOP_TRACK_LIMIT = 100
 WRAPPED_TOP_DISPLAY_LIMIT = 5
+WRAPPED_MAX_REASONABLE_SECONDS = 365 * 24 * 60 * 60
 DEFAULT_ARTIST_CLIP_MESSAGE = "Your year had range. The admin can make this message worse later."
 
 
@@ -214,6 +216,16 @@ def _track_lookup(db: Session, track_ids: set[int]) -> dict[int, database.Track]
     return {int(track.id): track for track in tracks}
 
 
+def _safe_played_seconds(value: Any) -> float:
+    try:
+        seconds = float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+    if not isfinite(seconds) or seconds < 0:
+        return 0.0
+    return min(seconds, WRAPPED_MAX_REASONABLE_SECONDS)
+
+
 def _track_payload(track: database.Track, stats: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": int(track.id),
@@ -227,7 +239,7 @@ def _track_payload(track: database.Track, stats: dict[str, Any]) -> dict[str, An
         "stream_count": int(stats.get("stream_count") or 0),
         "completion_count": int(stats.get("completion_count") or 0),
         "skip_count": int(stats.get("skip_count") or 0),
-        "played_seconds": round(float(stats.get("played_seconds") or 0.0), 2),
+        "played_seconds": round(_safe_played_seconds(stats.get("played_seconds")), 2),
     }
 
 
@@ -290,7 +302,7 @@ def build_user_wrapped_summary(db: Session, user: database.User, year: int | Non
         if not track:
             continue
 
-        played = max(0.0, float(row["played_seconds"] or 0.0))
+        played = _safe_played_seconds(row["played_seconds"])
         completed = int(row["completed"] or 0)
         skipped = int(row["skipped_early"] or 0)
         total_played_seconds += played
@@ -319,7 +331,7 @@ def build_user_wrapped_summary(db: Session, user: database.User, year: int | Non
     ranked_tracks = sorted(
         track_stats.items(),
         key=lambda item: (
-            float(item[1].get("played_seconds") or 0.0),
+            _safe_played_seconds(item[1].get("played_seconds")),
             int(item[1].get("stream_count") or 0),
             int(item[1].get("completion_count") or 0),
         ),
@@ -334,7 +346,7 @@ def build_user_wrapped_summary(db: Session, user: database.User, year: int | Non
     ranked_artists = sorted(
         artist_stats.items(),
         key=lambda item: (
-            float(item[1].get("played_seconds") or 0.0),
+            _safe_played_seconds(item[1].get("played_seconds")),
             int(item[1].get("stream_count") or 0),
             item[0].lower(),
         ),
@@ -344,7 +356,7 @@ def build_user_wrapped_summary(db: Session, user: database.User, year: int | Non
         {
             "rank": idx + 1,
             "artist": artist,
-            "played_seconds": round(float(stats.get("played_seconds") or 0.0), 2),
+            "played_seconds": round(_safe_played_seconds(stats.get("played_seconds")), 2),
             "stream_count": int(stats.get("stream_count") or 0),
             "completion_count": int(stats.get("completion_count") or 0),
         }
@@ -435,14 +447,21 @@ def build_party_summary(db: Session, year: int | None = None) -> dict[str, Any]:
     year = _safe_year(year)
     users = db.query(database.User).filter(database.User.is_active == True).order_by(database.User.username.asc()).all()
     summaries = [get_or_build_user_wrapped_summary(db, user, year) for user in users]
+    active_summaries = [
+        summary
+        for summary in summaries
+        if _safe_played_seconds(summary.get("played_seconds")) > 0 and int(summary.get("event_count") or 0) > 0
+    ]
 
     minutes_ranking = sorted(
-        summaries,
-        key=lambda item: (float(item.get("played_seconds") or 0.0), int(item.get("event_count") or 0)),
+        active_summaries,
+        key=lambda item: (_safe_played_seconds(item.get("played_seconds")), int(item.get("event_count") or 0)),
         reverse=True,
     )
     top_song_fans = []
     for summary in summaries:
+        if _safe_played_seconds(summary.get("played_seconds")) <= 0:
+            continue
         top_song = (summary.get("top_songs") or [None])[0]
         if top_song:
             top_song_fans.append(
@@ -450,7 +469,7 @@ def build_party_summary(db: Session, year: int | None = None) -> dict[str, Any]:
                     "username": summary["user"]["username"],
                     "track": top_song,
                     "stream_count": int(top_song.get("stream_count") or 0),
-                    "played_seconds": float(top_song.get("played_seconds") or 0.0),
+                    "played_seconds": _safe_played_seconds(top_song.get("played_seconds")),
                 }
             )
     top_song_fans.sort(key=lambda item: (item["stream_count"], item["played_seconds"]), reverse=True)
