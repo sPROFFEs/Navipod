@@ -94,6 +94,10 @@
     gap: 18px;
 }
 
+.wrapped-enter {
+    animation: wrapped-enter 260ms ease-out both;
+}
+
 .wrapped-summary {
     display: flex;
     align-items: center;
@@ -109,6 +113,36 @@
     margin: 0;
     font-size: 1.4rem;
     letter-spacing: -0.02em;
+}
+
+.wrapped-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.wrapped-stats div {
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-0);
+}
+
+.wrapped-stats span {
+    display: block;
+    color: var(--text-sub);
+    font-size: 0.86rem;
+}
+
+.wrapped-stats strong {
+    display: block;
+    margin-top: 6px;
+    overflow: hidden;
+    font-size: 1.05rem;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .wrapped-grid {
@@ -154,6 +188,62 @@
     border-top: 1px solid var(--border-subtle);
 }
 
+.wrapped-sprint,
+.wrapped-rank-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 14px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.wrapped-sprint-row,
+.wrapped-rank-list li {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.wrapped-rank-list li {
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.wrapped-sprint-row span,
+.wrapped-sprint-row em,
+.wrapped-rank-list strong {
+    color: var(--text-sub);
+    font-size: 0.86rem;
+    font-style: normal;
+}
+
+.wrapped-sprint-row strong,
+.wrapped-rank-list span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wrapped-party-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 18px;
+}
+
+@keyframes wrapped-enter {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 @media (max-width: 760px) {
     .wrapped-home-card,
     .wrapped-summary {
@@ -163,5 +253,15 @@
 
     .wrapped-grid {
         grid-template-columns: 1fr;
+    }
+
+    .wrapped-stats {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .wrapped-enter {
+        animation: none;
     }
 }

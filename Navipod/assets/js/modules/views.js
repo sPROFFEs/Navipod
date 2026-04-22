@@ -333,9 +333,65 @@ function createWrappedHomeCard(wrapped) {
         </section>`;
 }
 
+function renderWrappedSprint(sprint = []) {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const activeMonths = sprint.filter((month) => month.artists?.length);
+  if (!activeMonths.length) return '<p>No monthly artist movement yet.</p>';
+
+  return `<div class="wrapped-sprint">${activeMonths
+    .map((month) => {
+      const leader = month.artists[0];
+      return `<div class="wrapped-sprint-row">
+                <span>${months[(Number(month.month) || 1) - 1] || month.month}</span>
+                <strong>${ui.escHtml(leader.artist)}</strong>
+                <em>${Number(leader.stream_count || 0)} plays</em>
+            </div>`;
+    })
+    .join('')}</div>`;
+}
+
+function renderWrappedParty(party) {
+  if (!party || party.visible === false || party.enabled === false)
+    return '<p>Party rankings are not available yet.</p>';
+
+  const minutes = party.most_minutes_listened || [];
+  const repeaters = party.biggest_repeaters || [];
+  return `
+        <div class="wrapped-party-grid">
+            <div>
+                <h2>Most Minutes Listened</h2>
+                ${
+                  minutes.length
+                    ? `<ol class="wrapped-rank-list">${minutes
+                        .slice(0, 5)
+                        .map(
+                          (item) =>
+                            `<li><span>#${item.rank} ${ui.escHtml(item.username)}</span><strong>${Number(item.minutes_listened || 0).toLocaleString()} min</strong></li>`
+                        )
+                        .join('')}</ol>`
+                    : '<p>No user ranking yet.</p>'
+                }
+            </div>
+            <div>
+                <h2>Biggest Repeaters</h2>
+                ${
+                  repeaters.length
+                    ? `<ol class="wrapped-rank-list">${repeaters
+                        .slice(0, 5)
+                        .map(
+                          (item, index) =>
+                            `<li><span>#${index + 1} ${ui.escHtml(item.username)}</span><strong>${Number(item.stream_count || 0)} plays</strong></li>`
+                        )
+                        .join('')}</ol>`
+                    : '<p>No repeat ranking yet.</p>'
+                }
+            </div>
+        </div>`;
+}
+
 export async function renderWrapped(container, yearParam = null) {
   const year = Number(yearParam || new Date().getFullYear());
-  const wrapped = await api.fetchWrapped(year);
+  const [wrapped, party] = await Promise.all([api.fetchWrapped(year), api.fetchWrappedParty(year)]);
   if (!wrapped || wrapped.enabled === false || wrapped.visible === false || wrapped.error) {
     container.innerHTML = `<div class="empty-state glass-panel"><p>Wrapped is not available right now.</p></div>`;
     return;
@@ -353,7 +409,7 @@ export async function renderWrapped(container, yearParam = null) {
   state.setCurrentViewList(tracks);
 
   container.innerHTML = `
-        <section class="wrapped-shell">
+        <section class="wrapped-shell wrapped-enter">
             <div class="wrapped-summary">
                 <div>
                     <h1>Navipod Wrapped ${ui.escHtml(String(wrapped.year))}</h1>
@@ -363,6 +419,11 @@ export async function renderWrapped(container, yearParam = null) {
                     <i data-lucide="save"></i>
                     <span>Save Top Songs</span>
                 </button>
+            </div>
+            <div class="wrapped-stats">
+                <div><span>Minutes</span><strong>${Number(wrapped.minutes_listened || 0).toLocaleString()}</strong></div>
+                <div><span>Top artist</span><strong>${ui.escHtml(topArtists[0]?.artist || 'No data')}</strong></div>
+                <div><span>Top song</span><strong>${ui.escHtml(tracks[0]?.title || 'No data')}</strong></div>
             </div>
             <div class="wrapped-grid">
                 <article class="wrapped-panel">
@@ -392,6 +453,16 @@ export async function renderWrapped(container, yearParam = null) {
                         <h2>${ui.escHtml(wrapped.artist_clip?.title || 'A message from Navipod')}</h2>
                         <p>${ui.escHtml(wrapped.artist_clip?.message || '')}</p>
                     </div>
+                </article>
+            </div>
+            <div class="wrapped-grid">
+                <article class="wrapped-panel">
+                    <h2>Top Artist Sprint</h2>
+                    ${renderWrappedSprint(wrapped.top_artist_sprint || [])}
+                </article>
+                <article class="wrapped-panel">
+                    <h2>Wrapped Party</h2>
+                    ${renderWrappedParty(party)}
                 </article>
             </div>
         </section>`;

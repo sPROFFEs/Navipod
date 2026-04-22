@@ -360,6 +360,17 @@ export async function fetchWrapped(year, { forceRefresh = false } = {}) {
   return null;
 }
 
+export async function fetchWrappedParty(year, { forceRefresh = false } = {}) {
+  try {
+    const suffix = forceRefresh ? '?force_refresh=true' : '';
+    const res = await fetch(`${state.API}/wrapped/${encodeURIComponent(year)}/party${suffix}`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[WRAPPED] Party fetch error:', e);
+  }
+  return null;
+}
+
 export async function saveWrappedTopSongsPlaylist(year) {
   try {
     const res = await fetch(`${state.API}/wrapped/${encodeURIComponent(year)}/top-songs/playlist`, { method: 'POST' });
