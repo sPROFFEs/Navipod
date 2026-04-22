@@ -482,18 +482,28 @@ async def update_backup_settings(
 @router.post("/system/wrapped/settings")
 async def update_wrapped_settings(
     wrapped_enabled: str = Form("off"),
-    wrapped_visible_from: str = Form(""),
-    wrapped_visible_until: str = Form(""),
+    wrapped_visible_from_date: str = Form(""),
+    wrapped_visible_from_time: str = Form(""),
+    wrapped_visible_until_date: str = Form(""),
+    wrapped_visible_until_time: str = Form(""),
     wrapped_artist_clip_message: str = Form(""),
     db: Session = Depends(get_db),
     admin: database.User = Depends(get_current_admin),
 ):
     enabled = str(wrapped_enabled).lower() in {"1", "true", "on", "yes"}
+
+    def combine_datetime(date_value: str, time_value: str) -> str:
+        date_value = (date_value or "").strip()
+        time_value = (time_value or "").strip()
+        if not date_value:
+            return ""
+        return f"{date_value}T{time_value or '00:00'}"
+
     wrapped_service.update_wrapped_settings(
         db,
         enabled=enabled,
-        visible_from=wrapped_visible_from,
-        visible_until=wrapped_visible_until,
+        visible_from=combine_datetime(wrapped_visible_from_date, wrapped_visible_from_time),
+        visible_until=combine_datetime(wrapped_visible_until_date, wrapped_visible_until_time),
         artist_clip_message=wrapped_artist_clip_message,
     )
     state = "enabled" if enabled else "disabled"

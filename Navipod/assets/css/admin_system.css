@@ -299,6 +299,9 @@
     gap: 12px;
     align-items: end;
 }
+.monitor-wrapped-schedule-row {
+    grid-template-columns: minmax(150px, 1fr) minmax(120px, .7fr) minmax(150px, 1fr) minmax(120px, .7fr) auto;
+}
 .monitor-input,
 .monitor-select {
     width: 100%;
@@ -605,7 +608,8 @@
     .monitor-panel-header > div:last-child > * { flex: 1 1 calc(50% - 8px); }
     .monitor-form-grid,
     .monitor-pool-form-row,
-    .monitor-backup-form-row { grid-template-columns: 1fr; }
+    .monitor-backup-form-row,
+    .monitor-wrapped-schedule-row { grid-template-columns: 1fr; }
     .monitor-card-value strong { font-size: 2rem; }
 }
 @media (max-width: 1120px) {

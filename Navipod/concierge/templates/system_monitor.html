@@ -244,14 +244,22 @@
                     <input type="checkbox" name="wrapped_enabled" {% if wrapped.enabled %}checked{% endif %}>
                     <span>Show Wrapped in the app</span>
                 </label>
-                <div class="monitor-backup-form-row">
+                <div class="monitor-backup-form-row monitor-wrapped-schedule-row">
                     <div class="monitor-field">
-                        <label for="wrapped-visible-from">Visible from</label>
-                        <input id="wrapped-visible-from" class="monitor-input" type="datetime-local" name="wrapped_visible_from" value="{{ wrapped.visible_from_input }}">
+                        <label for="wrapped-visible-from-date">Visible from date</label>
+                        <input id="wrapped-visible-from-date" class="monitor-input" type="date" name="wrapped_visible_from_date" value="{{ wrapped.visible_from_date_input }}">
                     </div>
                     <div class="monitor-field">
-                        <label for="wrapped-visible-until">Visible until</label>
-                        <input id="wrapped-visible-until" class="monitor-input" type="datetime-local" name="wrapped_visible_until" value="{{ wrapped.visible_until_input }}">
+                        <label for="wrapped-visible-from-time">Visible from time</label>
+                        <input id="wrapped-visible-from-time" class="monitor-input" type="time" name="wrapped_visible_from_time" value="{{ wrapped.visible_from_time_input }}">
+                    </div>
+                    <div class="monitor-field">
+                        <label for="wrapped-visible-until-date">Visible until date</label>
+                        <input id="wrapped-visible-until-date" class="monitor-input" type="date" name="wrapped_visible_until_date" value="{{ wrapped.visible_until_date_input }}">
+                    </div>
+                    <div class="monitor-field">
+                        <label for="wrapped-visible-until-time">Visible until time</label>
+                        <input id="wrapped-visible-until-time" class="monitor-input" type="time" name="wrapped_visible_until_time" value="{{ wrapped.visible_until_time_input }}">
                     </div>
                     <div class="monitor-field-action">
                         <button type="submit" class="monitor-primary"><i data-lucide="save"></i><span>Save Wrapped</span></button>

@@ -94,6 +94,7 @@ RESERVED_GATEWAY_PREFIXES = {
     "static",
     "updater",
     "user",
+    "wrapped",
 }
 
 # --- I18N SETUP ---
@@ -376,6 +377,22 @@ async def login(request: Request, username: str = Form(...), password: str = For
             pass
     return response
 
+def _render_app_shell(request: Request, user: database.User, db: Session, *, initial_view: str = "home", initial_param=None):
+    username = user.username
+    u_gb, l_gb, pct = manager.get_pool_status(db)
+    return templates.TemplateResponse(
+        "app_shell.html",
+        {
+            "request": request,
+            "username": username,
+            "is_admin": user.is_admin,
+            "pool": {"used": u_gb, "limit": l_gb, "percent": pct},
+            "initial_view": initial_view,
+            "initial_param": initial_param,
+        },
+    )
+
+
 @app.get("/portal")
 async def portal(request: Request, db: Session = Depends(get_db)):
     # Use robust auth checker that handles blacklist
@@ -383,19 +400,22 @@ async def portal(request: Request, db: Session = Depends(get_db)):
         user = auth.get_current_user(request, db)
     except:
         return RedirectResponse("/login")
-    
-    username = user.username
 
-    # Get Global Pool Status
-    u_gb, l_gb, pct = manager.get_pool_status(db)
+    return _render_app_shell(request, user, db)
 
-    return templates.TemplateResponse("app_shell.html", {
-        "request": request, 
-        "username": username,
-        "is_admin": user.is_admin,
-        "pool": {"used": u_gb, "limit": l_gb, "percent": pct}
-    })
-    
+
+@app.get("/wrapped")
+@app.get("/wrapped/")
+@app.get("/wrapped/{year}")
+async def wrapped_page(request: Request, year: int | None = None, db: Session = Depends(get_db)):
+    try:
+        user = auth.get_current_user(request, db)
+    except:
+        return RedirectResponse("/login")
+
+    return _render_app_shell(request, user, db, initial_view="wrapped", initial_param=year)
+
+
 @app.post("/logout")
 def logout(request: Request, db: Session = Depends(get_db)):
     token = request.cookies.get("access_token")

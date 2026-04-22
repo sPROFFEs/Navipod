@@ -19,7 +19,7 @@
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         // Trigger the specific view for this page (SPA root)
-        loadView('home');
+        loadView({{ initial_view|default('home')|tojson }}, {{ initial_param|default(none)|tojson }});
     });
 </script>
 {% endblock %}

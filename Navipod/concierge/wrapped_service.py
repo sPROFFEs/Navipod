@@ -114,6 +114,20 @@ def _display_dt(value: str | None, display_tz=timezone.utc) -> str:
     return parsed.astimezone(display_tz).strftime("%Y-%m-%dT%H:%M")
 
 
+def _display_date(value: str | None, display_tz=timezone.utc) -> str:
+    parsed = _parse_visibility_dt(value)
+    if not parsed:
+        return ""
+    return parsed.astimezone(display_tz).strftime("%Y-%m-%d")
+
+
+def _display_time(value: str | None, display_tz=timezone.utc) -> str:
+    parsed = _parse_visibility_dt(value)
+    if not parsed:
+        return ""
+    return parsed.astimezone(display_tz).strftime("%H:%M")
+
+
 def get_wrapped_settings(db: Session) -> dict[str, Any]:
     settings = ops.ensure_system_settings_record(db)
     scheduler_tz = ops.get_scheduler_timezone(settings)
@@ -129,6 +143,10 @@ def get_wrapped_settings(db: Session) -> dict[str, Any]:
         "visible_until": settings.wrapped_visible_until,
         "visible_from_input": _display_dt(settings.wrapped_visible_from, scheduler_tz),
         "visible_until_input": _display_dt(settings.wrapped_visible_until, scheduler_tz),
+        "visible_from_date_input": _display_date(settings.wrapped_visible_from, scheduler_tz),
+        "visible_from_time_input": _display_time(settings.wrapped_visible_from, scheduler_tz),
+        "visible_until_date_input": _display_date(settings.wrapped_visible_until, scheduler_tz),
+        "visible_until_time_input": _display_time(settings.wrapped_visible_until, scheduler_tz),
         "timezone": ops.get_scheduler_timezone_name(settings),
         "artist_clip_message": settings.wrapped_artist_clip_message or DEFAULT_ARTIST_CLIP_MESSAGE,
     }
