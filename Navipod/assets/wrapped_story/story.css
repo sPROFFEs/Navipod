@@ -829,6 +829,68 @@ body {
   white-space: nowrap;
 }
 
+.story-repeat-now {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  width: min(100%, 520px);
+  padding: 10px;
+  border: 1px solid rgba(247, 242, 238, 0.22);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.story-repeat-now.is-changing {
+  animation: story-repeat-pulse 460ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.story-repeat-now img {
+  width: 58px;
+  height: 58px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.story-repeat-now div {
+  min-width: 0;
+}
+
+.story-repeat-now span,
+.story-repeat-now em {
+  display: block;
+  color: var(--story-muted);
+  font-size: 0.78rem;
+  font-style: normal;
+}
+
+.story-repeat-now strong {
+  display: block;
+  overflow: hidden;
+  margin: 3px 0;
+  font-size: clamp(1rem, 2.8vw, 1.35rem);
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.story-repeat-list li {
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease,
+    border-color 180ms ease;
+}
+
+.story-repeat-list li:not(.is-playing) {
+  opacity: 0.64;
+}
+
+.story-repeat-list li.is-playing {
+  border-color: rgba(247, 242, 238, 0.42);
+  opacity: 1;
+  transform: translateX(4px);
+}
+
 .story-title-icon {
   width: clamp(42px, 7vw, 72px);
   height: clamp(42px, 7vw, 72px);
@@ -1044,6 +1106,17 @@ body {
   }
 }
 
+@keyframes story-repeat-pulse {
+  from {
+    opacity: 0.72;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 720px) {
   .story-root {
     height: 100dvh;
@@ -1160,6 +1233,22 @@ body {
   .story-list .story-list-with-art em,
   .story-list .story-list-with-avatar em {
     grid-column: 3;
+  }
+
+  .story-repeat-now {
+    grid-template-columns: 48px minmax(0, 1fr);
+    gap: 10px;
+    padding: 8px;
+    border-radius: 12px;
+  }
+
+  .story-repeat-now img {
+    width: 48px;
+    height: 48px;
+  }
+
+  .story-repeat-now strong {
+    font-size: 1rem;
   }
 
   .story-feature-track {

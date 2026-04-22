@@ -1,4 +1,4 @@
-/* global window, document, requestAnimationFrame, fetch, Audio */
+/* global window, document, requestAnimationFrame, fetch, Audio, MediaMetadata, navigator, gsap */
 
 (function () {
   const state = {
@@ -9,9 +9,12 @@
     paused: false,
     timer: null,
     audioTimer: null,
+    repeatTimer: null,
     bgFadeTimer: null,
     intervalMs: 10000,
     audio: new Audio(),
+    currentAudio: null,
+    preloadedAudios: new Map(),
     preloadedSrc: '',
     topTrackReady: false,
     introAudio: new Audio('/assets/wrapped_story/audio/light-transition.mp3'),
@@ -132,6 +135,33 @@
     return icons[name] || '';
   }
 
+  function updateWrappedMediaSession() {
+    if (!('mediaSession' in navigator)) return;
+    navigator.mediaSession.playbackState = state.paused ? 'paused' : 'playing';
+  }
+
+  function setupWrappedMediaSession() {
+    if (!('mediaSession' in navigator)) return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: `Navipod Wrapped ${state.year}`,
+      artist: state.username || 'Navipod',
+      album: 'Wrapped'
+    });
+    ['play', 'pause'].forEach((action) => {
+      navigator.mediaSession.setActionHandler(action, () => {
+        setStoryPaused(action === 'pause');
+      });
+    });
+    ['previoustrack', 'nexttrack', 'seekbackward', 'seekforward', 'seekto'].forEach((action) => {
+      try {
+        navigator.mediaSession.setActionHandler(action, null);
+      } catch {
+        // Some browsers expose only a subset of MediaSession actions.
+      }
+    });
+    updateWrappedMediaSession();
+  }
+
   function fadeAudio(audio, targetVolume, duration = 900) {
     window.clearInterval(state.bgFadeTimer);
     const startVolume = Number(audio.volume || 0);
@@ -148,6 +178,28 @@
       .play()
       .then(() => fadeAudio(state.backgroundAudio, 0.11, 2200))
       .catch(showSoundPrompt);
+  }
+
+  function preloadTrackAudios(tracks) {
+    tracks.forEach((track, index) => {
+      const src = trackStream(track);
+      if (!src || state.preloadedAudios.has(src)) return;
+      const audio = new Audio(src);
+      audio.preload = 'auto';
+      audio.volume = 0.13;
+      audio.load();
+      state.preloadedAudios.set(src, audio);
+      if (index === 0) {
+        state.preloadedSrc = src;
+        audio.addEventListener(
+          'canplaythrough',
+          () => {
+            state.topTrackReady = true;
+          },
+          { once: true }
+        );
+      }
+    });
   }
 
   function showSoundPrompt() {
@@ -237,7 +289,8 @@
     const secondaryPanels = bg.querySelectorAll('.story-panel2');
     const elH = window.innerHeight / numberOfPanels;
     const elW = window.innerWidth / numberOfPanels;
-    const grad90 = 'linear-gradient(90deg,rgba(255,180,200,1) 0%,rgba(255,89,226,1) 6%,rgba(255,0,211,1) 19%,rgba(255,0,0,1) 72%,rgba(0,0,0,1) 100%)';
+    const grad90 =
+      'linear-gradient(90deg,rgba(255,180,200,1) 0%,rgba(255,89,226,1) 6%,rgba(255,0,211,1) 19%,rgba(255,0,0,1) 72%,rgba(0,0,0,1) 100%)';
 
     bgTimeline = gsap.timeline({ repeat: -1, paused: false });
 
@@ -249,99 +302,229 @@
       const gradStop = `linear-gradient(90deg,rgba(255,180,200,1) 0%,rgba(255,89,226,1) 6%,rgba(255,0,211,1) 19%,rgba(255,0,0,1) 72%,rgba(0,0,0,1) ${stop}%)`;
 
       // Initial rotation: unfold from center
-      bgTimeline.fromTo(panel, {
-        y: elH * 5.5, x: elW * 5.5, width: 0, height: 0, rotation: -360, background: grad105
-      }, {
-        width: wi, height: he, y: -elH / 1.33 + ((12 - i) * elH) / 1.33, x: 0,
-        duration: 1 + 0.1 * (12 - i), ease: 'sine.inOut', rotation: 0, background: grad105
-      }, 0);
+      bgTimeline.fromTo(
+        panel,
+        {
+          y: elH * 5.5,
+          x: elW * 5.5,
+          width: 0,
+          height: 0,
+          rotation: -360,
+          background: grad105
+        },
+        {
+          width: wi,
+          height: he,
+          y: -elH / 1.33 + ((12 - i) * elH) / 1.33,
+          x: 0,
+          duration: 1 + 0.1 * (12 - i),
+          ease: 'sine.inOut',
+          rotation: 0,
+          background: grad105
+        },
+        0
+      );
 
       // Linear rotation
-      bgTimeline.to(panel, {
-        rotation: 12 * rotationCoef - (i + 1) * rotationCoef,
-        duration: 3, background: gradStop, ease: 'linear'
-      }, '>');
+      bgTimeline.to(
+        panel,
+        {
+          rotation: 12 * rotationCoef - (i + 1) * rotationCoef,
+          duration: 3,
+          background: gradStop,
+          ease: 'linear'
+        },
+        '>'
+      );
 
       // Reordering
-      bgTimeline.to(panel, {
-        rotation: 360, y: -elH / 6 + ((12 - i) * elH) / 6, x: -elW / 1.2 + ((12 - i) * elW) / 1.2,
-        background: grad90, ease: 'sine.inOut', duration: 1
-      }, '>');
+      bgTimeline.to(
+        panel,
+        {
+          rotation: 360,
+          y: -elH / 6 + ((12 - i) * elH) / 6,
+          x: -elW / 1.2 + ((12 - i) * elW) / 1.2,
+          background: grad90,
+          ease: 'sine.inOut',
+          duration: 1
+        },
+        '>'
+      );
 
       // Linear rotation 2
-      bgTimeline.to(panel, {
-        rotation: 12 * rotationCoef - (i + 1) * rotationCoef + 360,
-        duration: 4, background: grad90, ease: 'linear'
-      }, '>');
+      bgTimeline.to(
+        panel,
+        {
+          rotation: 12 * rotationCoef - (i + 1) * rotationCoef + 360,
+          duration: 4,
+          background: grad90,
+          ease: 'linear'
+        },
+        '>'
+      );
 
       if (i === 0) bgTimeline.addLabel('splitStart', '-=0.8');
 
       // Secondary panels
       secondaryPanels.forEach((twoPanel, index) => {
         const wi2 = window.innerWidth - elW * index + elW;
-        bgTimeline.fromTo(twoPanel, {
-          y: elH * 5.5, x: elW * 5.5, width: 0, height: 0, rotation: -360,
-          background: 'linear-gradient(105deg,rgba(255,149,236,1) 0%,rgba(255,89,226,1) 6%,rgba(255,0,211,1) 19%,rgba(255,0,0,1) 72%,rgba(0,0,0,1) 100%)'
-        }, {
-          rotation: -90, y: (index * elH) / 4 - wi2, x: -elW / 2 + (index * elW) / 2,
-          width: wi2, height: wi2, background: grad90, ease: 'sine.inOut', duration: 1
-        }, 'splitStart+=' + (0.05 * index));
+        bgTimeline.fromTo(
+          twoPanel,
+          {
+            y: elH * 5.5,
+            x: elW * 5.5,
+            width: 0,
+            height: 0,
+            rotation: -360,
+            background:
+              'linear-gradient(105deg,rgba(255,149,236,1) 0%,rgba(255,89,226,1) 6%,rgba(255,0,211,1) 19%,rgba(255,0,0,1) 72%,rgba(0,0,0,1) 100%)'
+          },
+          {
+            rotation: -90,
+            y: (index * elH) / 4 - wi2,
+            x: -elW / 2 + (index * elW) / 2,
+            width: wi2,
+            height: wi2,
+            background: grad90,
+            ease: 'sine.inOut',
+            duration: 1
+          },
+          'splitStart+=' + 0.05 * index
+        );
 
-        bgTimeline.to(twoPanel, {
-          rotation: 12 * rotationCoef - (12 - index) * rotationCoef - 90,
-          duration: 5, background: grad90, ease: 'linear'
-        }, '>');
+        bgTimeline.to(
+          twoPanel,
+          {
+            rotation: 12 * rotationCoef - (12 - index) * rotationCoef - 90,
+            duration: 5,
+            background: grad90,
+            ease: 'linear'
+          },
+          '>'
+        );
 
-        bgTimeline.to(twoPanel, {
-          rotation: 300, y: (index * elH) / 2 - wi2, x: window.innerWidth * 1.1 - wi2 * 1.2,
-          width: wi2, height: wi2, background: grad90, ease: 'sine.inOut', duration: 1
-        }, '>');
+        bgTimeline.to(
+          twoPanel,
+          {
+            rotation: 300,
+            y: (index * elH) / 2 - wi2,
+            x: window.innerWidth * 1.1 - wi2 * 1.2,
+            width: wi2,
+            height: wi2,
+            background: grad90,
+            ease: 'sine.inOut',
+            duration: 1
+          },
+          '>'
+        );
 
-        bgTimeline.to(twoPanel, {
-          rotation: '+=15', duration: 5, background: grad90, ease: 'linear'
-        }, '>');
+        bgTimeline.to(
+          twoPanel,
+          {
+            rotation: '+=15',
+            duration: 5,
+            background: grad90,
+            ease: 'linear'
+          },
+          '>'
+        );
 
-        bgTimeline.to(twoPanel, {
-          rotation: '+=360', y: '-=' + (wi2 * 2), x: '+=' + (wi2 * 2),
-          width: wi2, height: wi2, background: grad90, ease: 'sine.inOut', duration: 1
-        }, '>');
+        bgTimeline.to(
+          twoPanel,
+          {
+            rotation: '+=360',
+            y: '-=' + wi2 * 2,
+            x: '+=' + wi2 * 2,
+            width: wi2,
+            height: wi2,
+            background: grad90,
+            ease: 'sine.inOut',
+            duration: 1
+          },
+          '>'
+        );
       });
 
       // Primary panel exit / continuation
       if (i === 0) {
-        bgTimeline.to(panel, {
-          rotation: 720 + 90, y: window.innerHeight - ((12 - i) * elH) / 4,
-          x: -elW / 2 + ((12 - i) * elW) / 2, width: 0, height: 0, opacity: 0,
-          background: grad90, ease: 'sine.inOut', duration: 1
-        }, 'splitStart+=' + (0.05 * i));
+        bgTimeline.to(
+          panel,
+          {
+            rotation: 720 + 90,
+            y: window.innerHeight - ((12 - i) * elH) / 4,
+            x: -elW / 2 + ((12 - i) * elW) / 2,
+            width: 0,
+            height: 0,
+            opacity: 0,
+            background: grad90,
+            ease: 'sine.inOut',
+            duration: 1
+          },
+          'splitStart+=' + 0.05 * i
+        );
       } else {
-        bgTimeline.to(panel, {
-          rotation: 720 + 90, y: window.innerHeight - ((12 - i) * elH) / 4,
-          x: -elW / 2 + ((12 - i) * elW) / 2, width: wi, height: wi,
-          background: grad90, ease: 'sine.inOut', duration: 1
-        }, 'splitStart+=' + (0.05 * i));
+        bgTimeline.to(
+          panel,
+          {
+            rotation: 720 + 90,
+            y: window.innerHeight - ((12 - i) * elH) / 4,
+            x: -elW / 2 + ((12 - i) * elW) / 2,
+            width: wi,
+            height: wi,
+            background: grad90,
+            ease: 'sine.inOut',
+            duration: 1
+          },
+          'splitStart+=' + 0.05 * i
+        );
 
-        bgTimeline.to(panel, {
-          rotation: (12 * rotationCoef - (i + 1) * rotationCoef) / 1.2 + 810,
-          duration: 5, background: grad90, ease: 'linear'
-        }, '>');
+        bgTimeline.to(
+          panel,
+          {
+            rotation: (12 * rotationCoef - (i + 1) * rotationCoef) / 1.2 + 810,
+            duration: 5,
+            background: grad90,
+            ease: 'linear'
+          },
+          '>'
+        );
 
-        bgTimeline.to(panel, {
-          y: window.innerHeight - ((12 - i) * elH) / 2, x: -elW * 1.2,
-          rotation: (12 * rotationCoef - (i + 1) * rotationCoef) / 1.2 + 1180,
-          ease: 'sine.inOut', duration: 1, background: grad90
-        }, '>');
+        bgTimeline.to(
+          panel,
+          {
+            y: window.innerHeight - ((12 - i) * elH) / 2,
+            x: -elW * 1.2,
+            rotation: (12 * rotationCoef - (i + 1) * rotationCoef) / 1.2 + 1180,
+            ease: 'sine.inOut',
+            duration: 1,
+            background: grad90
+          },
+          '>'
+        );
 
-        bgTimeline.to(panel, {
-          rotation: (12 * rotationCoef - (i + 1) * rotationCoef) / 1.2 + 1200,
-          duration: 5, background: grad90, ease: 'linear'
-        }, '>');
+        bgTimeline.to(
+          panel,
+          {
+            rotation: (12 * rotationCoef - (i + 1) * rotationCoef) / 1.2 + 1200,
+            duration: 5,
+            background: grad90,
+            ease: 'linear'
+          },
+          '>'
+        );
 
-        bgTimeline.to(panel, {
-          y: '+=' + (elH * 4), x: '-=' + (elW * 4),
-          rotation: (12 * rotationCoef - (i + 1) * rotationCoef) / 1.2 + 1500,
-          ease: 'sine.inOut', duration: 1, background: grad90
-        }, '>');
+        bgTimeline.to(
+          panel,
+          {
+            y: '+=' + elH * 4,
+            x: '-=' + elW * 4,
+            rotation: (12 * rotationCoef - (i + 1) * rotationCoef) / 1.2 + 1500,
+            ease: 'sine.inOut',
+            duration: 1,
+            background: grad90
+          },
+          '>'
+        );
       }
     });
   }
@@ -352,7 +535,7 @@
     // Smoothly advance the GSAP timeline to match the current slide position
     if (bgTimeline) {
       const total = Math.max(1, state.slides.length);
-      const targetProgress = (state.index / total);
+      const targetProgress = state.index / total;
       gsap.to(bgTimeline, { progress: targetProgress, duration: 1.5, ease: 'power2.inOut', overwrite: true });
     }
   }
@@ -384,6 +567,18 @@
       <strong>${esc(track.title)}</strong>
       <em>${number(track.stream_count)} plays</em>
     </li>`;
+  }
+
+  function repeatPreview(track) {
+    if (!track) return '';
+    return `<div class="story-repeat-now" id="story-repeat-now" aria-live="polite">
+      <img src="${trackCover(track)}" alt="">
+      <div>
+        <span>Now previewing</span>
+        <strong>${esc(track.title)}</strong>
+        <em>${esc(track.artist || 'Unknown Artist')}</em>
+      </div>
+    </div>`;
   }
 
   function userRow(item, index, value) {
@@ -444,8 +639,9 @@
       {
         kicker: 'Top songs',
         title: `${repeatIcon()}<span>The repeat list</span>`,
-        html: listItems(topSongs.slice(0, 5), trackRow, 'story-list-media'),
-        className: 'story-slide-list'
+        html: `${repeatPreview(topSongs[0])}${listItems(topSongs.slice(0, 5), trackRow, 'story-list-media story-repeat-list')}`,
+        className: 'story-slide-list story-slide-repeat',
+        repeatTracks: topSongs.slice(0, 5)
       },
       {
         kicker: 'Top artists',
@@ -556,6 +752,7 @@
         setSlideTheme();
         bindSlideActions();
         playSlideAudio(slide);
+        startRepeatList(slide);
         state.transitioning = false;
       }, enterDelay);
     } else {
@@ -564,6 +761,7 @@
       setSlideTheme();
       bindSlideActions();
       playSlideAudio(slide);
+      startRepeatList(slide);
     }
 
     scheduleNext();
@@ -571,43 +769,91 @@
 
   function stopAudio() {
     window.clearTimeout(state.audioTimer);
-    state.audio.pause();
-    state.audio.currentTime = 0;
+    window.clearTimeout(state.repeatTimer);
+    if (state.currentAudio) {
+      state.currentAudio.pause();
+      state.currentAudio.currentTime = 0;
+    }
     fadeAudio(state.backgroundAudio, 0.11, 600);
+  }
+
+  function audioForSrc(src) {
+    return state.preloadedAudios.get(src) || null;
+  }
+
+  function playPreviewAudio(src, durationMs, volume = 0.18, fallbackDuration = 0) {
+    if (!src) return;
+    window.clearTimeout(state.audioTimer);
+    fadeAudio(state.backgroundAudio, 0.025, 450);
+    if (state.currentAudio) {
+      state.currentAudio.pause();
+      state.currentAudio.currentTime = 0;
+    }
+
+    const audio = audioForSrc(src) || state.audio;
+    if (audio === state.audio && state.audio.src !== src) {
+      state.audio.src = src;
+      state.audio.load();
+    }
+    audio.volume = volume;
+    state.currentAudio = audio;
+
+    const startPlayback = () => {
+      const duration = Number(audio.duration || fallbackDuration || 0);
+      if (Number.isFinite(duration) && duration > 18) {
+        const maxStart = Math.max(0, duration - state.intervalMs / 1000 - 2);
+        audio.currentTime = Math.floor(Math.random() * maxStart);
+      }
+      audio.play().catch(() => {});
+      updateWrappedMediaSession();
+      state.audioTimer = window.setTimeout(() => {
+        audio.pause();
+      }, durationMs);
+    };
+
+    if (audio.readyState >= 3) {
+      startPlayback();
+    } else {
+      audio.addEventListener('canplay', startPlayback, { once: true });
+    }
   }
 
   function playSlideAudio(slide) {
     if (!slide.audioSrc) return;
-    fadeAudio(state.backgroundAudio, 0.025, 450);
+    playPreviewAudio(slide.audioSrc, state.intervalMs - 400, 0.18, slide.audioDuration);
+  }
 
-    // If this is the pre-loaded top track, use it directly
-    const isPreloaded = state.topTrackReady && state.preloadedSrc &&
-      (slide.audioSrc === state.preloadedSrc || slide.audioSrc.endsWith(state.preloadedSrc) || state.preloadedSrc.endsWith(slide.audioSrc));
+  function startRepeatList(slide) {
+    const tracks = (slide.repeatTracks || []).filter((track) => trackStream(track));
+    if (!tracks.length) return;
 
-    if (!isPreloaded) {
-      state.audio.src = slide.audioSrc;
-      state.audio.load();
-    }
-    state.audio.volume = 0.18;
+    const now = document.getElementById('story-repeat-now');
+    const rows = [...stage.querySelectorAll('.story-repeat-list li')];
+    const slotMs = Math.max(1500, Math.floor((state.intervalMs - 900) / tracks.length));
+    let index = 0;
 
-    const startPlayback = () => {
-      const duration = Number(state.audio.duration || slide.audioDuration || 0);
-      if (Number.isFinite(duration) && duration > 18) {
-        const maxStart = Math.max(0, duration - state.intervalMs / 1000 - 2);
-        state.audio.currentTime = Math.floor(Math.random() * maxStart);
+    const showTrack = () => {
+      if (state.paused) return;
+      const track = tracks[index % tracks.length];
+      rows.forEach((row, rowIndex) => row.classList.toggle('is-playing', rowIndex === index % tracks.length));
+      if (now) {
+        now.classList.remove('is-changing');
+        void now.offsetWidth;
+        now.classList.add('is-changing');
+        now.innerHTML = `
+          <img src="${trackCover(track)}" alt="">
+          <div>
+            <span>Now previewing</span>
+            <strong>${esc(track.title)}</strong>
+            <em>${esc(track.artist || 'Unknown Artist')}</em>
+          </div>`;
       }
-      state.audio.play().catch(() => {});
-      state.audioTimer = window.setTimeout(() => {
-        state.audio.pause();
-      }, state.intervalMs - 400);
+      playPreviewAudio(trackStream(track), Math.max(900, slotMs - 220), 0.13, Number(track.duration || 0));
+      index += 1;
+      if (index < tracks.length) state.repeatTimer = window.setTimeout(showTrack, slotMs);
     };
 
-    // readyState 4 = HAVE_ENOUGH_DATA (fully buffered)
-    if (state.audio.readyState >= 3) {
-      startPlayback();
-    } else {
-      state.audio.addEventListener('canplay', startPlayback, { once: true });
-    }
+    showTrack();
   }
 
   function bindSlideActions() {
@@ -644,9 +890,31 @@
     renderSlide(direction);
   }
 
+  function setStoryPaused(paused) {
+    state.paused = paused;
+    pause.innerHTML = icon(state.paused ? 'play' : 'pause');
+    if (state.paused) {
+      window.clearTimeout(state.audioTimer);
+      window.clearTimeout(state.repeatTimer);
+      state.currentAudio?.pause();
+      state.backgroundAudio.pause();
+      setBackgroundPaused(true);
+    } else if (state.currentAudio?.src) {
+      state.currentAudio.play().catch(() => {});
+      state.backgroundAudio.play().catch(showSoundPrompt);
+      setBackgroundPaused(false);
+    } else {
+      state.backgroundAudio.play().catch(showSoundPrompt);
+      setBackgroundPaused(false);
+    }
+    updateWrappedMediaSession();
+    scheduleNext();
+  }
+
   async function init() {
     createPanels();
     resumeTop.href = `/wrapped/${state.year}`;
+    setupWrappedMediaSession();
     close.addEventListener('click', () => {
       window.location.href = `/wrapped/${state.year}`;
     });
@@ -655,28 +923,33 @@
     prev.innerHTML = icon('prev');
     next.innerHTML = icon('next');
     pause.innerHTML = icon('pause');
-    pause.addEventListener('click', () => {
-      state.paused = !state.paused;
-      pause.innerHTML = icon(state.paused ? 'play' : 'pause');
-      if (state.paused) {
-        state.audio.pause();
-        state.backgroundAudio.pause();
-        setBackgroundPaused(true);
-      } else if (state.audio.src) {
-        state.audio.play().catch(() => {});
-        state.backgroundAudio.play().catch(showSoundPrompt);
-        setBackgroundPaused(false);
-      } else {
-        state.backgroundAudio.play().catch(showSoundPrompt);
-        setBackgroundPaused(false);
-      }
-      scheduleNext();
+    pause.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setStoryPaused(!state.paused);
     });
     window.addEventListener('resize', () => buildBgTimeline());
     window.addEventListener('keydown', (event) => {
-      if (event.key === 'ArrowLeft') go(-1);
-      if (event.key === 'ArrowRight' || event.key === ' ') go(1);
-      if (event.key === 'Escape') window.location.href = `/wrapped/${state.year}`;
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        event.stopPropagation();
+        go(-1);
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        event.stopPropagation();
+        go(1);
+      }
+      if (event.key === ' ') {
+        event.preventDefault();
+        event.stopPropagation();
+        setStoryPaused(!state.paused);
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        window.location.href = `/wrapped/${state.year}`;
+      }
     });
 
     const [wrapped, party] = await Promise.all([
@@ -692,24 +965,7 @@
     state.year = Number(wrapped.year || state.year);
     state.slides = buildSlides(wrapped, party);
 
-    // Aggressively pre-load the top song audio into a buffer
-    const topSong = wrapped.top_songs_playlist?.tracks?.[0];
-    const topSrc = trackStream(topSong);
-    if (topSrc) {
-      state.preloadedSrc = topSrc;
-      state.audio.preload = 'auto';
-      state.audio.src = topSrc;
-      state.audio.load();
-      // Wait for full buffer or timeout (3s max during intro)
-      const bufferReady = new Promise((resolve) => {
-        state.audio.addEventListener('canplaythrough', () => {
-          state.topTrackReady = true;
-          resolve();
-        }, { once: true });
-        window.setTimeout(resolve, 3000);
-      });
-      bufferReady.catch(() => {});
-    }
+    preloadTrackAudios((wrapped.top_songs_playlist?.tracks || []).slice(0, 5));
 
     renderIntro();
     renderSlide(1);
