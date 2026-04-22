@@ -21,6 +21,7 @@
     backgroundAudio: new Audio('/assets/wrapped_story/audio/wrapped-background.mp3')
   };
   const maxReasonableMinutes = 365 * 24 * 60;
+  const repeatTrackMs = 10000;
 
   const root = document.getElementById('story-root');
   const bg = document.getElementById('story-bg');
@@ -641,7 +642,11 @@
         title: `${repeatIcon()}<span>The repeat list</span>`,
         html: `${repeatPreview(topSongs[0])}${listItems(topSongs.slice(0, 5), trackRow, 'story-list-media story-repeat-list')}`,
         className: 'story-slide-list story-slide-repeat',
-        repeatTracks: topSongs.slice(0, 5)
+        repeatTracks: topSongs.slice(0, 5),
+        durationMs: Math.max(
+          state.intervalMs,
+          topSongs.slice(0, 5).filter((track) => trackStream(track)).length * repeatTrackMs
+        )
       },
       {
         kicker: 'Top artists',
@@ -703,8 +708,12 @@
     ];
   }
 
-  function renderProgress() {
-    root.style.setProperty('--story-interval', `${state.intervalMs}ms`);
+  function slideDuration(slide = state.slides[state.index]) {
+    return Number(slide?.durationMs || state.intervalMs);
+  }
+
+  function renderProgress(slide) {
+    root.style.setProperty('--story-interval', `${slideDuration(slide)}ms`);
     progress.innerHTML = state.slides
       .map((_, index) => {
         const cls = index < state.index ? 'done' : index === state.index ? 'active' : '';
@@ -722,7 +731,7 @@
     if (loading) loading.remove();
 
     stopAudio();
-    renderProgress();
+    renderProgress(slide);
 
     // Build the new article off-DOM
     const article = document.createElement('article');
@@ -801,7 +810,7 @@
     const startPlayback = () => {
       const duration = Number(audio.duration || fallbackDuration || 0);
       if (Number.isFinite(duration) && duration > 18) {
-        const maxStart = Math.max(0, duration - state.intervalMs / 1000 - 2);
+        const maxStart = Math.max(0, duration - durationMs / 1000 - 2);
         audio.currentTime = Math.floor(Math.random() * maxStart);
       }
       audio.play().catch(() => {});
@@ -820,7 +829,7 @@
 
   function playSlideAudio(slide) {
     if (!slide.audioSrc) return;
-    playPreviewAudio(slide.audioSrc, state.intervalMs - 400, 0.18, slide.audioDuration);
+    playPreviewAudio(slide.audioSrc, slideDuration(slide) - 400, 0.18, slide.audioDuration);
   }
 
   function startRepeatList(slide) {
@@ -829,7 +838,7 @@
 
     const now = document.getElementById('story-repeat-now');
     const rows = [...stage.querySelectorAll('.story-repeat-list li')];
-    const slotMs = Math.max(1500, Math.floor((state.intervalMs - 900) / tracks.length));
+    const slotMs = repeatTrackMs;
     let index = 0;
 
     const showTrack = () => {
@@ -848,7 +857,7 @@
             <em>${esc(track.artist || 'Unknown Artist')}</em>
           </div>`;
       }
-      playPreviewAudio(trackStream(track), Math.max(900, slotMs - 220), 0.13, Number(track.duration || 0));
+      playPreviewAudio(trackStream(track), slotMs - 350, 0.13, Number(track.duration || 0));
       index += 1;
       if (index < tracks.length) state.repeatTimer = window.setTimeout(showTrack, slotMs);
     };
@@ -879,7 +888,7 @@
   function scheduleNext() {
     window.clearTimeout(state.timer);
     if (state.paused || state.index >= state.slides.length - 1) return;
-    state.timer = window.setTimeout(() => go(1), state.intervalMs);
+    state.timer = window.setTimeout(() => go(1), slideDuration());
   }
 
   function go(direction) {
