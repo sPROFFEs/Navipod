@@ -164,28 +164,49 @@ body {
   background: rgba(0, 0, 0, 0.46);
   backdrop-filter: blur(20px) saturate(1.4);
   -webkit-backdrop-filter: blur(20px) saturate(1.4);
-  opacity: 0;
   overflow: hidden;
-  transform: translateX(30px) scale(0.98);
-  animation: story-slide-in 550ms cubic-bezier(0.25, 1, 0.5, 1) forwards;
   will-change: transform, opacity;
+  /* Default: enter from right (first slide, or forward navigation) */
+  opacity: 0;
+  transform: translateY(10px) scale(0.99);
+  animation: story-slide-fade-in 500ms cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
 
+/* --- Child stagger (delays offset from card entrance) --- */
 .story-slide > * {
-  animation: story-child-fade 420ms cubic-bezier(0.25, 1, 0.5, 1) both;
+  opacity: 0;
+  transform: translateY(10px);
+  animation: story-child-fade 380ms cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
-.story-slide > :nth-child(1) { animation-delay: 80ms; }
-.story-slide > :nth-child(2) { animation-delay: 160ms; }
-.story-slide > :nth-child(3) { animation-delay: 240ms; }
-.story-slide > :nth-child(4) { animation-delay: 310ms; }
+.story-slide > :nth-child(1) { animation-delay: 200ms; }
+.story-slide > :nth-child(2) { animation-delay: 300ms; }
+.story-slide > :nth-child(3) { animation-delay: 390ms; }
+.story-slide > :nth-child(4) { animation-delay: 470ms; }
 
-.story-slide.slide-exit {
-  animation: story-slide-out 380ms cubic-bezier(0.4, 0, 0.7, 0.2) forwards;
+/* --- Enter classes (applied by JS after exit is done) --- */
+.story-slide.slide-enter-right {
+  opacity: 0;
+  transform: translateX(28px) scale(0.985);
+  animation: story-slide-enter-right 500ms cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
 
 .story-slide.slide-enter-left {
-  transform: translateX(-30px) scale(0.98);
-  animation-name: story-slide-in-left;
+  opacity: 0;
+  transform: translateX(-28px) scale(0.985);
+  animation: story-slide-enter-left 500ms cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+/* --- Exit classes (fast, so the stage clears before enter) --- */
+.story-slide.slide-exit {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  animation: story-slide-exit-left 280ms cubic-bezier(0.4, 0, 0.7, 0.2) forwards;
+}
+
+.story-slide.slide-exit-right {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  animation: story-slide-exit-right 280ms cubic-bezier(0.4, 0, 0.7, 0.2) forwards;
 }
 
 .story-kicker {
@@ -834,31 +855,65 @@ body {
   }
 }
 
-@keyframes story-slide-in {
+/* Default entrance: gentle vertical fade (first slide) */
+@keyframes story-slide-fade-in {
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Directional enter */
+@keyframes story-slide-enter-right {
+  from {
+    opacity: 0;
+    transform: translateX(28px) scale(0.985);
+  }
   to {
     opacity: 1;
     transform: translateX(0) scale(1);
   }
 }
 
-@keyframes story-slide-in-left {
+@keyframes story-slide-enter-left {
+  from {
+    opacity: 0;
+    transform: translateX(-28px) scale(0.985);
+  }
   to {
     opacity: 1;
     transform: translateX(0) scale(1);
   }
 }
 
-@keyframes story-slide-out {
+/* Directional exit */
+@keyframes story-slide-exit-left {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
   to {
     opacity: 0;
-    transform: translateX(-30px) scale(0.98);
+    transform: translateX(-24px) scale(0.985);
   }
 }
 
+@keyframes story-slide-exit-right {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(24px) scale(0.985);
+  }
+}
+
+/* Child content stagger */
 @keyframes story-child-fade {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -939,11 +994,9 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .story-slide {
-    animation: none;
-  }
-
-  .story-slide {
+  .story-slide,
+  .story-slide > * {
+    animation: none !important;
     opacity: 1;
     transform: none;
   }

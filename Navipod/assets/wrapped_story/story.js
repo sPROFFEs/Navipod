@@ -526,13 +526,12 @@
     const loading = stage.querySelector('.story-loading');
     if (loading) loading.remove();
 
-    const existingArticle = stage.querySelector('.story-slide');
     stopAudio();
-    setSlideTheme();
     renderProgress();
 
+    // Build the new article off-DOM
     const article = document.createElement('article');
-    article.className = `story-slide ${slide.className || ''}${direction < 0 ? ' slide-enter-left' : ''}`;
+    article.className = `story-slide ${slide.className || ''}`;
     article.dataset.slide = String(state.index);
     article.innerHTML = `
         <div class="story-kicker">${esc(slide.kicker)}</div>
@@ -540,16 +539,34 @@
         ${slide.copy ? `<p class="story-copy">${esc(slide.copy)}</p>` : ''}
         ${slide.html || ''}`;
 
+    const existingArticle = stage.querySelector('.story-slide');
+
     if (existingArticle) {
+      // --- Sequenced transition: exit first, then enter ---
+      state.transitioning = true;
       existingArticle.style.pointerEvents = 'none';
-      existingArticle.classList.add('slide-exit');
-      existingArticle.addEventListener('animationend', () => existingArticle.remove(), { once: true });
-      // Safety fallback in case animationend doesn't fire
-      window.setTimeout(() => { if (existingArticle.parentNode) existingArticle.remove(); }, 600);
+      const exitClass = direction < 0 ? 'slide-exit-right' : 'slide-exit';
+      existingArticle.classList.add(exitClass);
+
+      const enterDelay = 300; // ms — wait for exit to mostly finish
+      window.setTimeout(() => {
+        existingArticle.remove();
+        article.classList.add(direction < 0 ? 'slide-enter-left' : 'slide-enter-right');
+        stage.appendChild(article);
+        // Sync background to new slide after exit is done
+        setSlideTheme();
+        bindSlideActions();
+        playSlideAudio(slide);
+        state.transitioning = false;
+      }, enterDelay);
+    } else {
+      // First slide — no exit needed, enter immediately
+      stage.appendChild(article);
+      setSlideTheme();
+      bindSlideActions();
+      playSlideAudio(slide);
     }
-    stage.appendChild(article);
-    bindSlideActions();
-    playSlideAudio(slide);
+
     scheduleNext();
   }
 
@@ -619,6 +636,7 @@
   }
 
   function go(direction) {
+    if (state.transitioning) return; // Prevent overlapping transitions
     const nextIndex = Math.min(Math.max(state.index + direction, 0), state.slides.length - 1);
     if (nextIndex === state.index) return;
     state.index = nextIndex;
