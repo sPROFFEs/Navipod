@@ -115,6 +115,13 @@
     letter-spacing: -0.02em;
 }
 
+.wrapped-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
 .wrapped-stats {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -249,6 +256,10 @@
     .wrapped-summary {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .wrapped-actions {
+        justify-content: flex-start;
     }
 
     .wrapped-grid {

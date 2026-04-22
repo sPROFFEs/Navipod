@@ -423,13 +423,32 @@ async def portal(request: Request, db: Session = Depends(get_db)):
     return _render_app_shell(request, user, db)
 
 
+@app.get("/wrapped/story")
+@app.get("/wrapped/story/")
+@app.get("/wrapped/story/{year}")
+async def wrapped_story_page(request: Request, year: int | None = None, db: Session = Depends(get_db)):
+    try:
+        user = auth.get_current_user(request, db)
+    except Exception:
+        return RedirectResponse("/login")
+
+    return templates.TemplateResponse(
+        "wrapped_story.html",
+        {
+            "request": request,
+            "username": user.username,
+            "year": year,
+        },
+    )
+
+
 @app.get("/wrapped")
 @app.get("/wrapped/")
 @app.get("/wrapped/{year}")
 async def wrapped_page(request: Request, year: int | None = None, db: Session = Depends(get_db)):
     try:
         user = auth.get_current_user(request, db)
-    except:
+    except Exception:
         return RedirectResponse("/login")
 
     return _render_app_shell(request, user, db, initial_view="wrapped", initial_param=year)

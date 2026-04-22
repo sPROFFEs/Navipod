@@ -326,10 +326,10 @@ function createWrappedHomeCard(wrapped) {
                 <p>${minutes} minutes listened · Top artist: ${ui.escHtml(topArtist)}</p>
                 ${topSong ? `<p class="wrapped-home-sub">#1 song: ${ui.escHtml(topSong.title)} — ${ui.escHtml(topSong.artist)}</p>` : ''}
             </div>
-            <button class="btn-secondary-lg" onclick="loadView('wrapped', ${year})">
+            <a class="btn-secondary-lg" href="/wrapped/story/${year}">
                 <i data-lucide="sparkles"></i>
-                <span>Open Wrapped</span>
-            </button>
+                <span>Watch Wrapped</span>
+            </a>
         </section>`;
 }
 
@@ -415,10 +415,16 @@ export async function renderWrapped(container, yearParam = null) {
                     <h1>Navipod Wrapped ${ui.escHtml(String(wrapped.year))}</h1>
                     <p>${Number(wrapped.minutes_listened || 0).toLocaleString()} minutes listened · ${wrapped.event_count || 0} tracked listens</p>
                 </div>
-                <button class="btn-primary-lg" onclick="saveWrappedTopSongsPlaylist(${year})">
-                    <i data-lucide="save"></i>
-                    <span>Save Top Songs</span>
-                </button>
+                <div class="wrapped-actions">
+                    <a class="btn-secondary-lg" href="/wrapped/story/${year}">
+                        <i data-lucide="sparkles"></i>
+                        <span>Watch Story</span>
+                    </a>
+                    <button class="btn-primary-lg" onclick="saveWrappedTopSongsPlaylist(${year})">
+                        <i data-lucide="save"></i>
+                        <span>Save Top Songs</span>
+                    </button>
+                </div>
             </div>
             <div class="wrapped-stats">
                 <div><span>Minutes</span><strong>${Number(wrapped.minutes_listened || 0).toLocaleString()}</strong></div>

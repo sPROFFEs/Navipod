@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Navipod Wrapped</title>
+    <link rel="stylesheet" href="/assets/wrapped_story/story.css?v={{ range(1, 9999) | random }}" />
+  </head>
+
+  <body>
+    <main class="story-root" id="story-root">
+      <div class="story-bg" id="story-bg" aria-hidden="true"></div>
+
+      <header class="story-topbar">
+        <a class="story-link" id="story-resume-top" href="/wrapped">Resume</a>
+        <div class="story-progress" id="story-progress" aria-hidden="true"></div>
+        <button class="story-link story-button" id="story-close" type="button">Close</button>
+      </header>
+
+      <section class="story-stage" id="story-stage" aria-live="polite">
+        <div class="story-loading">Loading Wrapped...</div>
+      </section>
+
+      <footer class="story-controls">
+        <button class="story-control" id="story-prev" type="button">Previous</button>
+        <button class="story-control" id="story-pause" type="button">Pause</button>
+        <button class="story-control" id="story-next" type="button">Next</button>
+      </footer>
+    </main>
+
+    <script>
+      window.WRAPPED_STORY = {
+          year: {{ year|tojson }},
+          username: {{ username|tojson }}
+      };
+    </script>
+    <script src="/assets/wrapped_story/story.js?v={{ range(1, 99999) | random }}"></script>
+  </body>
+</html>
