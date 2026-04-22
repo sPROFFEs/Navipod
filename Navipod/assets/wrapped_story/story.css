@@ -38,15 +38,43 @@ body {
   transition: filter 1.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.story-orb {
+.story-panel1 {
+  width: 100vw;
+  height: 100vh;
   position: absolute;
-  top: 0;
-  left: 0;
-  border-radius: 50%;
-  filter: blur(80px);
-  pointer-events: none;
-  will-change: transform, opacity;
 }
+
+.story-panel1:nth-child(1)  { z-index: 11; background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 99%); }
+.story-panel1:nth-child(2)  { z-index: 10; background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 98%); }
+.story-panel1:nth-child(3)  { z-index: 9;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 97%); }
+.story-panel1:nth-child(4)  { z-index: 8;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 96%); }
+.story-panel1:nth-child(5)  { z-index: 7;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 95%); }
+.story-panel1:nth-child(6)  { z-index: 6;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 94%); }
+.story-panel1:nth-child(7)  { z-index: 5;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 93%); }
+.story-panel1:nth-child(8)  { z-index: 4;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 92%); }
+.story-panel1:nth-child(9)  { z-index: 3;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 91%); }
+.story-panel1:nth-child(10) { z-index: 2;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 90%); }
+.story-panel1:nth-child(11) { z-index: 1;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 89%); }
+.story-panel1:nth-child(12) { z-index: 0;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 88%); }
+
+.story-panel2 {
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.story-panel2:nth-child(13) { z-index: 11; background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 99%); }
+.story-panel2:nth-child(14) { z-index: 10; background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 98%); }
+.story-panel2:nth-child(15) { z-index: 9;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 97%); }
+.story-panel2:nth-child(16) { z-index: 8;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 96%); }
+.story-panel2:nth-child(17) { z-index: 7;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 95%); }
+.story-panel2:nth-child(18) { z-index: 6;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 94%); }
+.story-panel2:nth-child(19) { z-index: 5;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 93%); }
+.story-panel2:nth-child(20) { z-index: 4;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 92%); }
+.story-panel2:nth-child(21) { z-index: 3;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 91%); }
+.story-panel2:nth-child(22) { z-index: 2;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 90%); }
+.story-panel2:nth-child(23) { z-index: 1;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 89%); }
+.story-panel2:nth-child(24) { z-index: 0;  background: linear-gradient(105deg, #ff95ec 0%, #ff59e2 6%, #ff00d3 19%, red 72%, #000 88%); }
 
 .story-topbar,
 .story-controls {

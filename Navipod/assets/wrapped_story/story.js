@@ -18,7 +18,6 @@
     backgroundAudio: new Audio('/assets/wrapped_story/audio/wrapped-background.mp3')
   };
   const maxReasonableMinutes = 365 * 24 * 60;
-  const backgroundCycleMs = 60000;
 
   const root = document.getElementById('story-root');
   const bg = document.getElementById('story-bg');
@@ -215,86 +214,156 @@
     window.setTimeout(() => intro.remove(), 4300);
   }
 
-  /* ---- Background: 6 soft orbs that drift smoothly ---- */
-  const orbCount = 6;
-  const orbColors = [
-    'radial-gradient(circle, rgba(255,0,211,0.55) 0%, rgba(255,0,211,0) 70%)',
-    'radial-gradient(circle, rgba(255,74,220,0.45) 0%, rgba(255,74,220,0) 70%)',
-    'radial-gradient(circle, rgba(255,44,44,0.4) 0%, rgba(255,44,44,0) 70%)',
-    'radial-gradient(circle, rgba(255,180,200,0.5) 0%, rgba(255,180,200,0) 70%)',
-    'radial-gradient(circle, rgba(200,0,180,0.35) 0%, rgba(200,0,180,0) 70%)',
-    'radial-gradient(circle, rgba(255,100,180,0.4) 0%, rgba(255,100,180,0) 70%)'
-  ];
+  /* ---- Background: GSAP panel animation (Spotify Wrapped style) ---- */
+  const numberOfPanels = 12;
+  const rotationCoef = 5;
+  let bgTimeline = null;
 
   function createPanels() {
-    bg.innerHTML = Array.from({ length: orbCount }, (_, i) => {
-      return `<div class="story-orb" style="--orb-index:${i}"></div>`;
-    }).join('');
+    let html = '';
+    for (let i = 0; i < numberOfPanels; i++) html += `<div class="story-panel1"></div>`;
+    for (let i = 0; i < numberOfPanels; i++) html += `<div class="story-panel2"></div>`;
+    bg.innerHTML = html;
     requestAnimationFrame(() => {
       root.classList.add('ready');
-      animateBackground();
+      buildBgTimeline();
     });
   }
 
-  function animateBackground() {
-    const orbs = [...bg.querySelectorAll('.story-orb')];
-    const vw = window.innerWidth || 1200;
-    const vh = window.innerHeight || 800;
+  function buildBgTimeline() {
+    if (bgTimeline) bgTimeline.kill();
 
-    state.bgAnimations?.forEach((a) => a.cancel());
-    state.bgAnimations = orbs.map((orb, i) => {
-      const size = Math.max(vw, vh) * (0.6 + i * 0.12);
-      orb.style.width = `${size}px`;
-      orb.style.height = `${size}px`;
-      orb.style.background = orbColors[i % orbColors.length];
+    const panels = bg.querySelectorAll('.story-panel1');
+    const secondaryPanels = bg.querySelectorAll('.story-panel2');
+    const elH = window.innerHeight / numberOfPanels;
+    const elW = window.innerWidth / numberOfPanels;
+    const grad90 = 'linear-gradient(90deg,rgba(255,180,200,1) 0%,rgba(255,89,226,1) 6%,rgba(255,0,211,1) 19%,rgba(255,0,0,1) 72%,rgba(0,0,0,1) 100%)';
 
-      // Each orb traces a unique slow elliptical path
-      const rx = vw * (0.15 + (i % 3) * 0.12);
-      const ry = vh * (0.1 + ((i + 1) % 4) * 0.08);
-      const cx = vw * 0.5 - size / 2 + (i - orbCount / 2) * (vw * 0.08);
-      const cy = vh * 0.5 - size / 2 + ((i % 2 === 0 ? -1 : 1) * vh * 0.06);
-      const phaseOffset = i * (360 / orbCount);
+    bgTimeline = gsap.timeline({ repeat: -1, paused: false });
 
-      const steps = 5;
-      const frames = Array.from({ length: steps + 1 }, (_, k) => {
-        const angle = ((phaseOffset + (k / steps) * 360) * Math.PI) / 180;
-        const x = cx + Math.cos(angle) * rx;
-        const y = cy + Math.sin(angle) * ry;
-        const rot = (k / steps) * (i % 2 === 0 ? 15 : -15);
-        return {
-          transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) rotate(${rot.toFixed(1)}deg)`,
-          opacity: 0.7 + Math.sin(angle) * 0.15,
-          offset: k / steps
-        };
+    panels.forEach((panel, i) => {
+      const stop = 100 - i;
+      const wi = window.innerWidth - elW * (12 - i) + elW;
+      const he = window.innerHeight - elH * (12 - i) + elH;
+      const grad105 = `linear-gradient(105deg,rgba(255,149,236,1) 0%,rgba(255,89,226,1) 6%,rgba(255,0,211,1) 19%,rgba(255,0,0,1) 72%,rgba(0,0,0,1) ${stop}%)`;
+      const gradStop = `linear-gradient(90deg,rgba(255,180,200,1) 0%,rgba(255,89,226,1) 6%,rgba(255,0,211,1) 19%,rgba(255,0,0,1) 72%,rgba(0,0,0,1) ${stop}%)`;
+
+      // Initial rotation: unfold from center
+      bgTimeline.fromTo(panel, {
+        y: elH * 5.5, x: elW * 5.5, width: 0, height: 0, rotation: -360, background: grad105
+      }, {
+        width: wi, height: he, y: -elH / 1.33 + ((12 - i) * elH) / 1.33, x: 0,
+        duration: 1 + 0.1 * (12 - i), ease: 'sine.inOut', rotation: 0, background: grad105
+      }, 0);
+
+      // Linear rotation
+      bgTimeline.to(panel, {
+        rotation: 12 * rotationCoef - (i + 1) * rotationCoef,
+        duration: 3, background: gradStop, ease: 'linear'
+      }, '>');
+
+      // Reordering
+      bgTimeline.to(panel, {
+        rotation: 360, y: -elH / 6 + ((12 - i) * elH) / 6, x: -elW / 1.2 + ((12 - i) * elW) / 1.2,
+        background: grad90, ease: 'sine.inOut', duration: 1
+      }, '>');
+
+      // Linear rotation 2
+      bgTimeline.to(panel, {
+        rotation: 12 * rotationCoef - (i + 1) * rotationCoef + 360,
+        duration: 4, background: grad90, ease: 'linear'
+      }, '>');
+
+      if (i === 0) bgTimeline.addLabel('splitStart', '-=0.8');
+
+      // Secondary panels
+      secondaryPanels.forEach((twoPanel, index) => {
+        const wi2 = window.innerWidth - elW * index + elW;
+        bgTimeline.fromTo(twoPanel, {
+          y: elH * 5.5, x: elW * 5.5, width: 0, height: 0, rotation: -360,
+          background: 'linear-gradient(105deg,rgba(255,149,236,1) 0%,rgba(255,89,226,1) 6%,rgba(255,0,211,1) 19%,rgba(255,0,0,1) 72%,rgba(0,0,0,1) 100%)'
+        }, {
+          rotation: -90, y: (index * elH) / 4 - wi2, x: -elW / 2 + (index * elW) / 2,
+          width: wi2, height: wi2, background: grad90, ease: 'sine.inOut', duration: 1
+        }, 'splitStart+=' + (0.05 * index));
+
+        bgTimeline.to(twoPanel, {
+          rotation: 12 * rotationCoef - (12 - index) * rotationCoef - 90,
+          duration: 5, background: grad90, ease: 'linear'
+        }, '>');
+
+        bgTimeline.to(twoPanel, {
+          rotation: 300, y: (index * elH) / 2 - wi2, x: window.innerWidth * 1.1 - wi2 * 1.2,
+          width: wi2, height: wi2, background: grad90, ease: 'sine.inOut', duration: 1
+        }, '>');
+
+        bgTimeline.to(twoPanel, {
+          rotation: '+=15', duration: 5, background: grad90, ease: 'linear'
+        }, '>');
+
+        bgTimeline.to(twoPanel, {
+          rotation: '+=360', y: '-=' + (wi2 * 2), x: '+=' + (wi2 * 2),
+          width: wi2, height: wi2, background: grad90, ease: 'sine.inOut', duration: 1
+        }, '>');
       });
 
-      const duration = backgroundCycleMs + i * 4000;
-      const animation = orb.animate(frames, {
-        duration,
-        iterations: Infinity,
-        easing: 'linear',
-        direction: i % 2 === 0 ? 'normal' : 'reverse'
-      });
-      animation.currentTime = i * 3200;
-      return animation;
+      // Primary panel exit / continuation
+      if (i === 0) {
+        bgTimeline.to(panel, {
+          rotation: 720 + 90, y: window.innerHeight - ((12 - i) * elH) / 4,
+          x: -elW / 2 + ((12 - i) * elW) / 2, width: 0, height: 0, opacity: 0,
+          background: grad90, ease: 'sine.inOut', duration: 1
+        }, 'splitStart+=' + (0.05 * i));
+      } else {
+        bgTimeline.to(panel, {
+          rotation: 720 + 90, y: window.innerHeight - ((12 - i) * elH) / 4,
+          x: -elW / 2 + ((12 - i) * elW) / 2, width: wi, height: wi,
+          background: grad90, ease: 'sine.inOut', duration: 1
+        }, 'splitStart+=' + (0.05 * i));
+
+        bgTimeline.to(panel, {
+          rotation: (12 * rotationCoef - (i + 1) * rotationCoef) / 1.2 + 810,
+          duration: 5, background: grad90, ease: 'linear'
+        }, '>');
+
+        bgTimeline.to(panel, {
+          y: window.innerHeight - ((12 - i) * elH) / 2, x: -elW * 1.2,
+          rotation: (12 * rotationCoef - (i + 1) * rotationCoef) / 1.2 + 1180,
+          ease: 'sine.inOut', duration: 1, background: grad90
+        }, '>');
+
+        bgTimeline.to(panel, {
+          rotation: (12 * rotationCoef - (i + 1) * rotationCoef) / 1.2 + 1200,
+          duration: 5, background: grad90, ease: 'linear'
+        }, '>');
+
+        bgTimeline.to(panel, {
+          y: '+=' + (elH * 4), x: '-=' + (elW * 4),
+          rotation: (12 * rotationCoef - (i + 1) * rotationCoef) / 1.2 + 1500,
+          ease: 'sine.inOut', duration: 1, background: grad90
+        }, '>');
+      }
     });
   }
 
   function setSlideTheme() {
     root.dataset.slide = String(state.index);
-    // Only change hue — the CSS transition handles the smooth interpolation
     bg.style.setProperty('--story-hue', `${(state.index * 18) % 360}deg`);
+    // Smoothly advance the GSAP timeline to match the current slide position
+    if (bgTimeline) {
+      const total = Math.max(1, state.slides.length);
+      const targetProgress = (state.index / total);
+      gsap.to(bgTimeline, { progress: targetProgress, duration: 1.5, ease: 'power2.inOut', overwrite: true });
+    }
   }
 
   function setBackgroundPaused(paused) {
-    state.bgAnimations?.forEach((animation) => {
-      animation.playbackRate = paused ? 0 : 1;
-      if (paused) {
-        animation.pause();
-      } else {
-        animation.play();
-      }
-    });
+    if (!bgTimeline) return;
+    if (paused) {
+      bgTimeline.pause();
+    } else {
+      bgTimeline.resume();
+    }
   }
 
   async function fetchJson(url) {
@@ -603,7 +672,7 @@
       }
       scheduleNext();
     });
-    window.addEventListener('resize', () => animateBackground());
+    window.addEventListener('resize', () => buildBgTimeline());
     window.addEventListener('keydown', (event) => {
       if (event.key === 'ArrowLeft') go(-1);
       if (event.key === 'ArrowRight' || event.key === ' ') go(1);
