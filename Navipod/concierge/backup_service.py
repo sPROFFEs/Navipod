@@ -13,9 +13,11 @@ from pathlib import Path
 
 import database
 import ops_core as ops
-from personalization_service import MIX_CACHE_NAME, USER_ACTIVITY_DB_NAME
 from build_info_service import format_bytes, format_datetime_for_display, get_build_info
-from job_service import acquire_lock, create_admin_job, release_lock, update_admin_job, update_admin_job_progress
+from job_service import acquire_lock, create_admin_job, release_lock, update_admin_job
+from personalization_service import MIX_CACHE_NAME, USER_ACTIVITY_DB_NAME
+from wrapped_service import WRAPPED_SUMMARY_DB_NAME, get_wrapped_summary_db_path
+
 logger = logging.getLogger(__name__)
 
 
@@ -67,7 +69,9 @@ def get_backup_state(db):
     next_run = None
     if system_settings.autobackup_enabled:
         now = datetime.now(scheduler_timezone)
-        next_candidate = now.replace(hour=system_settings.autobackup_hour, minute=system_settings.autobackup_minute, second=0, microsecond=0)
+        next_candidate = now.replace(
+            hour=system_settings.autobackup_hour, minute=system_settings.autobackup_minute, second=0, microsecond=0
+        )
         if next_candidate <= now:
             next_candidate = next_candidate.replace(day=now.day) + ops.timedelta(days=1)
         next_run = next_candidate.isoformat()
@@ -93,6 +97,9 @@ def _build_backup_manifest(triggered_by: str | None, mode: str):
             personalization_files.append(str(cache_file))
         for mix_cache in users_root.glob(f"*/cache/{MIX_CACHE_NAME}"):
             personalization_files.append(str(mix_cache))
+    wrapped_summary_path = get_wrapped_summary_db_path()
+    if wrapped_summary_path.exists():
+        personalization_files.append(str(wrapped_summary_path))
     return {
         "created_at": ops.utcnow().isoformat(),
         "triggered_by": triggered_by,
@@ -125,6 +132,24 @@ def _rotate_current_to_previous(db):
     )
 
 
+def _write_sqlite_db_to_zip(zf: zipfile.ZipFile, source_path: Path, arcname: str) -> None:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".db", dir=ops.BACKUP_ROOT) as tmp_db:
+        temp_db_path = Path(tmp_db.name)
+
+    src = sqlite3.connect(str(source_path))
+    dst = sqlite3.connect(str(temp_db_path))
+    try:
+        src.backup(dst)
+    finally:
+        dst.close()
+        src.close()
+
+    try:
+        zf.write(temp_db_path, arcname=arcname)
+    finally:
+        temp_db_path.unlink(missing_ok=True)
+
+
 def _write_backup_zip(target_path: Path, manifest: dict):
     ops.ensure_runtime_dirs()
     with tempfile.NamedTemporaryFile(delete=False, suffix=".db", dir=ops.BACKUP_ROOT) as tmp_db:
@@ -153,7 +178,14 @@ def _write_backup_zip(target_path: Path, manifest: dict):
                 for filename in (USER_ACTIVITY_DB_NAME, MIX_CACHE_NAME):
                     candidate = cache_dir / filename
                     if candidate.exists():
-                        zf.write(candidate, arcname=f"users/{user_dir.name}/cache/{filename}")
+                        arcname = f"users/{user_dir.name}/cache/{filename}"
+                        if filename == USER_ACTIVITY_DB_NAME:
+                            _write_sqlite_db_to_zip(zf, candidate, arcname)
+                        else:
+                            zf.write(candidate, arcname=arcname)
+        wrapped_summary_path = get_wrapped_summary_db_path()
+        if wrapped_summary_path.exists():
+            _write_sqlite_db_to_zip(zf, wrapped_summary_path, arcname=f"cache/{WRAPPED_SUMMARY_DB_NAME}")
         zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
 
     try:
@@ -169,7 +201,9 @@ def run_backup_job(job_id: int, triggered_by: str | None, mode: str = "manual"):
     temp_path = None
     try:
         if not acquire_lock(db, job_id):
-            update_admin_job(job_id, status="failed", message="Another admin operation is already running", finished=True)
+            update_admin_job(
+                job_id, status="failed", message="Another admin operation is already running", finished=True
+            )
             return
 
         update_admin_job(job_id, status="running", message="Creating backup archive")
@@ -195,7 +229,13 @@ def run_backup_job(job_id: int, triggered_by: str | None, mode: str = "manual"):
             created_at=ops.utcnow(),
             manifest=manifest,
         )
-        update_admin_job(job_id, status="completed", message=f"Backup created successfully ({format_bytes(current_path.stat().st_size)})", details={"slot": "current", "size_bytes": current_path.stat().st_size, "mode": mode}, finished=True)
+        update_admin_job(
+            job_id,
+            status="completed",
+            message=f"Backup created successfully ({format_bytes(current_path.stat().st_size)})",
+            details={"slot": "current", "size_bytes": current_path.stat().st_size, "mode": mode},
+            finished=True,
+        )
     except Exception as e:
         update_admin_job(job_id, status="failed", message=f"Backup failed: {e}", finished=True)
     finally:
@@ -212,7 +252,9 @@ def run_restore_job(job_id: int, slot: str, triggered_by: str | None):
     extract_dir = None
     try:
         if not acquire_lock(db, job_id):
-            update_admin_job(job_id, status="failed", message="Another admin operation is already running", finished=True)
+            update_admin_job(
+                job_id, status="failed", message="Another admin operation is already running", finished=True
+            )
             return
 
         artifact = db.query(database.BackupArtifact).filter(database.BackupArtifact.slot == slot).first()
@@ -241,8 +283,20 @@ def run_restore_job(job_id: int, slot: str, triggered_by: str | None):
                 target = Path("/saas-data/users") / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(cache_file, target)
+        restored_cache_root = extract_dir / "cache"
+        restored_wrapped_summary = restored_cache_root / WRAPPED_SUMMARY_DB_NAME
+        if restored_wrapped_summary.exists():
+            target = get_wrapped_summary_db_path()
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(restored_wrapped_summary, target)
 
-        update_admin_job(job_id, status="completed", message=f"{slot.title()} backup restored. Restart recommended to reload configuration.", details={"slot": slot, "restart_required": True, "triggered_by": triggered_by}, finished=True)
+        update_admin_job(
+            job_id,
+            status="completed",
+            message=f"{slot.title()} backup restored. Restart recommended to reload configuration.",
+            details={"slot": slot, "restart_required": True, "triggered_by": triggered_by},
+            finished=True,
+        )
     except Exception as e:
         update_admin_job(job_id, status="failed", message=f"Restore failed: {e}", finished=True)
     finally:
@@ -273,9 +327,14 @@ def should_run_autobackup(db):
 
     scheduler_timezone = ops.get_scheduler_timezone(settings_row)
     now = datetime.now(scheduler_timezone)
-    scheduled_today = now.replace(hour=settings_row.autobackup_hour, minute=settings_row.autobackup_minute, second=0, microsecond=0)
+    scheduled_today = now.replace(
+        hour=settings_row.autobackup_hour, minute=settings_row.autobackup_minute, second=0, microsecond=0
+    )
     if now < scheduled_today:
-        return False, f"scheduled time not reached ({scheduled_today.isoformat()} {ops.get_scheduler_timezone_name(settings_row)})"
+        return (
+            False,
+            f"scheduled time not reached ({scheduled_today.isoformat()} {ops.get_scheduler_timezone_name(settings_row)})",
+        )
 
     current = db.query(database.BackupArtifact).filter(database.BackupArtifact.slot == "current").first()
     if current and current.created_at:
@@ -286,7 +345,11 @@ def should_run_autobackup(db):
         if not file_exists:
             logger.warning("Ignoring stale current backup metadata because the backup file is missing")
 
-    lock = db.query(database.AdminOperationLock).filter(database.AdminOperationLock.name == "admin-global-operation").first()
+    lock = (
+        db.query(database.AdminOperationLock)
+        .filter(database.AdminOperationLock.name == "admin-global-operation")
+        .first()
+    )
     if lock is not None:
         return False, f"admin lock active (job #{lock.job_id})"
     return True, "backup should run"
