@@ -54,3 +54,114 @@
     font-weight: 600;
     letter-spacing: -0.01em;
 }
+
+.wrapped-home-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 0 0 20px;
+    padding: 16px 18px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-0);
+}
+
+.wrapped-home-card h2,
+.wrapped-panel h2,
+.wrapped-message h2 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 650;
+}
+
+.wrapped-home-card p,
+.wrapped-summary p,
+.wrapped-panel p,
+.wrapped-message p {
+    margin: 6px 0 0;
+    color: var(--text-sub);
+    line-height: 1.45;
+}
+
+.wrapped-home-sub {
+    font-size: 0.9rem;
+}
+
+.wrapped-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.wrapped-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-0);
+}
+
+.wrapped-summary h1 {
+    margin: 0;
+    font-size: 1.4rem;
+    letter-spacing: -0.02em;
+}
+
+.wrapped-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.8fr);
+    gap: 18px;
+}
+
+.wrapped-panel {
+    padding: 16px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-0);
+}
+
+.wrapped-artist-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0;
+    margin: 14px 0 0;
+    list-style: none;
+}
+
+.wrapped-artist-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.wrapped-artist-list strong {
+    color: var(--text-sub);
+    font-size: 0.88rem;
+    font-weight: 500;
+}
+
+.wrapped-message {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+@media (max-width: 760px) {
+    .wrapped-home-card,
+    .wrapped-summary {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .wrapped-grid {
+        grid-template-columns: 1fr;
+    }
+}

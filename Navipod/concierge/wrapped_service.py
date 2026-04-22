@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import database
+import ops_core as ops
 import personalization_service
 from job_service import create_admin_job, update_admin_job_progress
 from sqlalchemy.orm import Session
@@ -19,6 +20,7 @@ WRAPPED_SUMMARY_DB_NAME = "wrapped_summary.db"
 WRAPPED_SUMMARY_VERSION = 1
 WRAPPED_TOP_TRACK_LIMIT = 100
 WRAPPED_TOP_DISPLAY_LIMIT = 5
+DEFAULT_ARTIST_CLIP_MESSAGE = "Your year had range. The admin can make this message worse later."
 
 
 def utcnow() -> datetime:
@@ -88,6 +90,72 @@ def _safe_year(year: int | None = None) -> int:
 
 def normalize_year(year: int | None = None) -> int:
     return _safe_year(year)
+
+
+def _parse_visibility_dt(value: str | None, default_tz=timezone.utc) -> datetime | None:
+    if not value:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=default_tz).astimezone(timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+def _display_dt(value: str | None, display_tz=timezone.utc) -> str:
+    parsed = _parse_visibility_dt(value)
+    if not parsed:
+        return ""
+    return parsed.astimezone(display_tz).strftime("%Y-%m-%dT%H:%M")
+
+
+def get_wrapped_settings(db: Session) -> dict[str, Any]:
+    settings = ops.ensure_system_settings_record(db)
+    scheduler_tz = ops.get_scheduler_timezone(settings)
+    now = utcnow()
+    visible_from = _parse_visibility_dt(settings.wrapped_visible_from)
+    visible_until = _parse_visibility_dt(settings.wrapped_visible_until)
+    window_open = (visible_from is None or visible_from <= now) and (visible_until is None or visible_until >= now)
+    enabled = bool(settings.wrapped_enabled)
+    return {
+        "enabled": enabled,
+        "visible": enabled and window_open,
+        "visible_from": settings.wrapped_visible_from,
+        "visible_until": settings.wrapped_visible_until,
+        "visible_from_input": _display_dt(settings.wrapped_visible_from, scheduler_tz),
+        "visible_until_input": _display_dt(settings.wrapped_visible_until, scheduler_tz),
+        "timezone": ops.get_scheduler_timezone_name(settings),
+        "artist_clip_message": settings.wrapped_artist_clip_message or DEFAULT_ARTIST_CLIP_MESSAGE,
+    }
+
+
+def update_wrapped_settings(
+    db: Session,
+    *,
+    enabled: bool,
+    visible_from: str | None = None,
+    visible_until: str | None = None,
+    artist_clip_message: str | None = None,
+) -> dict[str, Any]:
+    settings = ops.ensure_system_settings_record(db)
+    scheduler_tz = ops.get_scheduler_timezone(settings)
+
+    def normalize_raw_dt(value: str | None) -> str | None:
+        parsed = _parse_visibility_dt(value, scheduler_tz)
+        return parsed.isoformat() if parsed else None
+
+    settings.wrapped_enabled = bool(enabled)
+    settings.wrapped_visible_from = normalize_raw_dt(visible_from)
+    settings.wrapped_visible_until = normalize_raw_dt(visible_until)
+    message = (artist_clip_message or "").strip()
+    settings.wrapped_artist_clip_message = message or None
+    db.commit()
+    return get_wrapped_settings(db)
 
 
 def _fetch_activity_rows(username: str, year: int) -> list[sqlite3.Row]:
@@ -284,7 +352,7 @@ def build_user_wrapped_summary(db: Session, user: database.User, year: int | Non
         "top_artist_sprint": _build_artist_sprint(monthly_artist_stats),
         "artist_clip": {
             "title": "A message from Navipod",
-            "message": "Your year had range. The admin can make this message worse later.",
+            "message": get_wrapped_settings(db)["artist_clip_message"],
         },
         "data_quality": {
             "has_listen_events": bool(rows),

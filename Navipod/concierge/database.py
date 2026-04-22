@@ -1,13 +1,11 @@
 import sqlite3
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, Boolean, create_engine, event
+from secrets_store import decrypt_secret, encrypt_secret
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, create_engine, event
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from sqlalchemy.pool import NullPool
 from sqlalchemy.sql import func
-
-from secrets_store import decrypt_secret, encrypt_secret
-
 
 SQLALCHEMY_DATABASE_URL = "sqlite:////saas-data/concierge.db"
 
@@ -45,12 +43,16 @@ class User(Base):
     avatar_path = Column(String, nullable=True)
     last_access = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    download_settings = relationship("DownloadSettings", uselist=False, back_populates="owner", cascade="all, delete-orphan")
+    download_settings = relationship(
+        "DownloadSettings", uselist=False, back_populates="owner", cascade="all, delete-orphan"
+    )
     downloads = relationship("DownloadJob", back_populates="owner", cascade="all, delete-orphan")
     playlists = relationship("UserPlaylist", back_populates="owner", cascade="all, delete-orphan")
     new_playlists = relationship("Playlist", back_populates="owner", cascade="all, delete-orphan")
     favorites = relationship("UserFavorite", back_populates="user", cascade="all, delete-orphan")
-    playback_queue_state = relationship("PlaybackQueueState", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    playback_queue_state = relationship(
+        "PlaybackQueueState", uselist=False, back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class DownloadSettings(Base):
@@ -117,6 +119,10 @@ class SystemSettings(Base):
     autobackup_minute = Column(Integer, default=0)
     autobackup_timezone = Column(String, default="UTC")
     update_state_json = Column(Text, nullable=True)
+    wrapped_enabled = Column(Boolean, default=False)
+    wrapped_visible_from = Column(String, nullable=True)
+    wrapped_visible_until = Column(String, nullable=True)
+    wrapped_artist_clip_message = Column(Text, nullable=True)
 
 
 class SchemaMigration(Base):

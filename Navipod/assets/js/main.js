@@ -130,6 +130,7 @@ window.refreshRecentActivity = views.refreshRecentActivity;
 window.loadUserData = views.loadUserData;
 window.showSaveMixModal = views.showSaveMixModal;
 window.saveMixAsPlaylistAction = views.saveMixAsPlaylistAction;
+window.saveWrappedTopSongsPlaylist = views.saveWrappedTopSongsPlaylist;
 
 // Admin
 window.toggleReset = admin.toggleReset;

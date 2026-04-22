@@ -234,6 +234,44 @@
     <section class="monitor-panel">
         <div class="monitor-panel-header">
             <div>
+                <h2>Wrapped</h2>
+                <p>Controls whether the yearly Wrapped experience is visible in the app.</p>
+            </div>
+        </div>
+        <div class="monitor-panel-body">
+            <form action="/admin/system/wrapped/settings" method="post" class="monitor-backup-form">
+                <label class="monitor-inline-toggle">
+                    <input type="checkbox" name="wrapped_enabled" {% if wrapped.enabled %}checked{% endif %}>
+                    <span>Show Wrapped in the app</span>
+                </label>
+                <div class="monitor-backup-form-row">
+                    <div class="monitor-field">
+                        <label for="wrapped-visible-from">Visible from</label>
+                        <input id="wrapped-visible-from" class="monitor-input" type="datetime-local" name="wrapped_visible_from" value="{{ wrapped.visible_from_input }}">
+                    </div>
+                    <div class="monitor-field">
+                        <label for="wrapped-visible-until">Visible until</label>
+                        <input id="wrapped-visible-until" class="monitor-input" type="datetime-local" name="wrapped_visible_until" value="{{ wrapped.visible_until_input }}">
+                    </div>
+                    <div class="monitor-field-action">
+                        <button type="submit" class="monitor-primary"><i data-lucide="save"></i><span>Save Wrapped</span></button>
+                    </div>
+                </div>
+                <div class="monitor-field">
+                    <label for="wrapped-artist-message">Artist clip message</label>
+                    <textarea id="wrapped-artist-message" class="monitor-input" name="wrapped_artist_clip_message" rows="3">{{ wrapped.artist_clip_message }}</textarea>
+                </div>
+                <div class="monitor-field-help">
+                    Current state: {% if wrapped.visible %}visible{% elif wrapped.enabled %}scheduled/hidden by date{% else %}disabled{% endif %}.
+                    Leave dates empty to show immediately while enabled. Schedule uses {{ wrapped.timezone }}.
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section class="monitor-panel">
+        <div class="monitor-panel-header">
+            <div>
                 <h2>Recent Admin Jobs</h2>
                 <p>Latest background operations. The list is scrollable by design to avoid growing without bounds.</p>
             </div>

@@ -6,15 +6,14 @@ import re
 import subprocess
 import tempfile
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-import yaml
-from sqlalchemy import text
-
 import database
+import yaml
 from navipod_config import settings
+from sqlalchemy import text
 
 
 def _detect_compose_project_root(repo_root: Path) -> Path:
@@ -76,7 +75,7 @@ def _path_variants_for_match(path: str | Path | None) -> set[str]:
     for prefix in nested_prefixes:
         prefix_token = f"{prefix}/"
         if normalized.startswith(prefix_token):
-            variants.add(normalized[len(prefix_token):])
+            variants.add(normalized[len(prefix_token) :])
 
     return {variant for variant in variants if variant}
 
@@ -140,10 +139,22 @@ def ensure_runtime_dirs():
 
 def _run_git(args, *, check=True, fallback=None, include_details=False):
     try:
-        completed = subprocess.run(["git", "-c", f"safe.directory={REPO_ROOT}", *args], check=False, capture_output=True, text=True, cwd=str(REPO_ROOT))
+        completed = subprocess.run(
+            ["git", "-c", f"safe.directory={REPO_ROOT}", *args],
+            check=False,
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+        )
         stdout = (completed.stdout or "").strip()
         stderr = (completed.stderr or "").strip()
-        result = {"ok": completed.returncode == 0, "stdout": stdout, "stderr": stderr, "returncode": completed.returncode, "command": "git " + " ".join(args)}
+        result = {
+            "ok": completed.returncode == 0,
+            "stdout": stdout,
+            "stderr": stderr,
+            "returncode": completed.returncode,
+            "command": "git " + " ".join(args),
+        }
         if check and not result["ok"]:
             if include_details:
                 return result
@@ -162,7 +173,12 @@ def _get_container_mount_source(destination_path: Path):
     if not container_name:
         return None
     try:
-        completed = subprocess.run(["docker", "inspect", "--format", "{{json .Mounts}}", container_name], check=False, capture_output=True, text=True)
+        completed = subprocess.run(
+            ["docker", "inspect", "--format", "{{json .Mounts}}", container_name],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
         if completed.returncode != 0:
             return None
         mounts = json.loads((completed.stdout or "").strip() or "[]")
@@ -214,7 +230,13 @@ def _build_host_bind_compose_file():
             return f"{_resolve_host_path(source)}:{remainder}"
         if isinstance(entry, dict):
             source = entry.get("source")
-            if entry.get("type") == "bind" and isinstance(source, str) and source and not source.startswith("/") and not source.startswith("${"):
+            if (
+                entry.get("type") == "bind"
+                and isinstance(source, str)
+                and source
+                and not source.startswith("/")
+                and not source.startswith("${")
+            ):
                 updated = dict(entry)
                 updated["source"] = _resolve_host_path(source)
                 return updated
@@ -226,12 +248,21 @@ def _build_host_bind_compose_file():
         if isinstance(volumes, list):
             service["volumes"] = [_rewrite_volume_entry(volume) for volume in volumes]
 
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".host-bind.yml", prefix="navipod-compose-", dir=str(COMPOSE_PROJECT_ROOT), delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        suffix=".host-bind.yml",
+        prefix="navipod-compose-",
+        dir=str(COMPOSE_PROJECT_ROOT),
+        delete=False,
+    ) as tmp:
         yaml.safe_dump(compose_data, tmp, sort_keys=False)
         return Path(tmp.name)
 
 
-def _run_compose_command(args, *, check=True, timeout_seconds: int | None = None, on_wait=None, wait_tick_seconds: int = 15):
+def _run_compose_command(
+    args, *, check=True, timeout_seconds: int | None = None, on_wait=None, wait_tick_seconds: int = 15
+):
     temp_compose_file = _build_host_bind_compose_file()
     compose_file_arg = str(temp_compose_file) if temp_compose_file else "docker-compose.yaml"
     commands_to_try = [
@@ -253,10 +284,14 @@ def _run_compose_command(args, *, check=True, timeout_seconds: int | None = None
                 while True:
                     elapsed = int(time.monotonic() - started_at)
                     remaining = None if timeout_seconds is None else max(0, timeout_seconds - elapsed)
-                    communicate_timeout = wait_tick_seconds if remaining is None else min(wait_tick_seconds, max(1, remaining))
+                    communicate_timeout = (
+                        wait_tick_seconds if remaining is None else min(wait_tick_seconds, max(1, remaining))
+                    )
                     try:
                         stdout_text, stderr_text = process.communicate(timeout=communicate_timeout)
-                        completed = subprocess.CompletedProcess(cmd, process.returncode, stdout=stdout_text, stderr=stderr_text)
+                        completed = subprocess.CompletedProcess(
+                            cmd, process.returncode, stdout=stdout_text, stderr=stderr_text
+                        )
                         if check and completed.returncode != 0:
                             raise subprocess.CalledProcessError(
                                 completed.returncode,
@@ -353,17 +388,20 @@ def cleanup_stale_recreate_containers(services: list[str]) -> list[str]:
 
 def _ensure_schema_migrations_table():
     with database.engine.begin() as conn:
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TABLE IF NOT EXISTS schema_migrations (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL UNIQUE,
                 applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-        """))
+        """)
+        )
 
 
 def _migration_000_base_schema(conn):
-    conn.execute(text("""
+    conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY,
             username TEXT NOT NULL UNIQUE,
@@ -373,10 +411,12 @@ def _migration_000_base_schema(conn):
             avatar_path TEXT,
             last_access DATETIME DEFAULT CURRENT_TIMESTAMP
         )
-    """))
+    """)
+    )
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_username ON users(username)"))
 
-    conn.execute(text("""
+    conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS download_settings (
             id INTEGER PRIMARY KEY,
             user_id INTEGER NOT NULL UNIQUE,
@@ -390,9 +430,11 @@ def _migration_000_base_schema(conn):
             audio_quality TEXT DEFAULT '320',
             FOREIGN KEY (user_id) REFERENCES users(id)
         )
-    """))
+    """)
+    )
 
-    conn.execute(text("""
+    conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS tracks (
             id INTEGER PRIMARY KEY,
             title TEXT,
@@ -405,12 +447,14 @@ def _migration_000_base_schema(conn):
             source_provider TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
-    """))
+    """)
+    )
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tracks_filepath ON tracks(filepath)"))
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tracks_source_id ON tracks(source_id)"))
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tracks_file_hash ON tracks(file_hash)"))
 
-    conn.execute(text("""
+    conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS user_playlists (
             id INTEGER PRIMARY KEY,
             user_id INTEGER NOT NULL,
@@ -421,9 +465,11 @@ def _migration_000_base_schema(conn):
             last_synced_at DATETIME,
             FOREIGN KEY (user_id) REFERENCES users(id)
         )
-    """))
+    """)
+    )
 
-    conn.execute(text("""
+    conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS playlist_tracks (
             id INTEGER PRIMARY KEY,
             playlist_id INTEGER NOT NULL,
@@ -432,9 +478,11 @@ def _migration_000_base_schema(conn):
             source_id TEXT,
             FOREIGN KEY (playlist_id) REFERENCES user_playlists(id)
         )
-    """))
+    """)
+    )
 
-    conn.execute(text("""
+    conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS download_jobs (
             id INTEGER PRIMARY KEY,
             user_id INTEGER NOT NULL,
@@ -451,15 +499,18 @@ def _migration_000_base_schema(conn):
             FOREIGN KEY (target_playlist_id) REFERENCES user_playlists(id),
             FOREIGN KEY (target_modern_playlist_id) REFERENCES playlists(id)
         )
-    """))
+    """)
+    )
 
-    conn.execute(text("""
+    conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS token_blacklist (
             id INTEGER PRIMARY KEY,
             token TEXT NOT NULL UNIQUE,
             blacklisted_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
-    """))
+    """)
+    )
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_token_blacklist_token ON token_blacklist(token)"))
 
 
@@ -473,14 +524,21 @@ def _register_migration(conn, name: str):
 
 def _migration_001_tracks_library_columns(conn):
     columns = {row[1] for row in conn.execute(text("PRAGMA table_info(tracks)")).fetchall()}
-    required_columns = {"duration": "INTEGER", "filepath": "TEXT", "source_id": "TEXT", "file_hash": "TEXT", "source_provider": "TEXT"}
+    required_columns = {
+        "duration": "INTEGER",
+        "filepath": "TEXT",
+        "source_id": "TEXT",
+        "file_hash": "TEXT",
+        "source_provider": "TEXT",
+    }
     for col_name, col_type in required_columns.items():
         if col_name not in columns:
             conn.execute(text(f"ALTER TABLE tracks ADD COLUMN {col_name} {col_type}"))
 
 
 def _migration_002_user_favorites(conn):
-    conn.execute(text("""
+    conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS user_favorites (
             id INTEGER PRIMARY KEY,
             user_id INTEGER NOT NULL,
@@ -490,7 +548,8 @@ def _migration_002_user_favorites(conn):
             FOREIGN KEY (track_id) REFERENCES tracks(id),
             UNIQUE(user_id, track_id)
         )
-    """))
+    """)
+    )
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_favorites_user_id ON user_favorites(user_id)"))
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_favorites_track_id ON user_favorites(track_id)"))
 
@@ -501,7 +560,7 @@ def _migration_003_download_settings_metadata(conn):
         "lastfm_api_key": "TEXT",
         "lastfm_shared_secret": "TEXT",
         "youtube_cookies": "TEXT",
-        "metadata_preferences": "TEXT DEFAULT '[\"spotify\", \"lastfm\", \"musicbrainz\"]'",
+        "metadata_preferences": 'TEXT DEFAULT \'["spotify", "lastfm", "musicbrainz"]\'',
     }
     for col_name, col_type in required_columns.items():
         if col_name not in columns:
@@ -509,7 +568,8 @@ def _migration_003_download_settings_metadata(conn):
 
 
 def _migration_004_playlists_and_sync_copy(conn):
-    conn.execute(text("""
+    conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS playlists (
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
@@ -519,8 +579,10 @@ def _migration_004_playlists_and_sync_copy(conn):
             m3u_path TEXT,
             FOREIGN KEY (owner_id) REFERENCES users(id)
         )
-    """))
-    conn.execute(text("""
+    """)
+    )
+    conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS playlist_items (
             id INTEGER PRIMARY KEY,
             playlist_id INTEGER NOT NULL,
@@ -530,7 +592,8 @@ def _migration_004_playlists_and_sync_copy(conn):
             FOREIGN KEY (playlist_id) REFERENCES playlists(id),
             FOREIGN KEY (track_id) REFERENCES tracks(id)
         )
-    """))
+    """)
+    )
     columns = {row[1] for row in conn.execute(text("PRAGMA table_info(playlists)")).fetchall()}
     if "is_public" not in columns:
         conn.execute(text("ALTER TABLE playlists ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0"))
@@ -539,7 +602,8 @@ def _migration_004_playlists_and_sync_copy(conn):
 
 
 def _migration_005_system_settings_autobackup(conn):
-    conn.execute(text("""
+    conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS system_settings (
             id INTEGER PRIMARY KEY,
             pool_limit_gb INTEGER DEFAULT 100,
@@ -548,7 +612,8 @@ def _migration_005_system_settings_autobackup(conn):
             autobackup_minute INTEGER DEFAULT 0,
             autobackup_timezone TEXT DEFAULT 'UTC'
         )
-    """))
+    """)
+    )
     columns = {row[1] for row in conn.execute(text("PRAGMA table_info(system_settings)")).fetchall()}
     if "autobackup_enabled" not in columns:
         conn.execute(text("ALTER TABLE system_settings ADD COLUMN autobackup_enabled INTEGER DEFAULT 1"))
@@ -561,7 +626,8 @@ def _migration_005_system_settings_autobackup(conn):
 
 
 def _migration_006_admin_ops_tables(conn):
-    conn.execute(text("""
+    conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS admin_jobs (
             id INTEGER PRIMARY KEY,
             job_type TEXT,
@@ -572,10 +638,12 @@ def _migration_006_admin_ops_tables(conn):
             started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             finished_at DATETIME
         )
-    """))
+    """)
+    )
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_admin_jobs_job_type ON admin_jobs(job_type)"))
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_admin_jobs_status ON admin_jobs(status)"))
-    conn.execute(text("""
+    conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS admin_operation_locks (
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL UNIQUE,
@@ -584,8 +652,10 @@ def _migration_006_admin_ops_tables(conn):
             expires_at DATETIME,
             FOREIGN KEY (job_id) REFERENCES admin_jobs(id)
         )
-    """))
-    conn.execute(text("""
+    """)
+    )
+    conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS backup_artifacts (
             id INTEGER PRIMARY KEY,
             slot TEXT NOT NULL UNIQUE,
@@ -597,7 +667,8 @@ def _migration_006_admin_ops_tables(conn):
             source_branch TEXT,
             manifest_json TEXT
         )
-    """))
+    """)
+    )
 
 
 def _migration_007_system_settings_timezone(conn):
@@ -614,30 +685,38 @@ def _migration_008_system_settings_update_state(conn):
 
 def _migration_009_tracks_fts(conn):
     try:
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE VIRTUAL TABLE IF NOT EXISTS tracks_fts
             USING fts5(title, artist, album, content='tracks', content_rowid='id')
-        """))
-        conn.execute(text("""
+        """)
+        )
+        conn.execute(
+            text("""
             CREATE TRIGGER IF NOT EXISTS tracks_ai AFTER INSERT ON tracks BEGIN
                 INSERT INTO tracks_fts(rowid, title, artist, album)
                 VALUES (new.id, COALESCE(new.title, ''), COALESCE(new.artist, ''), COALESCE(new.album, ''));
             END
-        """))
-        conn.execute(text("""
+        """)
+        )
+        conn.execute(
+            text("""
             CREATE TRIGGER IF NOT EXISTS tracks_ad AFTER DELETE ON tracks BEGIN
                 INSERT INTO tracks_fts(tracks_fts, rowid, title, artist, album)
                 VALUES ('delete', old.id, COALESCE(old.title, ''), COALESCE(old.artist, ''), COALESCE(old.album, ''));
             END
-        """))
-        conn.execute(text("""
+        """)
+        )
+        conn.execute(
+            text("""
             CREATE TRIGGER IF NOT EXISTS tracks_au AFTER UPDATE ON tracks BEGIN
                 INSERT INTO tracks_fts(tracks_fts, rowid, title, artist, album)
                 VALUES ('delete', old.id, COALESCE(old.title, ''), COALESCE(old.artist, ''), COALESCE(old.album, ''));
                 INSERT INTO tracks_fts(rowid, title, artist, album)
                 VALUES (new.id, COALESCE(new.title, ''), COALESCE(new.artist, ''), COALESCE(new.album, ''));
             END
-        """))
+        """)
+        )
         conn.execute(text("INSERT INTO tracks_fts(tracks_fts) VALUES ('rebuild')"))
     except Exception:
         # FTS is an optimization. Fall back to plain LIKE queries if unavailable.
@@ -683,76 +762,102 @@ def _migration_013_modern_download_playlist_targets(conn):
     if "target_modern_playlist_id" not in columns:
         conn.execute(text("ALTER TABLE download_jobs ADD COLUMN target_modern_playlist_id INTEGER"))
 
-    legacy_playlists = conn.execute(text("""
+    legacy_playlists = conn.execute(
+        text("""
         SELECT id, user_id, name
         FROM user_playlists
         WHERE name IS NOT NULL AND TRIM(name) != ''
-    """)).fetchall()
+    """)
+    ).fetchall()
 
     legacy_to_modern = {}
     for legacy_id, user_id, name in legacy_playlists:
-        existing = conn.execute(text("""
+        existing = conn.execute(
+            text("""
             SELECT id FROM playlists
             WHERE owner_id = :owner_id AND name = :name
             ORDER BY id ASC
             LIMIT 1
-        """), {"owner_id": user_id, "name": name}).fetchone()
+        """),
+            {"owner_id": user_id, "name": name},
+        ).fetchone()
 
         if existing:
             modern_id = existing[0]
         else:
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 INSERT INTO playlists(name, owner_id, is_public, source_playlist_id)
                 VALUES (:name, :owner_id, 0, :source_playlist_id)
-            """), {"name": name, "owner_id": user_id, "source_playlist_id": legacy_id})
+            """),
+                {"name": name, "owner_id": user_id, "source_playlist_id": legacy_id},
+            )
             modern_id = result.lastrowid
 
         legacy_to_modern[legacy_id] = modern_id
 
     for legacy_id, modern_id in legacy_to_modern.items():
-        conn.execute(text("""
+        conn.execute(
+            text("""
             UPDATE download_jobs
             SET target_modern_playlist_id = :modern_id
             WHERE target_modern_playlist_id IS NULL
               AND target_playlist_id = :legacy_id
-        """), {"modern_id": modern_id, "legacy_id": legacy_id})
+        """),
+            {"modern_id": modern_id, "legacy_id": legacy_id},
+        )
 
-        legacy_tracks = conn.execute(text("""
+        legacy_tracks = conn.execute(
+            text("""
             SELECT pt.file_path
             FROM playlist_tracks pt
             WHERE pt.playlist_id = :legacy_id
               AND pt.file_path IS NOT NULL
-        """), {"legacy_id": legacy_id}).fetchall()
+        """),
+            {"legacy_id": legacy_id},
+        ).fetchall()
 
         for (file_path,) in legacy_tracks:
-            track = conn.execute(text("""
+            track = conn.execute(
+                text("""
                 SELECT id FROM tracks
                 WHERE filepath = :file_path
                 LIMIT 1
-            """), {"file_path": file_path}).fetchone()
+            """),
+                {"file_path": file_path},
+            ).fetchone()
             if not track:
                 continue
             track_id = track[0]
-            existing_item = conn.execute(text("""
+            existing_item = conn.execute(
+                text("""
                 SELECT id FROM playlist_items
                 WHERE playlist_id = :playlist_id AND track_id = :track_id
                 LIMIT 1
-            """), {"playlist_id": modern_id, "track_id": track_id}).fetchone()
+            """),
+                {"playlist_id": modern_id, "track_id": track_id},
+            ).fetchone()
             if existing_item:
                 continue
-            next_position = conn.execute(text("""
+            next_position = conn.execute(
+                text("""
                 SELECT COALESCE(MAX(position), 0) + 1
                 FROM playlist_items
                 WHERE playlist_id = :playlist_id
-            """), {"playlist_id": modern_id}).scalar()
-            conn.execute(text("""
+            """),
+                {"playlist_id": modern_id},
+            ).scalar()
+            conn.execute(
+                text("""
                 INSERT INTO playlist_items(playlist_id, track_id, position)
                 VALUES (:playlist_id, :track_id, :position)
-            """), {
-                "playlist_id": modern_id,
-                "track_id": track_id,
-                "position": next_position,
-            })
+            """),
+                {
+                    "playlist_id": modern_id,
+                    "track_id": track_id,
+                    "position": next_position,
+                },
+            )
 
 
 def _migration_014_performance_indexes(conn):
@@ -763,30 +868,48 @@ def _migration_014_performance_indexes(conn):
         if "created_at" in track_columns:
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tracks_created_at ON tracks(created_at)"))
         if {"artist_norm", "title_norm", "fingerprint"}.issubset(track_columns):
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tracks_identity_lookup ON tracks(artist_norm, title_norm, fingerprint)"))
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_tracks_identity_lookup ON tracks(artist_norm, title_norm, fingerprint)"
+                )
+            )
         if {"source_provider", "created_at"}.issubset(track_columns):
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tracks_provider_created ON tracks(source_provider, created_at)"))
+            conn.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_tracks_provider_created ON tracks(source_provider, created_at)")
+            )
 
     if "playlist_items" in tables:
         item_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(playlist_items)")).fetchall()}
         if "playlist_id" in item_columns:
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_playlist_items_playlist_id ON playlist_items(playlist_id)"))
+            conn.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_playlist_items_playlist_id ON playlist_items(playlist_id)")
+            )
         if "track_id" in item_columns:
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_playlist_items_track_id ON playlist_items(track_id)"))
         if {"playlist_id", "position"}.issubset(item_columns):
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_playlist_items_playlist_position ON playlist_items(playlist_id, position)"))
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_playlist_items_playlist_position ON playlist_items(playlist_id, position)"
+                )
+            )
 
     if "download_jobs" in tables:
         job_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(download_jobs)")).fetchall()}
         if {"user_id", "created_at"}.issubset(job_columns):
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_download_jobs_user_created ON download_jobs(user_id, created_at)"))
+            conn.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_download_jobs_user_created ON download_jobs(user_id, created_at)")
+            )
         if {"status", "created_at"}.issubset(job_columns):
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_download_jobs_status_created ON download_jobs(status, created_at)"))
+            conn.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_download_jobs_status_created ON download_jobs(status, created_at)")
+            )
 
     if "user_favorites" in tables:
         favorite_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(user_favorites)")).fetchall()}
         if {"user_id", "track_id"}.issubset(favorite_columns):
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_favorites_user_track ON user_favorites(user_id, track_id)"))
+            conn.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_user_favorites_user_track ON user_favorites(user_id, track_id)")
+            )
 
 
 def _migration_015_queue_state_and_download_history(conn):
@@ -812,11 +935,14 @@ def _migration_015_queue_state_and_download_history(conn):
             if col_name not in columns:
                 conn.execute(text(f"ALTER TABLE download_jobs ADD COLUMN {col_name} {col_type}"))
 
-        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_download_jobs_resolved_track_id ON download_jobs(resolved_track_id)"))
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_download_jobs_resolved_track_id ON download_jobs(resolved_track_id)")
+        )
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_download_jobs_engine_used ON download_jobs(engine_used)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_download_jobs_error_type ON download_jobs(error_type)"))
 
-    conn.execute(text("""
+    conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS playback_queue_states (
             id INTEGER PRIMARY KEY,
             user_id INTEGER NOT NULL UNIQUE,
@@ -835,8 +961,37 @@ def _migration_015_queue_state_and_download_history(conn):
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id)
         )
-    """))
-    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_playback_queue_states_user_id ON playback_queue_states(user_id)"))
+    """)
+    )
+    conn.execute(
+        text("CREATE UNIQUE INDEX IF NOT EXISTS ix_playback_queue_states_user_id ON playback_queue_states(user_id)")
+    )
+
+
+def _migration_016_wrapped_settings(conn):
+    conn.execute(
+        text("""
+        CREATE TABLE IF NOT EXISTS system_settings (
+            id INTEGER PRIMARY KEY,
+            pool_limit_gb INTEGER DEFAULT 100,
+            autobackup_enabled INTEGER DEFAULT 1,
+            autobackup_hour INTEGER DEFAULT 0,
+            autobackup_minute INTEGER DEFAULT 0,
+            autobackup_timezone TEXT DEFAULT 'UTC',
+            update_state_json TEXT
+        )
+    """)
+    )
+    columns = {row[1] for row in conn.execute(text("PRAGMA table_info(system_settings)")).fetchall()}
+    required_columns = {
+        "wrapped_enabled": "INTEGER DEFAULT 0",
+        "wrapped_visible_from": "TEXT",
+        "wrapped_visible_until": "TEXT",
+        "wrapped_artist_clip_message": "TEXT",
+    }
+    for col_name, col_type in required_columns.items():
+        if col_name not in columns:
+            conn.execute(text(f"ALTER TABLE system_settings ADD COLUMN {col_name} {col_type}"))
 
 
 MIGRATIONS = [
@@ -856,6 +1011,7 @@ MIGRATIONS = [
     ("013_modern_download_playlist_targets", _migration_013_modern_download_playlist_targets),
     ("014_performance_indexes", _migration_014_performance_indexes),
     ("015_queue_state_and_download_history", _migration_015_queue_state_and_download_history),
+    ("016_wrapped_settings", _migration_016_wrapped_settings),
 ]
 
 
@@ -885,7 +1041,18 @@ def get_schema_status(db):
 def ensure_system_settings_record(db):
     settings_row = db.query(database.SystemSettings).first()
     if not settings_row:
-        settings_row = database.SystemSettings(pool_limit_gb=100, autobackup_enabled=True, autobackup_hour=0, autobackup_minute=0, autobackup_timezone="UTC", update_state_json=None)
+        settings_row = database.SystemSettings(
+            pool_limit_gb=100,
+            autobackup_enabled=True,
+            autobackup_hour=0,
+            autobackup_minute=0,
+            autobackup_timezone="UTC",
+            update_state_json=None,
+            wrapped_enabled=False,
+            wrapped_visible_from=None,
+            wrapped_visible_until=None,
+            wrapped_artist_clip_message=None,
+        )
         db.add(settings_row)
         db.commit()
         db.refresh(settings_row)

@@ -349,6 +349,27 @@ export async function saveMixAsPlaylist(mixKey, name) {
   return null;
 }
 
+export async function fetchWrapped(year, { forceRefresh = false } = {}) {
+  try {
+    const suffix = forceRefresh ? '?force_refresh=true' : '';
+    const res = await fetch(`${state.API}/wrapped/${encodeURIComponent(year)}${suffix}`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[WRAPPED] Fetch error:', e);
+  }
+  return null;
+}
+
+export async function saveWrappedTopSongsPlaylist(year) {
+  try {
+    const res = await fetch(`${state.API}/wrapped/${encodeURIComponent(year)}/top-songs/playlist`, { method: 'POST' });
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[WRAPPED] Save playlist error:', e);
+  }
+  return null;
+}
+
 export function recordListenEvent(payload) {
   try {
     const body = JSON.stringify(payload);

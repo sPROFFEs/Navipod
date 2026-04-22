@@ -9,7 +9,7 @@ import sqlite3
 import subprocess
 import tempfile
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import database
@@ -75,7 +75,7 @@ def get_backup_state(db):
             hour=system_settings.autobackup_hour, minute=system_settings.autobackup_minute, second=0, microsecond=0
         )
         if next_candidate <= now:
-            next_candidate = next_candidate.replace(day=now.day) + ops.timedelta(days=1)
+            next_candidate = next_candidate.replace(day=now.day) + timedelta(days=1)
         next_run = next_candidate.isoformat()
 
     return {

@@ -12,6 +12,7 @@ import operations_service
 import path_security
 import psutil
 import track_identity
+import wrapped_service
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from navipod_config import settings
@@ -323,6 +324,7 @@ async def system_monitor(request: Request, db: Session = Depends(get_db)):
     recent_jobs = operations_service.get_recent_admin_jobs(db, limit=8)
     active_lock = operations_service.get_active_operation_lock(db)
     timezone_options = operations_service.get_timezone_options()
+    wrapped_state = wrapped_service.get_wrapped_settings(db)
 
     return templates.TemplateResponse(
         "system_monitor.html",
@@ -335,6 +337,7 @@ async def system_monitor(request: Request, db: Session = Depends(get_db)):
             "backups": backup_state,
             "updates": update_state,
             "timezone_options": timezone_options,
+            "wrapped": wrapped_state,
             "admin_jobs": recent_jobs,
             "active_lock": active_lock,
             "username": admin.username,
@@ -474,6 +477,27 @@ async def update_backup_settings(
     operations_service.update_autobackup_settings(enabled, autobackup_hour, autobackup_minute, autobackup_timezone)
     state = "enabled" if enabled else "disabled"
     return RedirectResponse(f"/admin/system?msg=Autobackup {state}", status_code=303)
+
+
+@router.post("/system/wrapped/settings")
+async def update_wrapped_settings(
+    wrapped_enabled: str = Form("off"),
+    wrapped_visible_from: str = Form(""),
+    wrapped_visible_until: str = Form(""),
+    wrapped_artist_clip_message: str = Form(""),
+    db: Session = Depends(get_db),
+    admin: database.User = Depends(get_current_admin),
+):
+    enabled = str(wrapped_enabled).lower() in {"1", "true", "on", "yes"}
+    wrapped_service.update_wrapped_settings(
+        db,
+        enabled=enabled,
+        visible_from=wrapped_visible_from,
+        visible_until=wrapped_visible_until,
+        artist_clip_message=wrapped_artist_clip_message,
+    )
+    state = "enabled" if enabled else "disabled"
+    return RedirectResponse(f"/admin/system?msg=Wrapped {state}", status_code=303)
 
 
 @router.post("/system/updates/check")

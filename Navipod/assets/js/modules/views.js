@@ -144,6 +144,7 @@ export async function loadView(view, param = null, options = {}) {
     if (view === 'home') await renderHome(container);
     else if (view === 'library') await renderLibrary(container);
     else if (view === 'mix') await renderMix(container, param);
+    else if (view === 'wrapped') await renderWrapped(container, param);
     else if (view === 'search') renderSearch(container);
     else if (view === 'public') await playlists.renderPublicPlaylists(container);
     else if (view === 'discover_radios') await radio.renderRadio(container);
@@ -255,12 +256,19 @@ document.body.addEventListener('htmx:afterSwap', (event) => {
 export async function renderHome(container) {
   let sections = [];
   let mixes = [];
+  let wrapped = null;
   state.setCurrentViewList([]);
 
   try {
-    const [recommendations, personalizedMixes] = await Promise.all([api.fetchRecommendations(), api.fetchMixes()]);
+    const currentYear = new Date().getFullYear();
+    const [recommendations, personalizedMixes, wrappedPayload] = await Promise.all([
+      api.fetchRecommendations(),
+      api.fetchMixes(),
+      api.fetchWrapped(currentYear)
+    ]);
     sections = recommendations;
     mixes = personalizedMixes;
+    wrapped = wrappedPayload?.visible !== false && wrappedPayload?.enabled !== false ? wrappedPayload : null;
   } catch (e) {
     console.error('Recs error:', e);
   }
@@ -270,6 +278,10 @@ export async function renderHome(container) {
         <div class="hero-kicker">Your library, tuned for right now</div>
         <h1 class="hero-greeting">Good ${ui.getGreeting()}, <span class="hero-username">${username}</span></h1>
     </section>`;
+
+  if (wrapped) {
+    html += createWrappedHomeCard(wrapped);
+  }
 
   if (mixes && mixes.length > 0) {
     html += `
@@ -299,6 +311,90 @@ export async function renderHome(container) {
   }
 
   container.innerHTML = html;
+  lucide.createIcons();
+}
+
+function createWrappedHomeCard(wrapped) {
+  const year = Number(wrapped.year || new Date().getFullYear());
+  const minutes = Number(wrapped.minutes_listened || 0).toLocaleString();
+  const topSong = wrapped.top_songs?.[0];
+  const topArtist = wrapped.top_artists?.[0]?.artist || 'your library';
+  return `
+        <section class="wrapped-home-card">
+            <div>
+                <h2>Navipod Wrapped ${year}</h2>
+                <p>${minutes} minutes listened · Top artist: ${ui.escHtml(topArtist)}</p>
+                ${topSong ? `<p class="wrapped-home-sub">#1 song: ${ui.escHtml(topSong.title)} — ${ui.escHtml(topSong.artist)}</p>` : ''}
+            </div>
+            <button class="btn-secondary-lg" onclick="loadView('wrapped', ${year})">
+                <i data-lucide="sparkles"></i>
+                <span>Open Wrapped</span>
+            </button>
+        </section>`;
+}
+
+export async function renderWrapped(container, yearParam = null) {
+  const year = Number(yearParam || new Date().getFullYear());
+  const wrapped = await api.fetchWrapped(year);
+  if (!wrapped || wrapped.enabled === false || wrapped.visible === false || wrapped.error) {
+    container.innerHTML = `<div class="empty-state glass-panel"><p>Wrapped is not available right now.</p></div>`;
+    return;
+  }
+
+  const topSongs = wrapped.top_songs_playlist?.tracks || [];
+  const topArtists = wrapped.top_artists || [];
+  const tracks = topSongs.map((item) => ({
+    ...item,
+    id: item.db_id || item.id,
+    db_id: item.db_id || item.id,
+    is_local: true,
+    source: 'local'
+  }));
+  state.setCurrentViewList(tracks);
+
+  container.innerHTML = `
+        <section class="wrapped-shell">
+            <div class="wrapped-summary">
+                <div>
+                    <h1>Navipod Wrapped ${ui.escHtml(String(wrapped.year))}</h1>
+                    <p>${Number(wrapped.minutes_listened || 0).toLocaleString()} minutes listened · ${wrapped.event_count || 0} tracked listens</p>
+                </div>
+                <button class="btn-primary-lg" onclick="saveWrappedTopSongsPlaylist(${year})">
+                    <i data-lucide="save"></i>
+                    <span>Save Top Songs</span>
+                </button>
+            </div>
+            <div class="wrapped-grid">
+                <article class="wrapped-panel">
+                    <h2>Top Songs</h2>
+                    ${
+                      tracks.length
+                        ? `<div class="track-list">${tracks
+                            .slice(0, 20)
+                            .map((t, i) => createTrackRow(t, i, null))
+                            .join('')}</div>`
+                        : '<p>No listening data yet.</p>'
+                    }
+                </article>
+                <article class="wrapped-panel">
+                    <h2>Top Artists</h2>
+                    ${
+                      topArtists.length
+                        ? `<ol class="wrapped-artist-list">${topArtists
+                            .map(
+                              (artist) =>
+                                `<li><span>${ui.escHtml(artist.artist)}</span><strong>${Number(artist.stream_count || 0)} plays</strong></li>`
+                            )
+                            .join('')}</ol>`
+                        : '<p>No artist data yet.</p>'
+                    }
+                    <div class="wrapped-message">
+                        <h2>${ui.escHtml(wrapped.artist_clip?.title || 'A message from Navipod')}</h2>
+                        <p>${ui.escHtml(wrapped.artist_clip?.message || '')}</p>
+                    </div>
+                </article>
+            </div>
+        </section>`;
   lucide.createIcons();
 }
 
@@ -806,6 +902,17 @@ export async function saveMixAsPlaylistAction(mixKey) {
   ui.closeModal();
   ui.showToast('Mix saved as playlist', 'success');
   await loadUserData();
+  loadView('playlist', saved.id);
+}
+
+export async function saveWrappedTopSongsPlaylist(year) {
+  const saved = await api.saveWrappedTopSongsPlaylist(year);
+  if (!saved) {
+    ui.showToast('Could not save Wrapped playlist', 'error');
+    return;
+  }
+  await api.loadUserData();
+  ui.showToast('Wrapped playlist saved', 'success');
   loadView('playlist', saved.id);
 }
 
