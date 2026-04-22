@@ -76,6 +76,11 @@
     return durationUnit(Number(years.toFixed(years >= 10 ? 0 : 1)), 'year', 'years');
   }
 
+  function titleCase(value) {
+    const text = String(value || '');
+    return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
+  }
+
   function validMinutes(value) {
     const parsed = Number(value || 0);
     return Number.isFinite(parsed) && parsed > 0 && parsed <= maxReasonableMinutes;
@@ -410,7 +415,7 @@
         className: 'story-slide-intro'
       },
       {
-        kicker: 'Minutes listened',
+        kicker: `${titleCase(personalDuration.unit)} listened`,
         title: `<span class="story-duration"><span class="story-big-number">${esc(personalDuration.value)}</span><span>${esc(personalDuration.unit)}</span></span>`,
         copy: `${number(wrapped.event_count)} tracked listens across your library.`
       },
@@ -455,7 +460,7 @@
       },
       {
         kicker: 'Wrapped Party',
-        title: 'Most minutes',
+        title: 'Most listening time',
         html: listItems(
           partyMinutes.filter((item) => validMinutes(item.minutes_listened)).slice(0, 5),
           (item, index) => {

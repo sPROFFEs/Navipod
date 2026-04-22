@@ -384,7 +384,7 @@ function renderWrappedParty(party) {
   return `
         <div class="wrapped-party-grid">
             <div>
-                <h2>Most Minutes Listened</h2>
+                <h2>Most Listening Time</h2>
                 ${
                   minutes.length
                     ? `<ol class="wrapped-rank-list">${minutes
