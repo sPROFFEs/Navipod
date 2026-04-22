@@ -522,6 +522,10 @@
     const slide = state.slides[state.index];
     if (!slide) return;
 
+    // Clear the initial loading message on first render
+    const loading = stage.querySelector('.story-loading');
+    if (loading) loading.remove();
+
     const existingArticle = stage.querySelector('.story-slide');
     stopAudio();
     setSlideTheme();
@@ -537,8 +541,11 @@
         ${slide.html || ''}`;
 
     if (existingArticle) {
+      existingArticle.style.pointerEvents = 'none';
       existingArticle.classList.add('slide-exit');
       existingArticle.addEventListener('animationend', () => existingArticle.remove(), { once: true });
+      // Safety fallback in case animationend doesn't fire
+      window.setTimeout(() => { if (existingArticle.parentNode) existingArticle.remove(); }, 600);
     }
     stage.appendChild(article);
     bindSlideActions();
