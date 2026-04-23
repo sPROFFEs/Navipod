@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from . import (
     core,
+    delete_requests,
     downloads,
     favorites,
     personalization,
@@ -26,6 +27,7 @@ router = APIRouter()
 # Include all sub-routers
 router.include_router(core.router)
 router.include_router(streaming.router)
+router.include_router(delete_requests.router)
 router.include_router(downloads.router)
 router.include_router(radio.router)
 router.include_router(favorites.router)

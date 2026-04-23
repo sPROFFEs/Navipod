@@ -75,6 +75,24 @@ export async function removeFavorite(trackId) {
   }
 }
 
+export async function submitTrackDeleteRequest(trackId, reason) {
+  try {
+    const res = await fetch(`${state.API}/tracks/${trackId}/delete-request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, error: data.error || `HTTP ${res.status}` };
+    }
+    return { ok: true, message: data.message || 'Request submitted' };
+  } catch (e) {
+    console.error('[TRACK-DELETE-REQUEST] Error:', e);
+    return { ok: false, error: 'Network error' };
+  }
+}
+
 // === PLAYLISTS API ===
 
 export async function fetchPlaylists() {

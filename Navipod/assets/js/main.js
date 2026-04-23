@@ -131,6 +131,8 @@ window.loadUserData = views.loadUserData;
 window.showSaveMixModal = views.showSaveMixModal;
 window.saveMixAsPlaylistAction = views.saveMixAsPlaylistAction;
 window.saveWrappedTopSongsPlaylist = views.saveWrappedTopSongsPlaylist;
+window.showTrackDeleteRequestModal = views.showTrackDeleteRequestModal;
+window.submitTrackDeleteRequest = views.submitTrackDeleteRequest;
 
 // Admin
 window.toggleReset = admin.toggleReset;

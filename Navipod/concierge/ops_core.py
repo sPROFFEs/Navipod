@@ -994,6 +994,36 @@ def _migration_016_wrapped_settings(conn):
             conn.execute(text(f"ALTER TABLE system_settings ADD COLUMN {col_name} {col_type}"))
 
 
+def _migration_017_track_delete_requests(conn):
+    conn.execute(
+        text("""
+        CREATE TABLE IF NOT EXISTS track_delete_requests (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            track_id INTEGER NOT NULL,
+            track_title TEXT,
+            track_artist TEXT,
+            reason TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            review_note TEXT,
+            reviewed_by_user_id INTEGER,
+            requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            reviewed_at DATETIME,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (track_id) REFERENCES tracks(id),
+            FOREIGN KEY (reviewed_by_user_id) REFERENCES users(id)
+        )
+    """)
+    )
+    conn.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_track_delete_requests_status_requested ON track_delete_requests(status, requested_at)")
+    )
+    conn.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_track_delete_requests_user_status ON track_delete_requests(user_id, status)")
+    )
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_track_delete_requests_track_id ON track_delete_requests(track_id)"))
+
+
 MIGRATIONS = [
     ("000_base_schema", _migration_000_base_schema),
     ("001_tracks_library_columns", _migration_001_tracks_library_columns),
@@ -1012,6 +1042,7 @@ MIGRATIONS = [
     ("014_performance_indexes", _migration_014_performance_indexes),
     ("015_queue_state_and_download_history", _migration_015_queue_state_and_download_history),
     ("016_wrapped_settings", _migration_016_wrapped_settings),
+    ("017_track_delete_requests", _migration_017_track_delete_requests),
 ]
 
 

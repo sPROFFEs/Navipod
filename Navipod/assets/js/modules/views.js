@@ -98,7 +98,7 @@ function initUserSettingsView(container) {
 // === VIEW ROUTING ===
 
 function _canTrackSpaHistory(view) {
-  return !['settings_admin', 'system_monitor', 'settings_user', 'help'].includes(view);
+  return !['settings_admin', 'system_monitor', 'admin_delete_requests', 'settings_user', 'help'].includes(view);
 }
 
 function _pushSpaHistory(view, param = null, replace = false) {
@@ -155,6 +155,7 @@ export async function loadView(view, param = null, options = {}) {
       await trackRecentPlaylist(param);
     } else if (view === 'settings_admin') await renderExternalView(container, '/admin/');
     else if (view === 'system_monitor') await renderExternalView(container, '/admin/system');
+    else if (view === 'admin_delete_requests') await renderExternalView(container, '/admin/song-delete-requests');
     else if (view === 'settings_user') await renderExternalView(container, '/user/settings');
     else if (view === 'help') await renderExternalView(container, '/help');
 
@@ -681,6 +682,47 @@ export function createMixCard(mix) {
     </div>`;
 }
 
+export function showTrackDeleteRequestModal(trackId, title, artist = '') {
+  const safeTitle = ui.escHtml(title || 'Unknown track');
+  const safeArtist = ui.escHtml(artist || 'Unknown artist');
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.onclick = () => modal.remove();
+  modal.innerHTML = `
+        <div class="modal" onclick="event.stopPropagation()">
+            <h2 style="margin-bottom: 10px;">Request Song Deletion</h2>
+            <p style="color: var(--text-sub); margin-bottom: 14px;">
+                Send a deletion request for <strong style="color:white;">${safeTitle}</strong> · ${safeArtist}.
+            </p>
+            <textarea id="track-delete-reason" class="monitor-input" rows="4" maxlength="1000" placeholder="Why should this track be removed? (required)"></textarea>
+            <div class="modal-actions" style="margin-top: 16px;">
+                <button class="modal-btn-cancel" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+                <button class="modal-btn-danger" onclick="submitTrackDeleteRequest(${Number(trackId)}, this)">Send Request</button>
+            </div>
+        </div>`;
+  document.body.appendChild(modal);
+}
+
+export async function submitTrackDeleteRequest(trackId, buttonEl) {
+  const modal = buttonEl?.closest('.modal-overlay') || document.querySelector('.modal-overlay');
+  const reasonInput = modal?.querySelector('#track-delete-reason');
+  const reason = (reasonInput?.value || '').trim();
+  if (reason.length < 8) {
+    ui.showToast('Please provide a clearer reason (min 8 chars).', 'error');
+    reasonInput?.focus();
+    return;
+  }
+  if (buttonEl) buttonEl.disabled = true;
+  const result = await api.submitTrackDeleteRequest(trackId, reason);
+  if (buttonEl) buttonEl.disabled = false;
+  if (!result.ok) {
+    ui.showToast(result.error || 'Could not send request', 'error');
+    return;
+  }
+  ui.showToast(result.message || 'Request sent to admins', 'success');
+  modal?.remove();
+}
+
 // === TRACK ROW COMPONENT ===
 
 export function createTrackRow(item, idx, playlistId = null) {
@@ -719,6 +761,11 @@ export function createTrackRow(item, idx, playlistId = null) {
             
             ${item.is_local ? `<button class="action-btn" onclick="addToQueue('${data}')" title="Add to Queue"><i data-lucide="list-plus"></i></button>` : ''}
             ${canAddToPlaylist ? `<button class="action-btn" onclick="showAddToPlaylistModal(${item.db_id})"><i data-lucide="plus"></i></button>` : ''}
+            ${
+              item.is_local
+                ? `<button class="action-btn warning" onclick="showTrackDeleteRequestModal(${item.db_id || item.id}, '${ui.escHtml(item.title || 'Unknown').replace(/'/g, "\\'")}', '${ui.escHtml(item.artist || 'Unknown').replace(/'/g, "\\'")}')" title="Request deletion"><i data-lucide="flag"></i></button>`
+                : ''
+            }
             
             ${playlistId ? `<button class="action-btn-danger" onclick="showRemoveFromPlaylistModal(${playlistId}, ${item.id}, '${ui.escHtml(item.title || 'Track').replace(/'/g, "\\'")}')"><i data-lucide="trash-2"></i></button>` : ''}
         </div>

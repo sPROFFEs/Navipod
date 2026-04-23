@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Song Delete Inbox{% endblock %}
+{% block content %}
+<div class="admin-container admin-shell">
+    <section class="admin-shell-header">
+        <div>
+            <h1>Song Delete Inbox</h1>
+            <p>User requests to remove songs from the shared library. Approve to delete immediately, or reject with a note.</p>
+        </div>
+        <div class="admin-shell-actions">
+            <a href="/admin" onclick="loadView('settings_admin'); return false;" class="admin-shell-btn">
+                <i data-lucide="users" width="18" height="18"></i>
+                <span>User Admin</span>
+            </a>
+            <a href="/admin/system" onclick="loadView('system_monitor'); return false;" class="admin-shell-btn monitor">
+                <i data-lucide="activity" width="18" height="18"></i>
+                <span>System Monitor</span>
+            </a>
+        </div>
+    </section>
+
+    {% if request.query_params.msg %}
+    <div class="admin-toast success">
+        <i data-lucide="check-circle" width="18" height="18"></i>
+        <span>{{ request.query_params.msg }}</span>
+    </div>
+    {% endif %}
+    {% if request.query_params.error %}
+    <div class="admin-toast error">
+        <i data-lucide="alert-circle" width="18" height="18"></i>
+        <span>{{ request.query_params.error }}</span>
+    </div>
+    {% endif %}
+
+    <section class="admin-panel">
+        <div class="admin-panel-header">
+            <div>
+                <h2>Pending Requests</h2>
+                <p>Oldest request first to keep moderation fair.</p>
+            </div>
+        </div>
+        <div class="admin-panel-body">
+            {% if pending_requests %}
+            <div class="admin-delete-request-list">
+                {% for req in pending_requests %}
+                <article class="admin-delete-request-item">
+                    <div class="admin-delete-request-head">
+                        <div>
+                            <div class="admin-delete-request-title">{{ req.track_title }}</div>
+                            <div class="admin-delete-request-meta">{{ req.track_artist }} · Requested by {{ req.requester }}</div>
+                        </div>
+                        <span class="admin-source-badge">Track #{{ req.track_id }}</span>
+                    </div>
+                    <div class="admin-delete-request-reason">{{ req.reason }}</div>
+                    <div class="admin-delete-request-actions">
+                        <form action="/admin/song-delete-requests/{{ req.id }}/decision" method="post" class="admin-delete-decision-form">
+                            <input type="hidden" name="decision" value="reject">
+                            <input type="text" name="review_note" maxlength="300" placeholder="Optional note to explain rejection">
+                            <button type="submit" class="admin-secondary-btn">Reject</button>
+                        </form>
+                        <form action="/admin/song-delete-requests/{{ req.id }}/decision" method="post" class="admin-delete-decision-form">
+                            <input type="hidden" name="decision" value="approve">
+                            <input type="text" name="review_note" maxlength="300" placeholder="Optional internal note">
+                            <button type="submit" class="admin-danger-btn">Approve and Delete</button>
+                        </form>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="admin-empty-state">No pending song deletion requests.</div>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="admin-panel">
+        <div class="admin-panel-header">
+            <div>
+                <h2>Recent Decisions</h2>
+                <p>Latest approved/rejected requests for traceability.</p>
+            </div>
+        </div>
+        <div class="admin-panel-body">
+            {% if recent_reviews %}
+            <div class="admin-delete-request-list">
+                {% for req in recent_reviews %}
+                <article class="admin-delete-request-item compact">
+                    <div class="admin-delete-request-head">
+                        <div>
+                            <div class="admin-delete-request-title">{{ req.track_title }}</div>
+                            <div class="admin-delete-request-meta">{{ req.track_artist }} · {{ req.requester }} · Reviewed by {{ req.reviewed_by }}</div>
+                        </div>
+                        <span class="admin-source-badge {% if req.status == 'approved' %}approved{% else %}rejected{% endif %}">{{ req.status|upper }}</span>
+                    </div>
+                    {% if req.review_note %}
+                    <div class="admin-delete-request-reason">{{ req.review_note }}</div>
+                    {% endif %}
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="admin-empty-state">No recent decisions yet.</div>
+            {% endif %}
+        </div>
+    </section>
+</div>
+{% endblock %}

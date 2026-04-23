@@ -1604,6 +1604,15 @@ body {
     color: var(--primary);
 }
 
+.action-btn.warning {
+    color: #f59e0b;
+}
+
+.action-btn.warning:hover {
+    background: rgba(245, 158, 11, 0.12);
+    color: #fbbf24;
+}
+
 .action-btn-danger {
     width: 32px;
     height: 32px;

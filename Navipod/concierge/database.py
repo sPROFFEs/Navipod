@@ -281,6 +281,22 @@ class DownloadJob(Base):
     resolved_track = relationship("Track")
 
 
+class TrackDeleteRequest(Base):
+    __tablename__ = "track_delete_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    track_id = Column(Integer, ForeignKey("tracks.id"), nullable=False, index=True)
+    track_title = Column(String, nullable=True)
+    track_artist = Column(String, nullable=True)
+    reason = Column(Text, nullable=False)
+    status = Column(String, default="pending", index=True)
+    review_note = Column(Text, nullable=True)
+    reviewed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    requested_at = Column(DateTime(timezone=True), server_default=func.now())
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+
+
 class PlaybackQueueState(Base):
     __tablename__ = "playback_queue_states"
 

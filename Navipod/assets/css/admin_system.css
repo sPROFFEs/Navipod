@@ -1172,6 +1172,85 @@
     line-height: 1.45;
 }
 
+.admin-delete-request-list {
+    display: grid;
+    gap: 12px;
+}
+
+.admin-delete-request-item {
+    border: 1px solid var(--admin-border);
+    background: var(--admin-surface-2);
+    border-radius: 12px;
+    padding: 14px;
+    display: grid;
+    gap: 12px;
+}
+
+.admin-delete-request-item.compact {
+    gap: 8px;
+}
+
+.admin-delete-request-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.admin-delete-request-title {
+    color: var(--admin-text);
+    font-weight: 700;
+}
+
+.admin-delete-request-meta {
+    color: var(--admin-muted);
+    font-size: .86rem;
+    margin-top: 4px;
+}
+
+.admin-delete-request-reason {
+    color: #cbd5e1;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.admin-delete-request-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.admin-delete-decision-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+}
+
+.admin-delete-decision-form input {
+    min-height: 42px;
+    border-radius: 10px;
+    border: 1px solid var(--admin-border);
+    background: #0f1115;
+    color: var(--admin-text);
+    padding: 0 12px;
+    outline: none;
+    min-width: 0;
+}
+
+.admin-source-badge.approved {
+    border-color: rgba(34, 197, 94, 0.35);
+    background: rgba(34, 197, 94, 0.14);
+    color: #86efac;
+}
+
+.admin-source-badge.rejected {
+    border-color: rgba(239, 68, 68, 0.35);
+    background: rgba(239, 68, 68, 0.14);
+    color: #fca5a5;
+}
+
 @media (max-width: 980px) {
     .admin-form-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1308,5 +1387,10 @@
     .monitor-jobs,
     .admin-library-results {
         max-height: none;
+    }
+
+    .admin-delete-request-actions,
+    .admin-delete-decision-form {
+        grid-template-columns: 1fr;
     }
 }

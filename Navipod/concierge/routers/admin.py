@@ -3,6 +3,7 @@ import os
 import shutil
 import stat
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 import auth
@@ -17,7 +18,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Qu
 from fastapi.responses import JSONResponse, RedirectResponse
 from navipod_config import settings
 from sqlalchemy import text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 router = APIRouter(prefix="/admin")
 from shared_templates import templates
@@ -27,6 +28,10 @@ logger = logging.getLogger(__name__)
 MAX_DUPLICATE_VALUE_SCAN = 500
 TRACK_DELETE_ROOTS = ("/saas-data/pool", "/saas-data/users")
 DOCKER_PURGE_IMAGE = "alpine:3.20"
+
+
+def utcnow():
+    return datetime.now(timezone.utc)
 
 
 def get_db():
@@ -200,6 +205,129 @@ async def admin_panel(request: Request, db: Session = Depends(get_db)):
             "pool": {"used": u_gb, "limit": l_gb, "percent": pct},
         },
     )
+
+
+@router.get("/song-delete-requests")
+async def song_delete_requests_inbox(request: Request, db: Session = Depends(get_db)):
+    admin = get_current_admin(request, db)
+
+    requester = aliased(database.User)
+    reviewer = aliased(database.User)
+
+    pending_rows = (
+        db.query(
+            database.TrackDeleteRequest,
+            requester.username.label("requester_username"),
+            database.Track.title.label("track_title_live"),
+            database.Track.artist.label("track_artist_live"),
+        )
+        .join(requester, requester.id == database.TrackDeleteRequest.user_id)
+        .outerjoin(database.Track, database.Track.id == database.TrackDeleteRequest.track_id)
+        .filter(database.TrackDeleteRequest.status == "pending")
+        .order_by(database.TrackDeleteRequest.requested_at.asc(), database.TrackDeleteRequest.id.asc())
+        .all()
+    )
+
+    recent_rows = (
+        db.query(
+            database.TrackDeleteRequest,
+            requester.username.label("requester_username"),
+            reviewer.username.label("reviewer_username"),
+        )
+        .join(requester, requester.id == database.TrackDeleteRequest.user_id)
+        .outerjoin(reviewer, reviewer.id == database.TrackDeleteRequest.reviewed_by_user_id)
+        .filter(database.TrackDeleteRequest.status.in_(["approved", "rejected"]))
+        .order_by(database.TrackDeleteRequest.reviewed_at.desc(), database.TrackDeleteRequest.id.desc())
+        .limit(50)
+        .all()
+    )
+
+    pending_requests = []
+    for req, username, live_title, live_artist in pending_rows:
+        pending_requests.append(
+            {
+                "id": req.id,
+                "track_id": req.track_id,
+                "track_title": live_title or req.track_title or "Unknown Track",
+                "track_artist": live_artist or req.track_artist or "Unknown Artist",
+                "requester": username,
+                "reason": req.reason or "",
+                "requested_at": req.requested_at,
+            }
+        )
+
+    recent_reviews = []
+    for req, username, reviewer in recent_rows:
+        recent_reviews.append(
+            {
+                "id": req.id,
+                "track_id": req.track_id,
+                "track_title": req.track_title or "Unknown Track",
+                "track_artist": req.track_artist or "Unknown Artist",
+                "requester": username,
+                "status": req.status or "unknown",
+                "review_note": req.review_note or "",
+                "reviewed_by": reviewer or "-",
+                "reviewed_at": req.reviewed_at,
+            }
+        )
+
+    return templates.TemplateResponse(
+        "admin_song_delete_requests.html",
+        {
+            "request": request,
+            "username": admin.username,
+            "is_admin": True,
+            "pending_requests": pending_requests,
+            "recent_reviews": recent_reviews,
+        },
+    )
+
+
+@router.post("/song-delete-requests/{request_id}/decision")
+async def resolve_song_delete_request(
+    request_id: int,
+    decision: str = Form(...),
+    review_note: str = Form(""),
+    db: Session = Depends(get_db),
+    admin: database.User = Depends(get_current_admin),
+):
+    action = (decision or "").strip().lower()
+    if action not in {"approve", "reject"}:
+        return RedirectResponse("/admin/song-delete-requests?error=Invalid decision", status_code=303)
+
+    req = db.query(database.TrackDeleteRequest).filter(database.TrackDeleteRequest.id == request_id).first()
+    if not req:
+        return RedirectResponse("/admin/song-delete-requests?error=Request not found", status_code=303)
+
+    if req.status != "pending":
+        return RedirectResponse("/admin/song-delete-requests?error=Request already resolved", status_code=303)
+
+    review_note_clean = (review_note or "").strip()
+
+    if action == "approve":
+        deletion_result = _delete_track_from_library(db, req.track_id)
+        if not deletion_result.get("success") and not deletion_result.get("not_found"):
+            msg = deletion_result.get("message") or "Track deletion failed"
+            return RedirectResponse(f"/admin/song-delete-requests?error={msg}", status_code=303)
+
+        req.status = "approved"
+        if deletion_result.get("not_found"):
+            fallback_note = "Approved: track was already missing from library."
+            req.review_note = f"{review_note_clean}\n{fallback_note}".strip() if review_note_clean else fallback_note
+        else:
+            req.review_note = review_note_clean or None
+        req.reviewed_by_user_id = admin.id
+        req.reviewed_at = utcnow()
+        db.commit()
+        return RedirectResponse("/admin/song-delete-requests?msg=Request approved", status_code=303)
+
+    req.status = "rejected"
+    req.review_note = review_note_clean or None
+    req.reviewed_by_user_id = admin.id
+    req.reviewed_at = utcnow()
+    db.commit()
+    return RedirectResponse("/admin/song-delete-requests?msg=Request rejected", status_code=303)
 
 
 # API ACTIONS
@@ -855,6 +983,50 @@ def _query_tracks_with_fts(db, raw_query: str, limit: int):
         return []
 
 
+def _delete_track_from_library(db: Session, track_id: int):
+    from database import Track
+
+    track = db.query(Track).filter(Track.id == track_id).first()
+    if not track:
+        return {"success": False, "not_found": True, "message": "Track not found"}
+
+    filepath = track.filepath
+    db.delete(track)
+    db.commit()
+
+    safe_filepath = None
+    if filepath:
+        for root in TRACK_DELETE_ROOTS:
+            try:
+                candidate = path_security.resolve_under(filepath, root)
+                if candidate.exists() and candidate.is_file():
+                    safe_filepath = candidate
+                    break
+            except path_security.UnsafePathError:
+                continue
+
+    if filepath and not safe_filepath:
+        manager.invalidate_pool_status_cache()
+        return {
+            "success": True,
+            "message": "Track deleted from DB; file removal skipped because path is outside allowed roots",
+            "warning": True,
+        }
+
+    if safe_filepath:
+        try:
+            safe_filepath.unlink()
+            manager.invalidate_pool_status_cache()
+        except Exception as e:
+            return {
+                "success": True,
+                "message": f"Track deleted from DB; file removal failed: {str(e)}",
+                "warning": True,
+            }
+
+    return {"success": True, "message": "Track deleted successfully", "warning": False}
+
+
 @router.get("/api/library/search")
 async def admin_search_library(
     q: str = "", db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)
@@ -891,48 +1063,15 @@ async def admin_delete_track(
     track_id: int, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)
 ):
     """Delete a track from DB and disk (Admin only)"""
-    from database import Track
     from fastapi.responses import JSONResponse
 
-    track = db.query(Track).filter(Track.id == track_id).first()
-    if not track:
+    result = _delete_track_from_library(db, track_id)
+    if result.get("not_found"):
         raise HTTPException(status_code=404, detail="Track not found")
 
-    filepath = track.filepath
-
-    # Delete from database (cascades to playlist items)
-    db.delete(track)
-    db.commit()
-
-    # Delete file from disk only if the DB path is inside an allowed media root.
-    safe_filepath = None
-    if filepath:
-        for root in TRACK_DELETE_ROOTS:
-            try:
-                candidate = path_security.resolve_under(filepath, root)
-                if candidate.exists() and candidate.is_file():
-                    safe_filepath = candidate
-                    break
-            except path_security.UnsafePathError:
-                continue
-
-    if filepath and not safe_filepath:
-        manager.invalidate_pool_status_cache()
-        return JSONResponse(
-            {
-                "success": True,
-                "warning": "DB deleted but file removal was skipped because the path is outside allowed media roots",
-            }
-        )
-
-    if safe_filepath:
-        try:
-            safe_filepath.unlink()
-            manager.invalidate_pool_status_cache()
-        except Exception as e:
-            return JSONResponse({"success": True, "warning": f"DB deleted but file removal failed: {str(e)}"})
-
-    return JSONResponse({"success": True, "message": "Track deleted successfully"})
+    if result.get("warning"):
+        return JSONResponse({"success": True, "warning": result.get("message")})
+    return JSONResponse({"success": True, "message": result.get("message", "Track deleted successfully")})
 
 
 @router.get("/api/library/duplicates")
