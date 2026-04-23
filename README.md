@@ -418,19 +418,6 @@ In `Library` and playlist views you can:
 - Favorites and playlist changes should appear in other open tabs after sync.
 - If UI looks stale, hard refresh once after large updates.
 
-### 10. Practical verification checklist
-
-After deployment or update, quickly verify:
-
-1. Login works for user/admin and logout invalidates session.
-2. Search returns local + remote results.
-3. Download completes and appears in local library.
-4. Streaming supports seek on local tracks.
-5. Playlist create/add/remove/play flows work.
-6. Favorites toggle and sync to another tab.
-7. Radio browse/inject/delete works.
-8. Admin monitor pages load and update checks run.
-
 ## Mobile App Connection
 
 Navipod exposes each user's Navidrome instance through a Subsonic-compatible path.
