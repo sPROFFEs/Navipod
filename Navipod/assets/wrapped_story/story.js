@@ -149,6 +149,14 @@
       .toUpperCase();
   }
 
+  function artistBadge(artistName, imageUrl) {
+    const safeImage = String(imageUrl || '').trim();
+    if (safeImage) {
+      return `<img class="story-artist-mark" src="${esc(safeImage)}" alt="${esc(artistName || 'Artist')}">`;
+    }
+    return `<span class="story-artist-mark">${esc(initials(artistName))}</span>`;
+  }
+
   function repeatIcon() {
     return `<svg class="story-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="m17 2 4 4-4 4"></path>
@@ -710,7 +718,8 @@
       .map((month) => ({
         month: months[(Number(month.month) || 1) - 1] || month.month,
         artist: month.artists[0].artist,
-        plays: Number(month.artists[0].stream_count || 0)
+        plays: Number(month.artists[0].stream_count || 0),
+        artist_image: month.artists[0].artist_image || ''
       }));
   }
 
@@ -784,7 +793,7 @@
         html: listItems(topArtists.filter((artist) => validCount(artist.stream_count)).slice(0, 5), (artist, index) => {
           return `<li class="story-list-with-art">
             <span class="story-rank">#${index + 1}</span>
-            <span class="story-artist-mark">${esc(initials(artist.artist))}</span>
+            ${artistBadge(artist.artist, artist.artist_image)}
             <strong>${esc(artist.artist)}</strong>
             <em>${number(artist.stream_count)} plays</em>
           </li>`;
@@ -795,7 +804,12 @@
         kicker: 'Top artist sprint',
         title: 'Who led each month',
         html: listItems(hasSprint ? sprint : [], (item) => {
-          return `<li><span>${esc(item.month)}</span><strong>${esc(item.artist)}</strong><em>${number(item.plays)} plays</em></li>`;
+          return `<li class="story-list-with-art">
+            <span class="story-rank">${esc(item.month)}</span>
+            ${artistBadge(item.artist, item.artist_image)}
+            <strong>${esc(item.artist)}</strong>
+            <em>${number(item.plays)} plays</em>
+          </li>`;
         }),
         className: 'story-slide-list story-slide-sprint'
       },
@@ -1107,13 +1121,19 @@
     stopPreviewLoudnessNormalization();
     try {
       state.currentAudio?.pause();
-    } catch {}
+    } catch (e) {
+      void e;
+    }
     try {
       state.backgroundAudio.pause();
-    } catch {}
+    } catch (e) {
+      void e;
+    }
     try {
       state.introAudio.pause();
-    } catch {}
+    } catch (e) {
+      void e;
+    }
   }
 
   function closeStoryToResume() {

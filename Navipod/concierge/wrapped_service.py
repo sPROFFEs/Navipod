@@ -12,6 +12,7 @@ from typing import Any
 import database
 import ops_core as ops
 import personalization_service
+import yt_dlp
 from job_service import create_admin_job, update_admin_job_progress
 from sqlalchemy.orm import Session
 
@@ -25,6 +26,9 @@ WRAPPED_TOP_DISPLAY_LIMIT = 5
 WRAPPED_MAX_REASONABLE_SECONDS = 365 * 24 * 60 * 60
 DEFAULT_ARTIST_CLIP_MESSAGE = "Your year had range. The admin can make this message worse later."
 DAILY_WRAPPED_RUN_STATE_KEY = "wrapped_daily_last_run_utc"
+WRAPPED_ARTIST_IMAGE_CACHE_PATH = Path("/saas-data/cache/wrapped/artist_images.json")
+WRAPPED_ARTIST_IMAGE_POSITIVE_TTL_SECONDS = 30 * 24 * 60 * 60
+WRAPPED_ARTIST_IMAGE_NEGATIVE_TTL_SECONDS = 7 * 24 * 60 * 60
 
 
 def utcnow() -> datetime:
@@ -33,6 +37,158 @@ def utcnow() -> datetime:
 
 def _iso_now() -> str:
     return utcnow().isoformat()
+
+
+def _safe_unix_now() -> int:
+    return int(utcnow().timestamp())
+
+
+def _normalize_artist_name(value: str | None) -> str:
+    if not value:
+        return ""
+    return " ".join(str(value).strip().split()).lower()
+
+
+def _safe_json_read(path: Path, fallback: dict[str, Any] | list[Any]) -> dict[str, Any] | list[Any]:
+    if not path.exists():
+        return fallback
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return fallback
+
+
+def _safe_json_write(path: Path, payload: dict[str, Any] | list[Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(f"{path.suffix}.tmp")
+    tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp_path.replace(path)
+
+
+def _load_artist_image_cache() -> dict[str, Any]:
+    cached = _safe_json_read(WRAPPED_ARTIST_IMAGE_CACHE_PATH, fallback={"artists": {}})
+    if isinstance(cached, dict):
+        artists = cached.get("artists")
+        if isinstance(artists, dict):
+            return {"artists": artists}
+    return {"artists": {}}
+
+
+def _save_artist_image_cache(cache_payload: dict[str, Any]) -> None:
+    _safe_json_write(WRAPPED_ARTIST_IMAGE_CACHE_PATH, cache_payload)
+
+
+def _best_thumbnail_url(thumbnails: Any) -> str:
+    if not isinstance(thumbnails, list):
+        return ""
+    valid = [thumb for thumb in thumbnails if isinstance(thumb, dict) and thumb.get("url")]
+    if not valid:
+        return ""
+    valid.sort(key=lambda item: ((item.get("width") or 0) * (item.get("height") or 0), item.get("preference") or 0), reverse=True)
+    return str(valid[0].get("url") or "")
+
+
+def _extract_artist_image_from_youtube(artist_name: str) -> str:
+    artist = " ".join((artist_name or "").split()).strip()
+    if not artist:
+        return ""
+
+    base_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "extract_flat": True,
+        "force_ipv4": True,
+        "socket_timeout": 8,
+        "retries": 0,
+        "extractor_args": {"youtube": {"player_client": ["web"]}},
+    }
+
+    search_queries = [
+        f"ytsearch5:{artist} official artist channel",
+        f"ytsearch5:{artist} topic",
+        f"ytsearch5:{artist} music",
+    ]
+
+    try:
+        with yt_dlp.YoutubeDL(base_opts) as ydl:
+            for query in search_queries:
+                result = ydl.extract_info(query, download=False)
+                entries = (result or {}).get("entries") or []
+                for entry in entries:
+                    if not isinstance(entry, dict):
+                        continue
+                    channel_id = str(entry.get("channel_id") or entry.get("uploader_id") or "").strip()
+                    channel_url = str(entry.get("channel_url") or entry.get("uploader_url") or "").strip()
+
+                    direct_channel_thumb = str(entry.get("channel_thumbnail") or "").strip()
+                    if direct_channel_thumb:
+                        return direct_channel_thumb
+
+                    if not channel_url and channel_id:
+                        channel_url = f"https://www.youtube.com/channel/{channel_id}"
+
+                    if channel_url:
+                        try:
+                            channel_info = ydl.extract_info(channel_url, download=False)
+                        except Exception:
+                            channel_info = {}
+
+                        avatar_url = _best_thumbnail_url((channel_info or {}).get("thumbnails"))
+                        if avatar_url:
+                            return avatar_url
+    except Exception as e:
+        logger.debug("Artist image lookup failed for '%s': %s", artist, e)
+
+    return ""
+
+
+def _resolve_artist_images(artist_names: list[str], *, allow_fetch: bool) -> dict[str, str]:
+    cache_payload = _load_artist_image_cache()
+    artists_cache = cache_payload.get("artists") or {}
+    now_ts = _safe_unix_now()
+    changed = False
+    resolved: dict[str, str] = {}
+
+    for artist in artist_names:
+        normalized = _normalize_artist_name(artist)
+        if not normalized:
+            continue
+
+        cached = artists_cache.get(normalized) if isinstance(artists_cache, dict) else None
+        image_url = ""
+        if isinstance(cached, dict):
+            image_url = str(cached.get("image_url") or "").strip()
+            checked_at = int(cached.get("checked_at") or 0)
+            ttl = (
+                WRAPPED_ARTIST_IMAGE_POSITIVE_TTL_SECONDS
+                if image_url
+                else WRAPPED_ARTIST_IMAGE_NEGATIVE_TTL_SECONDS
+            )
+            if checked_at and checked_at + ttl > now_ts:
+                if image_url:
+                    resolved[normalized] = image_url
+                continue
+
+        if allow_fetch:
+            fetched_url = _extract_artist_image_from_youtube(artist)
+            artists_cache[normalized] = {
+                "artist": artist,
+                "image_url": fetched_url,
+                "checked_at": now_ts,
+                "source": "youtube",
+            }
+            changed = True
+            if fetched_url:
+                resolved[normalized] = fetched_url
+        elif image_url:
+            resolved[normalized] = image_url
+
+    if changed:
+        cache_payload["artists"] = artists_cache
+        _save_artist_image_cache(cache_payload)
+
+    return resolved
 
 
 def get_wrapped_summary_db_path() -> Path:
@@ -421,7 +577,14 @@ def _validate_summary_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return {"warnings": warnings, "warning_count": len(warnings)}
 
 
-def _build_user_summary_from_rows(db: Session, user: database.User, year: int, rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _build_user_summary_from_rows(
+    db: Session,
+    user: database.User,
+    year: int,
+    rows: list[dict[str, Any]],
+    *,
+    resolve_artist_images: bool = False,
+) -> dict[str, Any]:
     track_ids = {int(row["track_id"]) for row in rows if int(row.get("track_id") or 0) > 0}
     tracks_by_id = _track_lookup(db, track_ids)
     terminal_instances = _collect_terminal_instances(rows)
@@ -517,6 +680,23 @@ def _build_user_summary_from_rows(db: Session, user: database.User, year: int, r
         for idx, (artist, stats) in enumerate(ranked_artists[:WRAPPED_TOP_DISPLAY_LIMIT])
     ]
 
+    sprint_payload = _build_artist_sprint(monthly_artist_stats)
+
+    artist_names_for_images: list[str] = []
+    artist_names_for_images.extend([str(item.get("artist") or "") for item in top_artists])
+    for month in sprint_payload:
+        for item in month.get("artists") or []:
+            artist_names_for_images.append(str(item.get("artist") or ""))
+    artist_image_map = _resolve_artist_images(artist_names_for_images, allow_fetch=bool(resolve_artist_images))
+
+    for item in top_artists:
+        normalized_artist = _normalize_artist_name(str(item.get("artist") or ""))
+        item["artist_image"] = artist_image_map.get(normalized_artist, "")
+    for month in sprint_payload:
+        for item in month.get("artists") or []:
+            normalized_artist = _normalize_artist_name(str(item.get("artist") or ""))
+            item["artist_image"] = artist_image_map.get(normalized_artist, "")
+
     payload = {
         "version": WRAPPED_SUMMARY_VERSION,
         "wrapped_schema_version": WRAPPED_SCHEMA_VERSION,
@@ -537,7 +717,7 @@ def _build_user_summary_from_rows(db: Session, user: database.User, year: int, r
         },
         "top_artists": top_artists,
         "top_genres": [],
-        "top_artist_sprint": _build_artist_sprint(monthly_artist_stats),
+        "top_artist_sprint": sprint_payload,
         "artist_clip": {
             "title": "A message from Navipod",
             "message": get_wrapped_settings(db)["artist_clip_message"],
@@ -552,12 +732,24 @@ def _build_user_summary_from_rows(db: Session, user: database.User, year: int, r
     return payload
 
 
-def build_user_wrapped_summary(db: Session, user: database.User, year: int | None = None) -> dict[str, Any]:
+def build_user_wrapped_summary(
+    db: Session,
+    user: database.User,
+    year: int | None = None,
+    *,
+    resolve_artist_images: bool = False,
+) -> dict[str, Any]:
     year = _safe_year(year)
     rows = _fetch_canonical_tracking_rows(user.username, year)
     if not rows:
         rows = _fetch_legacy_activity_rows(user.username, year)
-    return _build_user_summary_from_rows(db, user, year, rows)
+    return _build_user_summary_from_rows(
+        db,
+        user,
+        year,
+        rows,
+        resolve_artist_images=resolve_artist_images,
+    )
 
 
 def _cached_user_meta(user_id: int, year: int) -> sqlite3.Row | None:
@@ -858,7 +1050,14 @@ def regenerate_wrapped_year(
     qualified_event_total = 0
     for user in users:
         if force_refresh:
-            payload = save_user_wrapped_summary(build_user_wrapped_summary(db, user, year))
+            payload = save_user_wrapped_summary(
+                build_user_wrapped_summary(
+                    db,
+                    user,
+                    year,
+                    resolve_artist_images=True,
+                )
+            )
         else:
             payload = get_or_build_user_wrapped_summary(db, user, year, force_refresh=False)
         generated.append(payload)

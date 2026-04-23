@@ -807,12 +807,21 @@ body {
 }
 
 .story-artist-mark {
+  overflow: hidden;
+}
+
+span.story-artist-mark {
   display: grid;
   place-items: center;
   background: rgba(255, 255, 255, 0.12);
   color: var(--story-fg);
   font-size: 0.82rem;
   font-weight: 800;
+}
+
+img.story-artist-mark {
+  display: block;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .story-list strong,
