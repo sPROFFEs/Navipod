@@ -277,14 +277,14 @@
             <form action="/admin/system/wrapped/regenerate" method="post" class="monitor-backup-form">
                 <div class="monitor-backup-form-row">
                     <div class="monitor-field">
-                        <label for="wrapped-regenerate-year">Regenerate year</label>
-                        <input id="wrapped-regenerate-year" class="monitor-input" type="number" name="year" min="2020" max="2100" value="{{ wrapped.year or '' }}" placeholder="Current year">
+                        <label>Operational year (automatic)</label>
+                        <input class="monitor-input" type="text" value="{{ wrapped.year or '' }}" readonly>
                     </div>
                     <div class="monitor-field-action">
                         <button type="submit" class="monitor-secondary"><i data-lucide="refresh-cw"></i><span>Regenerate Wrapped</span></button>
                     </div>
                 </div>
-                <div class="monitor-field-help">Rebuilds user summaries and Wrapped Party immediately from cached listen activity.</div>
+                <div class="monitor-field-help">Rebuilds user summaries and Wrapped Party for the current operational year automatically.</div>
             </form>
         </div>
     </section>

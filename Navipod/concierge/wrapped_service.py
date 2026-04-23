@@ -146,6 +146,14 @@ def normalize_year(year: int | None = None) -> int:
     return _safe_year(year)
 
 
+def get_operational_wrapped_year(db: Session | None = None) -> int:
+    if db is None:
+        return utcnow().year
+    settings = ops.ensure_system_settings_record(db)
+    scheduler_tz = ops.get_scheduler_timezone(settings)
+    return datetime.now(scheduler_tz).year
+
+
 def _parse_visibility_dt(value: str | None, default_tz=timezone.utc) -> datetime | None:
     if not value:
         return None
@@ -185,10 +193,16 @@ def _display_time(value: str | None, display_tz=timezone.utc) -> str:
 def get_wrapped_settings(db: Session) -> dict[str, Any]:
     settings = ops.ensure_system_settings_record(db)
     scheduler_tz = ops.get_scheduler_timezone(settings)
-    now = utcnow()
+    now_local = datetime.now(scheduler_tz)
+    now = now_local.astimezone(timezone.utc)
+    operational_year = now_local.year
+    year_start_utc = datetime(operational_year, 1, 1, 0, 0, 0, tzinfo=scheduler_tz).astimezone(timezone.utc)
+    next_year_start_utc = datetime(operational_year + 1, 1, 1, 0, 0, 0, tzinfo=scheduler_tz).astimezone(timezone.utc)
     visible_from = _parse_visibility_dt(settings.wrapped_visible_from)
     visible_until = _parse_visibility_dt(settings.wrapped_visible_until)
-    window_open = (visible_from is None or visible_from <= now) and (visible_until is None or visible_until >= now)
+    manual_window_open = (visible_from is None or visible_from <= now) and (visible_until is None or visible_until >= now)
+    yearly_window_open = year_start_utc <= now < next_year_start_utc
+    window_open = manual_window_open and yearly_window_open
     enabled = bool(settings.wrapped_enabled)
     return {
         "enabled": enabled,
@@ -203,7 +217,7 @@ def get_wrapped_settings(db: Session) -> dict[str, Any]:
         "visible_until_time_input": _display_time(settings.wrapped_visible_until, scheduler_tz),
         "timezone": ops.get_scheduler_timezone_name(settings),
         "artist_clip_message": settings.wrapped_artist_clip_message or DEFAULT_ARTIST_CLIP_MESSAGE,
-        "year": normalize_year(),
+        "year": operational_year,
         "wrapped_schema_version": WRAPPED_SCHEMA_VERSION,
     }
 

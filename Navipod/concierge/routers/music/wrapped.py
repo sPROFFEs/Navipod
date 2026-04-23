@@ -24,11 +24,17 @@ async def get_user_wrapped(
     visibility = wrapped_service.get_wrapped_settings(db)
     if not visibility["visible"]:
         return JSONResponse({"enabled": False, "visible": False, "year": year})
+    operational_year = int(visibility.get("year") or wrapped_service.get_operational_wrapped_year(db))
 
     try:
-        payload = wrapped_service.get_or_build_user_wrapped_summary(db, user, year, force_refresh=force_refresh)
+        payload = wrapped_service.get_or_build_user_wrapped_summary(
+            db, user, operational_year, force_refresh=force_refresh
+        )
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
+    if int(year) != operational_year:
+        payload["requested_year"] = int(year)
+        payload["resolved_year"] = operational_year
     return JSONResponse(payload)
 
 
@@ -45,11 +51,15 @@ async def get_wrapped_party(
     visibility = wrapped_service.get_wrapped_settings(db)
     if not visibility["visible"]:
         return JSONResponse({"enabled": False, "visible": False, "year": year})
+    operational_year = int(visibility.get("year") or wrapped_service.get_operational_wrapped_year(db))
 
     try:
-        payload = wrapped_service.get_or_build_party_summary(db, year, force_refresh=force_refresh)
+        payload = wrapped_service.get_or_build_party_summary(db, operational_year, force_refresh=force_refresh)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
+    if int(year) != operational_year:
+        payload["requested_year"] = int(year)
+        payload["resolved_year"] = operational_year
     return JSONResponse(payload)
 
 
@@ -62,8 +72,10 @@ async def save_wrapped_top_songs_playlist(year: int, request: Request, db: Sessi
     if not visibility["visible"]:
         return JSONResponse({"error": "Wrapped is not available"}, status_code=403)
 
+    visibility = wrapped_service.get_wrapped_settings(db)
+    operational_year = int(visibility.get("year") or wrapped_service.get_operational_wrapped_year(db))
     try:
-        summary = wrapped_service.get_or_build_user_wrapped_summary(db, user, year)
+        summary = wrapped_service.get_or_build_user_wrapped_summary(db, user, operational_year)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 
