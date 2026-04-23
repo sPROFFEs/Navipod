@@ -210,6 +210,7 @@ async def admin_panel(request: Request, db: Session = Depends(get_db)):
 @router.get("/song-delete-requests")
 async def song_delete_requests_inbox(request: Request, db: Session = Depends(get_db)):
     admin = get_current_admin(request, db)
+    pool_used, pool_limit, pool_pct = manager.get_pool_status(db)
 
     requester = aliased(database.User)
     reviewer = aliased(database.User)
@@ -278,6 +279,7 @@ async def song_delete_requests_inbox(request: Request, db: Session = Depends(get
             "request": request,
             "username": admin.username,
             "is_admin": True,
+            "pool": {"used": pool_used, "limit": pool_limit, "percent": pool_pct},
             "pending_requests": pending_requests,
             "recent_reviews": recent_reviews,
         },
