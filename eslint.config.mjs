@@ -28,6 +28,7 @@ export default [
         clearTimeout: "readonly",
         confirm: "readonly",
         console: "readonly",
+        crypto: "readonly",
         document: "readonly",
         fetch: "readonly",
         history: "readonly",

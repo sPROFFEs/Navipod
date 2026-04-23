@@ -1,32 +1,23 @@
-import os
-import base64
-import subprocess
-import logging
 import asyncio
-import tempfile
-import shutil
-from datetime import datetime
-from sqlalchemy.orm import Session
-import database
-import yt_dlp
-from pathlib import Path
-import time
-import unicodedata
+import base64
+import logging
+import os
 import re
-import manager
-import manager
-import utils
-import httpx
-import mutagen
-from mutagen.easyid3 import EasyID3
-import track_identity
-import source_registry
-try:
-    from mutagen.id3 import ID3, APIC
-except ImportError:
-    pass
+import shutil
+import subprocess
+import tempfile
+import time
 
+import database
+import httpx
+import manager
+import mutagen
+import source_registry
+import track_identity
+import utils
+import yt_dlp
 from navipod_config import settings
+from sqlalchemy.orm import Session
 
 # Límite global de descargas simultáneas (ej. 3)
 download_semaphore = asyncio.Semaphore(settings.CONCURRENT_DOWNLOADS)
@@ -283,8 +274,8 @@ class DownloadManager:
         Elimina el ruido: diacríticos, emojis y caracteres no-ASCII.
         Asegura compatibilidad absoluta con el escáner de Navidrome.
         """
-        import unicodedata
         import re
+        import unicodedata
 
         # Separamos la extensión para no normalizar el punto del archivo
         name, ext = os.path.splitext(filename)
