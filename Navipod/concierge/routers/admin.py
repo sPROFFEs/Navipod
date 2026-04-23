@@ -308,26 +308,54 @@ async def resolve_song_delete_request(
     review_note_clean = (review_note or "").strip()
 
     if action == "approve":
-        deletion_result = _delete_track_from_library(db, req.track_id)
+        track_id = int(req.track_id or 0)
+        reviewed_at = utcnow()
+
+        req.status = "approved"
+        req.review_note = review_note_clean or None
+        req.reviewed_by_user_id = admin.id
+        req.reviewed_at = reviewed_at
+        req.user_seen_at = None
+
+        if track_id > 0:
+            related_requests = (
+                db.query(database.TrackDeleteRequest)
+                .filter(database.TrackDeleteRequest.track_id == track_id)
+                .order_by(database.TrackDeleteRequest.id.asc())
+                .all()
+            )
+            for related in related_requests:
+                related.track_id = None
+                if related.id == req.id:
+                    continue
+                if related.status == "pending":
+                    related.status = "approved"
+                    related.reviewed_by_user_id = admin.id
+                    related.reviewed_at = reviewed_at
+                    related.user_seen_at = None
+                    auto_note = "Auto-approved: this track was deleted after another user request."
+                    related.review_note = (
+                        f"{related.review_note}\n{auto_note}".strip() if related.review_note else auto_note
+                    )
+
+        db.commit()
+        deletion_result = _delete_track_from_library(db, track_id) if track_id > 0 else {"success": True, "not_found": True}
         if not deletion_result.get("success") and not deletion_result.get("not_found"):
             msg = deletion_result.get("message") or "Track deletion failed"
             return RedirectResponse(f"/admin/song-delete-requests?error={msg}", status_code=303)
 
-        req.status = "approved"
         if deletion_result.get("not_found"):
             fallback_note = "Approved: track was already missing from library."
-            req.review_note = f"{review_note_clean}\n{fallback_note}".strip() if review_note_clean else fallback_note
-        else:
-            req.review_note = review_note_clean or None
-        req.reviewed_by_user_id = admin.id
-        req.reviewed_at = utcnow()
-        db.commit()
+            req.review_note = f"{req.review_note}\n{fallback_note}".strip() if req.review_note else fallback_note
+            req.user_seen_at = None
+            db.commit()
         return RedirectResponse("/admin/song-delete-requests?msg=Request approved", status_code=303)
 
     req.status = "rejected"
     req.review_note = review_note_clean or None
     req.reviewed_by_user_id = admin.id
     req.reviewed_at = utcnow()
+    req.user_seen_at = None
     db.commit()
     return RedirectResponse("/admin/song-delete-requests?msg=Request rejected", status_code=303)
 

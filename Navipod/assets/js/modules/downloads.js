@@ -26,6 +26,32 @@ function isDownloadsModalOpen() {
   return !!modal && !modal.classList.contains('hidden');
 }
 
+function isDeleteResponsesModalOpen() {
+  const modal = document.getElementById('delete-responses-modal');
+  return !!modal && !modal.classList.contains('hidden');
+}
+
+function formatDeleteStatus(status) {
+  const normalized = String(status || '')
+    .trim()
+    .toLowerCase();
+  if (normalized === 'approved') return { label: 'Approved', badge: 'finished' };
+  if (normalized === 'rejected') return { label: 'Rejected', badge: 'error' };
+  return { label: 'Pending', badge: 'pending' };
+}
+
+function formatDeleteDate(value) {
+  if (!value) return '-';
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return '-';
+  return dt.toLocaleString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit'
+  });
+}
+
 function formatSourceLabel(source) {
   const normalized = String(source || '')
     .trim()
@@ -98,12 +124,37 @@ function ensureDownloadPolling() {
   }
 }
 
+export function initDownloadHud() {
+  refreshJobs();
+  ensureDownloadPolling();
+}
+
+async function refreshDeleteResponsesBadge() {
+  try {
+    const res = await fetch(`${state.API}/tracks/delete-requests/unseen-count`);
+    if (!res.ok) return;
+    const payload = await res.json();
+    const unseen = Number(payload.unseen_count || 0);
+    const badge = document.getElementById('delete-responses-badge');
+    if (!badge) return;
+    if (unseen > 0) {
+      badge.textContent = String(unseen);
+      badge.style.display = 'block';
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch (e) {
+    // Silent by design: this badge is secondary UI.
+  }
+}
+
 // === OPEN/CLOSE MODAL ===
 
 export function openDownloadsModal() {
   const modal = document.getElementById('downloads-modal');
   if (modal) modal.classList.remove('hidden');
   refreshJobs();
+  refreshDeleteResponsesBadge();
   ensureDownloadPolling();
 }
 
@@ -116,10 +167,100 @@ export function closeDownloadsModal() {
   }
 }
 
+export async function openDeleteResponsesModal() {
+  const modal = document.getElementById('delete-responses-modal');
+  if (modal) modal.classList.remove('hidden');
+  await refreshDeleteResponses();
+  await acknowledgeDeleteResponses();
+  await refreshDeleteResponsesBadge();
+  ensureDownloadPolling();
+}
+
+export function closeDeleteResponsesModal() {
+  const modal = document.getElementById('delete-responses-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function acknowledgeDeleteResponses() {
+  try {
+    await fetch(`${state.API}/tracks/delete-requests/ack`, { method: 'POST' });
+  } catch (e) {
+    // No-op: badge will refresh later.
+  }
+}
+
+export async function refreshDeleteResponses() {
+  const container = document.getElementById('delete-responses-list');
+  if (!container || !isDeleteResponsesModalOpen()) return;
+
+  try {
+    const res = await fetch(`${state.API}/tracks/delete-requests/mine`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const payload = await res.json();
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    if (!items.length) {
+      container.innerHTML =
+        '<p style="text-align:center; color: var(--text-sub, #999); margin-top:20px;">No delete requests yet.</p>';
+      return;
+    }
+
+    container.innerHTML = items
+      .map((item) => {
+        const status = formatDeleteStatus(item.status);
+        const reviewText =
+          status.badge === 'pending'
+            ? 'Waiting for admin review.'
+            : item.review_note
+              ? ui.escHtml(item.review_note)
+              : status.badge === 'finished'
+                ? 'The track was removed from library.'
+                : 'Request rejected.';
+
+        return `
+          <div class="job-item">
+              <div class="job-header">
+                  <div>
+                      <div class="job-title">${ui.escHtml(item.track_title || 'Unknown Track')}</div>
+                      <div class="job-detail" style="margin-top:4px; font-size:0.78rem; color: var(--text-sub, #aaa);">
+                          ${ui.escHtml(item.track_artist || 'Unknown Artist')}
+                      </div>
+                  </div>
+                  <span class="status-badge ${status.badge}">${status.label}</span>
+              </div>
+              <div class="job-resolution">
+                  <div class="job-resolution-row">
+                      <span>Reason sent</span>
+                      <strong>${ui.escHtml(item.reason || '-')}</strong>
+                  </div>
+                  <div class="job-resolution-row">
+                      <span>Admin response</span>
+                      <strong>${reviewText}</strong>
+                  </div>
+              </div>
+              <div class="job-footer">
+                  <div class="job-footer-left">
+                      <i data-lucide="messages-square" width="14" height="14"></i>
+                      <span>Requested: ${formatDeleteDate(item.requested_at)}</span>
+                  </div>
+                  <span>${status.badge === 'pending' ? 'Pending' : `Reviewed: ${formatDeleteDate(item.reviewed_at)}`}</span>
+              </div>
+          </div>`;
+      })
+      .join('');
+    lucide.createIcons();
+  } catch (e) {
+    container.innerHTML =
+      '<p style="text-align:center; color: #ff9d9d; margin-top:20px;">Could not load request responses.</p>';
+  }
+}
+
 // === REFRESH JOBS LIST ===
 
 export async function refreshJobs() {
   try {
+    refreshDeleteResponsesBadge();
+    if (isDeleteResponsesModalOpen()) refreshDeleteResponses();
+
     const res = await fetch(`${state.API}/jobs`);
     const jobs = await res.json();
     const container = document.getElementById('jobs-list');

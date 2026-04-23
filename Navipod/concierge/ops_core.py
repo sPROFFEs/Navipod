@@ -1024,6 +1024,95 @@ def _migration_017_track_delete_requests(conn):
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_track_delete_requests_track_id ON track_delete_requests(track_id)"))
 
 
+def _migration_018_track_delete_requests_relax_fk(conn):
+    tables = {row[0] for row in conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()}
+    if "track_delete_requests" not in tables:
+        return
+
+    columns_info = conn.execute(text("PRAGMA table_info(track_delete_requests)")).fetchall()
+    columns = {row[1]: row for row in columns_info}
+    needs_rebuild = False
+
+    track_id_col = columns.get("track_id")
+    if track_id_col and int(track_id_col[3] or 0) == 1:
+        needs_rebuild = True
+    if "user_seen_at" not in columns:
+        needs_rebuild = True
+
+    if not needs_rebuild:
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_track_delete_requests_status_requested ON track_delete_requests(status, requested_at)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_track_delete_requests_user_status ON track_delete_requests(user_id, status)"
+            )
+        )
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_track_delete_requests_track_id ON track_delete_requests(track_id)"))
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_track_delete_requests_user_seen ON track_delete_requests(user_id, user_seen_at)"
+            )
+        )
+        return
+
+    conn.execute(text("PRAGMA foreign_keys=OFF"))
+    try:
+        conn.execute(text("DROP TABLE IF EXISTS track_delete_requests_v2"))
+        conn.execute(
+            text("""
+            CREATE TABLE track_delete_requests_v2 (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                track_id INTEGER,
+                track_title TEXT,
+                track_artist TEXT,
+                reason TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                review_note TEXT,
+                reviewed_by_user_id INTEGER,
+                requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                reviewed_at DATETIME,
+                user_seen_at DATETIME,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE SET NULL,
+                FOREIGN KEY (reviewed_by_user_id) REFERENCES users(id)
+            )
+        """)
+        )
+        conn.execute(
+            text("""
+            INSERT INTO track_delete_requests_v2 (
+                id, user_id, track_id, track_title, track_artist, reason, status,
+                review_note, reviewed_by_user_id, requested_at, reviewed_at
+            )
+            SELECT
+                id, user_id, track_id, track_title, track_artist, reason, status,
+                review_note, reviewed_by_user_id, requested_at, reviewed_at
+            FROM track_delete_requests
+            """)
+        )
+        conn.execute(text("DROP TABLE track_delete_requests"))
+        conn.execute(text("ALTER TABLE track_delete_requests_v2 RENAME TO track_delete_requests"))
+    finally:
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_track_delete_requests_status_requested ON track_delete_requests(status, requested_at)"
+        )
+    )
+    conn.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_track_delete_requests_user_status ON track_delete_requests(user_id, status)")
+    )
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_track_delete_requests_track_id ON track_delete_requests(track_id)"))
+    conn.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_track_delete_requests_user_seen ON track_delete_requests(user_id, user_seen_at)")
+    )
+
+
 MIGRATIONS = [
     ("000_base_schema", _migration_000_base_schema),
     ("001_tracks_library_columns", _migration_001_tracks_library_columns),
@@ -1043,6 +1132,7 @@ MIGRATIONS = [
     ("015_queue_state_and_download_history", _migration_015_queue_state_and_download_history),
     ("016_wrapped_settings", _migration_016_wrapped_settings),
     ("017_track_delete_requests", _migration_017_track_delete_requests),
+    ("018_track_delete_requests_relax_fk", _migration_018_track_delete_requests_relax_fk),
 ]
 
 

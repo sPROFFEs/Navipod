@@ -286,7 +286,7 @@ class TrackDeleteRequest(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    track_id = Column(Integer, ForeignKey("tracks.id"), nullable=False, index=True)
+    track_id = Column(Integer, ForeignKey("tracks.id"), nullable=True, index=True)
     track_title = Column(String, nullable=True)
     track_artist = Column(String, nullable=True)
     reason = Column(Text, nullable=False)
@@ -295,6 +295,7 @@ class TrackDeleteRequest(Base):
     reviewed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     requested_at = Column(DateTime(timezone=True), server_default=func.now())
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    user_seen_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class PlaybackQueueState(Base):

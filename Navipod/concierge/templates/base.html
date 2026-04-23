@@ -141,6 +141,10 @@
                         <i data-lucide="download-cloud"></i>
                         <span id="download-badge" class="badge-count" style="display: none;">0</span>
                     </button>
+                    <button class="btn-icon-circle" onclick="openDeleteResponsesModal()" style="position: relative;" title="Delete request responses">
+                        <i data-lucide="messages-square"></i>
+                        <span id="delete-responses-badge" class="badge-count" style="display: none;">0</span>
+                    </button>
 
                     {% if is_admin %}
                     <button class="btn-icon-circle" onclick="loadView('settings_admin')" title="Admin Settings">
@@ -339,6 +343,19 @@
 
             <div id="jobs-list" class="downloads-container">
                 <!-- Jobs -->
+            </div>
+        </div>
+    </div>
+
+    <!-- DELETE REQUEST RESPONSES MODAL -->
+    <div id="delete-responses-modal" class="modal-overlay hidden">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 class="modal-title">Delete Request Responses</h2>
+                <button onclick="closeDeleteResponsesModal()" class="modal-close"><i data-lucide="x"></i></button>
+            </div>
+            <div id="delete-responses-list" class="downloads-container">
+                <!-- Delete request responses -->
             </div>
         </div>
     </div>

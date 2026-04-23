@@ -112,6 +112,8 @@ window.resetPlaylistCover = playlists.resetPlaylistCover;
 // Downloads
 window.openDownloadsModal = downloads.openDownloadsModal;
 window.closeDownloadsModal = downloads.closeDownloadsModal;
+window.openDeleteResponsesModal = downloads.openDeleteResponsesModal;
+window.closeDeleteResponsesModal = downloads.closeDeleteResponsesModal;
 window.handleModalDownload = downloads.handleModalDownload;
 window.triggerDownload = downloads.triggerDownload;
 window.showDownloadConfirmModal = downloads.showDownloadConfirmModal;
@@ -163,6 +165,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load user data (favorites, playlists)
   views.loadUserData();
+  downloads.initDownloadHud();
 
   // Setup player controls
   player.setupPlayer();
