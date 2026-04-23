@@ -12,6 +12,7 @@ import track_identity
 import youtube_service
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .core import get_current_user_safe, get_db
@@ -42,14 +43,29 @@ async def get_sync_state(request: Request, db: Session = Depends(get_db)):
         fav_ids = db.query(database.UserFavorite.track_id).filter(database.UserFavorite.user_id == user.id).all()
         fav_id_list = sorted([f[0] for f in fav_ids])
 
-        # Get playlist data including item counts for change detection
-        playlists = db.query(database.Playlist).filter(database.Playlist.owner_id == user.id).all()
+        # Get playlist data including item counts without N+1 relationship loads
+        playlists = (
+            db.query(database.Playlist.id, database.Playlist.name)
+            .filter(database.Playlist.owner_id == user.id)
+            .all()
+        )
+        playlist_ids = [row[0] for row in playlists]
+        playlist_item_counts = {}
+        if playlist_ids:
+            playlist_item_counts = {
+                int(row[0]): int(row[1] or 0)
+                for row in (
+                    db.query(database.PlaylistItem.playlist_id, func.count(database.PlaylistItem.id))
+                    .filter(database.PlaylistItem.playlist_id.in_(playlist_ids))
+                    .group_by(database.PlaylistItem.playlist_id)
+                    .all()
+                )
+            }
 
-        playlist_state = []
-        for p in playlists:
-            item_count = len(p.items) if p.items else 0
-            playlist_state.append((p.id, p.name, item_count))
-        playlist_state = sorted(playlist_state)
+        playlist_state = sorted(
+            (int(playlist_id), playlist_name, int(playlist_item_counts.get(int(playlist_id), 0)))
+            for playlist_id, playlist_name in playlists
+        )
 
         # Create version hash
         state_str = f"favs:{fav_id_list}|playlists:{playlist_state}"

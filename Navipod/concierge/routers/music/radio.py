@@ -8,6 +8,7 @@ import httpx
 import manager
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
+from http_client import http_client
 from shared_templates import templates
 from sqlalchemy.orm import Session
 
@@ -31,16 +32,15 @@ async def fetch_saved_radios_for_user(user):
     params = {"u": user.username, "p": "enc:000000", "v": "1.16.1", "c": "navipod-concierge", "f": "json"}
     headers = {"x-navidrome-user": user.username}
 
-    async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
-        resp = await client.get(url, params=params, headers=headers)
-        if resp.status_code != 200:
-            raise RuntimeError(f"Navidrome error: {resp.status_code}")
+    resp = await http_client.get(url, params=params, headers=headers, timeout=5.0)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Navidrome error: {resp.status_code}")
 
-        data = resp.json()
-        stations = data.get("subsonic-response", {}).get("internetRadioStations", {}).get("internetRadioStation", [])
-        if isinstance(stations, dict):
-            stations = [stations]
-        return stations
+    data = resp.json()
+    stations = data.get("subsonic-response", {}).get("internetRadioStations", {}).get("internetRadioStation", [])
+    if isinstance(stations, dict):
+        stations = [stations]
+    return stations
 
 
 # --- HTML VIEW ---
@@ -69,17 +69,16 @@ async def radio_page(request: Request, db: Session = Depends(get_db)):
 async def browse_radio_garden():
     """Get recommended radio playlists from Radio Garden"""
     url = "https://radio.garden/api/ara/content/browse"
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        try:
-            resp = await client.get(url, headers=RG_HEADERS, timeout=10)
-            if resp.status_code != 200:
-                return []
-            content = resp.json().get("data", {}).get("content", [])
-            # Extract playlist items with their URLs
-            return [item for item in content if item["type"] == "playlist-excerpt"]
-        except Exception as e:
-            logger.debug("Radio Garden browse failed: %s", e)
+    try:
+        resp = await http_client.get(url, headers=RG_HEADERS, timeout=10.0)
+        if resp.status_code != 200:
             return []
+        content = resp.json().get("data", {}).get("content", [])
+        # Extract playlist items with their URLs
+        return [item for item in content if item["type"] == "playlist-excerpt"]
+    except Exception as e:
+        logger.debug("Radio Garden browse failed: %s", e)
+        return []
 
 
 @router.get("/api/radio/playlist/{playlist_path:path}")
@@ -91,57 +90,54 @@ async def get_playlist_content(playlist_path: str):
     # Build URL from the frontend path
     url = f"https://radio.garden/api/ara/content/{playlist_path.lstrip('/')}"
 
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        try:
-            resp = await client.get(url, headers=RG_HEADERS, timeout=10)
-            if resp.status_code != 200:
-                logger.warning("Radio Garden playlist fetch failed with status %s for %s", resp.status_code, url)
-                return []
-
-            data = resp.json().get("data", {}).get("content", [])
-            # Find the section with items
-            for section in data:
-                if "items" in section and isinstance(section["items"], list):
-                    items = section["items"]
-                    if items:
-                        logger.info("Sending %s Radio Garden playlist items", len(items))
-                        return items
-
-            logger.warning("No Radio Garden playlist items found")
+    try:
+        resp = await http_client.get(url, headers=RG_HEADERS, timeout=10.0)
+        if resp.status_code != 200:
+            logger.warning("Radio Garden playlist fetch failed with status %s for %s", resp.status_code, url)
             return []
-        except Exception as e:
-            logger.warning("Radio Garden playlist fetch failed: %s", e)
-            return []
+
+        data = resp.json().get("data", {}).get("content", [])
+        # Find the section with items
+        for section in data:
+            if "items" in section and isinstance(section["items"], list):
+                items = section["items"]
+                if items:
+                    logger.info("Sending %s Radio Garden playlist items", len(items))
+                    return items
+
+        logger.warning("No Radio Garden playlist items found")
+        return []
+    except Exception as e:
+        logger.warning("Radio Garden playlist fetch failed: %s", e)
+        return []
 
 
 @router.get("/api/radio/search")
 async def search_radio_garden(q: str):
     """Search radio stations on Radio Garden"""
     url = f"https://radio.garden/api/search?q={q}"
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        try:
-            resp = await client.get(url, headers=RG_HEADERS)
-            return resp.json().get("hits", {}).get("hits", [])
-        except Exception as e:
-            logger.debug("Radio Garden search failed for %s: %s", q, e)
-            return []
+    try:
+        resp = await http_client.get(url, headers=RG_HEADERS, timeout=10.0)
+        return resp.json().get("hits", {}).get("hits", [])
+    except Exception as e:
+        logger.debug("Radio Garden search failed for %s: %s", q, e)
+        return []
 
 
 @router.get("/api/radio/place/{place_id}")
 async def get_place_radios(place_id: str):
     """Get radio stations for a specific location"""
     url = f"https://radio.garden/api/ara/content/page/{place_id}"
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        try:
-            resp = await client.get(url, headers=RG_HEADERS)
-            sections = resp.json().get("data", {}).get("content", [])
-            for s in sections:
-                if s.get("itemsType") == "channel":
-                    return s.get("items", [])
-            return []
-        except Exception as e:
-            logger.debug("Radio Garden place lookup failed for %s: %s", place_id, e)
-            return []
+    try:
+        resp = await http_client.get(url, headers=RG_HEADERS, timeout=10.0)
+        sections = resp.json().get("data", {}).get("content", [])
+        for s in sections:
+            if s.get("itemsType") == "channel":
+                return s.get("items", [])
+        return []
+    except Exception as e:
+        logger.debug("Radio Garden place lookup failed for %s: %s", place_id, e)
+        return []
 
 
 @router.post("/api/radio/inject")
@@ -158,58 +154,57 @@ async def inject_radio(
     listen_url = f"https://radio.garden/api/ara/content/listen/{channel_id}/channel.mp3"
 
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=10) as client:
-            # Use stream=True to capture final URL after redirects without downloading infinite audio
-            async with client.stream("GET", listen_url, headers=RG_HEADERS) as resp:
-                if resp.status_code != 200:
-                    logger.warning(
-                        "Radio stream resolve failed with status %s for channel %s", resp.status_code, channel_id
-                    )
-                    return JSONResponse(
-                        {"error": f"Could not resolve radio (Error {resp.status_code} from Radio Garden)"},
-                        status_code=400,
-                    )
+        # Use stream=True to capture final URL after redirects without downloading infinite audio
+        async with http_client.stream("GET", listen_url, headers=RG_HEADERS, timeout=10.0) as resp:
+            if resp.status_code != 200:
+                logger.warning(
+                    "Radio stream resolve failed with status %s for channel %s", resp.status_code, channel_id
+                )
+                return JSONResponse(
+                    {"error": f"Could not resolve radio (Error {resp.status_code} from Radio Garden)"},
+                    status_code=400,
+                )
 
-                real_stream_url = str(resp.url)
-                logger.info("Radio stream URL resolved for channel %s", channel_id)
+            real_stream_url = str(resp.url)
+            logger.info("Radio stream URL resolved for channel %s", channel_id)
 
-            # 3. Inject into Navidrome via gateway proxy
-            gateway_url = f"http://localhost:8000/{user.username}/rest/createInternetRadioStation"
+        # 3. Inject into Navidrome via gateway proxy
+        gateway_url = f"http://localhost:8000/{user.username}/rest/createInternetRadioStation"
 
-            # Subsonic API parameters (v1.16.1)
-            params = {
-                "v": "1.16.1",
-                "c": "navipod-concierge",
-                "f": "json",
-                "streamUrl": real_stream_url,
-                "name": name,
-                "homepageUrl": "https://radio.garden",
-            }
+        # Subsonic API parameters (v1.16.1)
+        params = {
+            "v": "1.16.1",
+            "c": "navipod-concierge",
+            "f": "json",
+            "streamUrl": real_stream_url,
+            "name": name,
+            "homepageUrl": "https://radio.garden",
+        }
 
-            logger.info("Calling Navidrome radio gateway for user %s", user.username)
+        logger.info("Calling Navidrome radio gateway for user %s", user.username)
 
-            # Pass auth token for gateway authorization
-            cookies = {"access_token": request.cookies.get("access_token")}
+        # Pass auth token for gateway authorization
+        cookies = {"access_token": request.cookies.get("access_token")}
 
-            inject_resp = await client.get(gateway_url, params=params, cookies=cookies)
+        inject_resp = await http_client.get(gateway_url, params=params, cookies=cookies, timeout=10.0)
 
-            logger.info("Navidrome radio gateway status: %s", inject_resp.status_code)
+        logger.info("Navidrome radio gateway status: %s", inject_resp.status_code)
 
-            # Parse JSON response correctly
-            try:
-                result = inject_resp.json()
+        # Parse JSON response correctly
+        try:
+            result = inject_resp.json()
 
-                # Subsonic API returns {"subsonic-response": {"status": "ok", ...}}
-                if result.get("subsonic-response", {}).get("status") == "ok":
-                    logger.info("Radio added successfully: %s", name)
-                    return JSONResponse({"status": "success", "stream": real_stream_url})
-                else:
-                    error_msg = result.get("subsonic-response", {}).get("error", {}).get("message", "Unknown error")
-                    logger.warning("Navidrome radio inject error: %s", error_msg)
-                    return JSONResponse({"error": f"Navidrome API error: {error_msg}"}, status_code=500)
-            except Exception as e:
-                logger.warning("Navidrome radio response parse error: %s", e)
-                return JSONResponse({"error": f"Invalid response from Navidrome: {str(e)}"}, status_code=500)
+            # Subsonic API returns {"subsonic-response": {"status": "ok", ...}}
+            if result.get("subsonic-response", {}).get("status") == "ok":
+                logger.info("Radio added successfully: %s", name)
+                return JSONResponse({"status": "success", "stream": real_stream_url})
+            else:
+                error_msg = result.get("subsonic-response", {}).get("error", {}).get("message", "Unknown error")
+                logger.warning("Navidrome radio inject error: %s", error_msg)
+                return JSONResponse({"error": f"Navidrome API error: {error_msg}"}, status_code=500)
+        except Exception as e:
+            logger.warning("Navidrome radio response parse error: %s", e)
+            return JSONResponse({"error": f"Invalid response from Navidrome: {str(e)}"}, status_code=500)
 
     except httpx.TimeoutException:
         logger.warning("Radio inject timeout")
@@ -253,12 +248,11 @@ async def delete_saved_radio(radio_id: str, request: Request, db: Session = Depe
         }
         headers = {"x-navidrome-user": user.username}
 
-        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
-            resp = await client.get(url, params=params, headers=headers)
-            if resp.status_code == 200:
-                return JSONResponse({"status": "success"})
-            else:
-                return JSONResponse({"error": f"Navidrome error: {resp.status_code}"}, status_code=resp.status_code)
+        resp = await http_client.get(url, params=params, headers=headers, timeout=5.0)
+        if resp.status_code == 200:
+            return JSONResponse({"status": "success"})
+        else:
+            return JSONResponse({"error": f"Navidrome error: {resp.status_code}"}, status_code=resp.status_code)
     except Exception as e:
         logger.warning("Failed to delete saved radio %s: %s", radio_id, e)
         return JSONResponse({"error": str(e)}, status_code=500)

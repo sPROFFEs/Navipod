@@ -656,10 +656,19 @@ async def set_language(lang: str, request: Request):
     if lang not in i18n.SUPPORTED_LANGS:
         lang = i18n.DEFAULT_LANG
 
-    # Redirect back to where they came from, or home
-    referer = request.headers.get("referer", "/portal")
+    # Redirect back only to an internal path; never trust external Referer.
+    referer = request.headers.get("referer", "")
+    safe_redirect = "/portal"
+    if referer:
+        parsed = urlparse(referer)
+        current_host = (request.headers.get("host") or "").strip().lower()
+        referer_host = (parsed.netloc or "").strip().lower()
+        is_same_host = not referer_host or referer_host == current_host
+        path = parsed.path or "/"
+        if is_same_host and path.startswith("/") and not path.startswith("//"):
+            safe_redirect = path + (f"?{parsed.query}" if parsed.query else "")
 
-    response = RedirectResponse(referer, status_code=303)
+    response = RedirectResponse(safe_redirect, status_code=303)
     response.set_cookie(
         key="lang", value=lang, httponly=True, secure=settings.COOKIE_SECURE, samesite="lax", max_age=31536000
     )  # 1 year
