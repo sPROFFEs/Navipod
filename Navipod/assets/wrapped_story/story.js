@@ -178,7 +178,7 @@
   function startBackgroundAudio() {
     state.backgroundAudio
       .play()
-      .then(() => fadeAudio(state.backgroundAudio, 0.11, 2200))
+      .then(() => fadeAudio(state.backgroundAudio, 0.12, 2200))
       .catch(showSoundPrompt);
   }
 
@@ -785,17 +785,17 @@
       state.currentAudio.pause();
       state.currentAudio.currentTime = 0;
     }
-    fadeAudio(state.backgroundAudio, 0.11, 600);
+    fadeAudio(state.backgroundAudio, 0.12, 600);
   }
 
   function audioForSrc(src) {
     return state.preloadedAudios.get(src) || null;
   }
 
-  function playPreviewAudio(src, durationMs, volume = 0.18, fallbackDuration = 0) {
+  function playPreviewAudio(src, durationMs, volume = 0.27, fallbackDuration = 0) {
     if (!src) return;
     window.clearTimeout(state.audioTimer);
-    fadeAudio(state.backgroundAudio, 0.025, 450);
+    fadeAudio(state.backgroundAudio, 0.045, 450);
     if (state.currentAudio) {
       state.currentAudio.pause();
       state.currentAudio.currentTime = 0;
@@ -831,7 +831,7 @@
 
   function playSlideAudio(slide) {
     if (!slide.audioSrc) return;
-    playPreviewAudio(slide.audioSrc, slideDuration(slide) - 400, 0.18, slide.audioDuration);
+    playPreviewAudio(slide.audioSrc, slideDuration(slide) - 400, 0.27, slide.audioDuration);
   }
 
   function startRepeatList(slide) {
@@ -864,7 +864,7 @@
             <em>${esc(track.artist || 'Unknown Artist')}</em>
           </div>`;
       }
-      playPreviewAudio(trackStream(track), slotMs - 350, 0.13, Number(track.duration || 0));
+      playPreviewAudio(trackStream(track), slotMs - 350, 0.24, Number(track.duration || 0));
       index += 1;
       if (index < tracks.length) {
         state.repeatTimer = window.setTimeout(showTrack, slotMs);
