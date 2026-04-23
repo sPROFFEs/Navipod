@@ -18,7 +18,7 @@ import reaper
 import security
 import track_identity
 import wrapped_service
-from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
@@ -101,6 +101,16 @@ def get_text_context(key: str):
 templates.env.globals["_"] = get_text_context
 templates.env.globals["domain"] = settings.DOMAIN
 
+INSECURE_DEFAULT_SECRET_KEY = "unsafe-default-secret-key-change-me-in-production"
+
+
+def _assert_secure_runtime_settings() -> None:
+    secret = (settings.SECRET_KEY or "").strip()
+    if not secret or secret == INSECURE_DEFAULT_SECRET_KEY or len(secret) < 32:
+        raise RuntimeError(
+            "Insecure SECRET_KEY detected. Configure a strong SECRET_KEY in environment before starting Navipod."
+        )
+
 
 @app.middleware("http")
 async def set_i18n_context(request: Request, call_next):
@@ -118,6 +128,7 @@ async def set_i18n_context(request: Request, call_next):
 
 @app.on_event("startup")
 async def startup_event():
+    _assert_secure_runtime_settings()
     # Force reload on startup to be sure
     i18n.load_translations()
     logger.info("Loaded languages: %s", list(i18n.translations.keys()))
@@ -516,7 +527,10 @@ def home(request: Request):
 
 
 @app.post("/admin/create_user")
-def create_user(user: UserCreate, db: Session = Depends(get_db)):
+def create_user(request: Request, user: UserCreate, db: Session = Depends(get_db)):
+    current_user = auth.get_current_user(request, db)
+    if not current_user or not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
     auth.create_user_in_db(db, user.username, user.password)
     manager.provision_user_env(user.username)
     return {"status": "ok", "user": user.username}
@@ -582,7 +596,22 @@ async def settings_downloader_page(request: Request, db: Session = Depends(get_d
 @app.post("/api/settings/cookies")
 async def upload_cookies(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
     token = request.cookies.get("access_token")
+    if not token:
+        return RedirectResponse("/login", status_code=303)
+
     username = auth.get_username_from_token(token)
+    if not username:
+        return RedirectResponse("/login", status_code=303)
+
+    if username in {"", ".", ".."} or "/" in username or "\\" in username:
+        return JSONResponse({"error": "Invalid user session"}, status_code=400)
+
+    user = auth.get_user_by_username(db, username)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    if not file:
+        return JSONResponse({"error": "No file uploaded"}, status_code=400)
 
     config_dir = f"/saas-data/users/{username}/config"
     os.makedirs(config_dir, exist_ok=True)
@@ -591,7 +620,6 @@ async def upload_cookies(request: Request, file: UploadFile = File(...), db: Ses
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    user = auth.get_user_by_username(db, username)
     if not user.download_settings:
         user.download_settings = database.DownloadSettings(user_id=user.id)
     user.download_settings.youtube_cookies_path = file_path

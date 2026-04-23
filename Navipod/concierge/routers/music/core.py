@@ -10,7 +10,7 @@ import database
 import httpx
 import manager
 import utils
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from PIL import Image
 from shared_templates import templates
@@ -33,13 +33,10 @@ def get_db():
 
 def get_current_user_safe(db: Session, request: Request):
     """Retrieves user or returns None if something fails"""
-    token = request.cookies.get("access_token")
-    if not token:
+    try:
+        return auth.get_current_user(request, db)
+    except HTTPException:
         return None
-    username = auth.get_username_from_token(token)
-    if not username:
-        return None
-    return auth.get_user_by_username(db, username)
 
 
 # --- UTILITY ENDPOINTS ---
