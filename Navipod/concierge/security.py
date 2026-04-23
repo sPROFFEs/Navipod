@@ -1,6 +1,9 @@
-import time
-from fastapi import Request, HTTPException
+import ipaddress
 import logging
+import time
+
+from fastapi import HTTPException, Request
+from navipod_config import settings
 
 logger = logging.getLogger("security")
 
@@ -17,19 +20,39 @@ def get_real_ip(request: Request) -> str:
     """
     Tries to get real user IP bypassing Docker/Nginx proxy.
     """
+    direct_ip = (request.client.host or "").strip() if request.client else ""
+    if not direct_ip:
+        return "unknown"
+
+    # Trust forwarded headers only from explicitly trusted proxies.
+    if not settings.TRUST_PROXY_HEADERS:
+        return direct_ip
+    if direct_ip not in settings.trusted_proxy_ips:
+        return direct_ip
+
     # 1. Standard proxy headers (Cloudflare, Nginx, Traefik)
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         # First IP is the real client, subsequent ones are intermediate proxies
-        return forwarded.split(",")[0].strip()
+        candidate = forwarded.split(",")[0].strip()
+        try:
+            ipaddress.ip_address(candidate)
+            return candidate
+        except ValueError:
+            logger.warning("Ignored invalid X-Forwarded-For value: %s", candidate)
     
     # 2. Alternative header
     real_ip = request.headers.get("X-Real-IP")
     if real_ip:
-        return real_ip.strip()
+        candidate = real_ip.strip()
+        try:
+            ipaddress.ip_address(candidate)
+            return candidate
+        except ValueError:
+            logger.warning("Ignored invalid X-Real-IP value: %s", candidate)
     
     # 3. Fallback: Direct IP (might be Docker Gateway 172.x.x.x if no proxy)
-    return request.client.host
+    return direct_ip
 
 def check_brute_force(request: Request):
     """

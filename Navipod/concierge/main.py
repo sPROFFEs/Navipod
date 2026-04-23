@@ -691,9 +691,12 @@ async def api_change_password(req: PasswordChangeRequest, request: Request, db: 
     if not user:
         return JSONResponse({"error": "User not found"}, status_code=404)
 
-    # Validate password strength
-    if len(req.new_password) < 8:
-        return JSONResponse({"error": "Password must be at least 8 characters"}, status_code=400)
+    # Validate password strength (same policy used elsewhere)
+    if not auth.is_password_strong(req.new_password):
+        return JSONResponse(
+            {"error": "Weak password: use 8 chars, uppercase, lowercase, numbers and symbols"},
+            status_code=400,
+        )
 
     user.hashed_password = auth.get_password_hash(req.new_password)
     db.commit()

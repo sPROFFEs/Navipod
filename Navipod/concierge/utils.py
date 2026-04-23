@@ -1,6 +1,9 @@
+import ipaddress
 import os
+import socket
 from pathlib import Path
 from urllib.parse import urlparse
+
 from navipod_config import settings
 
 BASE_DOWNLOADS_DIR = Path(settings.MUSIC_ROOT).resolve()
@@ -37,25 +40,59 @@ def is_safe_url(url: str) -> bool:
     except Exception:
         return False
 
-    if parsed.scheme not in ("http", "https"):
+    if parsed.scheme.lower() not in ("http", "https"):
         return False
-        
-    hostname = parsed.hostname
+
+    if parsed.username or parsed.password:
+        return False
+
+    hostname = (parsed.hostname or "").strip().lower()
     if not hostname:
         return False
-        
-    # Block Localhost
-    if hostname in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+
+    if hostname in {"localhost"} or hostname.endswith(".local"):
         return False
-        
-    # Block Private/Cloud Metadata IPs (Basic Regex or String check)
-    # 169.254.169.254 (AWS/Cloud Metadata)
-    if hostname == "169.254.169.254":
+
+    def _is_public_ip(ip_raw: str) -> bool:
+        try:
+            ip_obj = ipaddress.ip_address(ip_raw)
+        except ValueError:
+            return False
+        return not (
+            ip_obj.is_private
+            or ip_obj.is_loopback
+            or ip_obj.is_link_local
+            or ip_obj.is_multicast
+            or ip_obj.is_reserved
+            or ip_obj.is_unspecified
+        )
+
+    # Direct IP host: must be public and routable.
+    try:
+        ipaddress.ip_address(hostname)
+        return _is_public_ip(hostname)
+    except ValueError:
+        pass
+
+    port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+    try:
+        resolved_ips = {
+            info[4][0]
+            for info in socket.getaddrinfo(
+                hostname,
+                port,
+                type=socket.SOCK_STREAM,
+            )
+        }
+    except Exception:
         return False
-    
-    # Simple Private Range Checks (not exhaustive but covers 99%)
-    if hostname.startswith("192.168."): return False
-    if hostname.startswith("10."): return False
-    if hostname.startswith("172.") and 16 <= int(hostname.split('.')[1]) <= 31: return False
-    
+
+    if not resolved_ips:
+        return False
+
+    # Reject if any DNS answer resolves to non-public IP ranges.
+    for resolved_ip in resolved_ips:
+        if not _is_public_ip(resolved_ip):
+            return False
+
     return True

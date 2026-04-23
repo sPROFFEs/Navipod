@@ -292,6 +292,18 @@ async def change_password(
             },
         )
 
+    if not auth.is_password_strong(new_password):
+        return templates.TemplateResponse(
+            "user_settings.html",
+            {
+                "request": request,
+                "user": user,
+                "error": "Weak password: use 8 chars, uppercase, lowercase, numbers and symbols",
+                "is_admin": user.is_admin,
+                "username": user.username,
+            },
+        )
+
     if not auth.verify_password(current_password, user.hashed_password):
         return templates.TemplateResponse(
             "user_settings.html",

@@ -7,11 +7,12 @@ import os
 
 import auth
 import database
-import httpx
 import manager
 import utils
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
+from http_client import http_client
+from navipod_config import settings
 from PIL import Image
 from shared_templates import templates
 from sqlalchemy.orm import Session
@@ -48,16 +49,55 @@ async def proxy_image(url: str):
     if not utils.is_safe_url(url):
         return JSONResponse({"error": "URL not allowed"}, status_code=400)
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(url)
+    max_bytes = max(int(settings.PROXY_IMAGE_MAX_BYTES or 0), 1)
+    allowed_types = settings.proxy_image_allowed_content_types or {
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+    }
+
+    downloaded = bytearray()
+    try:
+        async with http_client.stream(
+            "GET",
+            url,
+            headers={"Accept": "image/*"},
+            timeout=float(settings.PROXY_IMAGE_TIMEOUT_SECONDS or 8.0),
+        ) as resp:
+            if resp.status_code != 200:
+                return JSONResponse({"error": "Image fetch failed"}, status_code=502)
+
+            content_type = (resp.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+            if content_type not in allowed_types:
+                return JSONResponse({"error": "Unsupported image type"}, status_code=415)
+
+            content_len_header = resp.headers.get("content-length")
+            if content_len_header:
+                try:
+                    if int(content_len_header) > max_bytes:
+                        return JSONResponse({"error": "Image too large"}, status_code=413)
+                except ValueError:
+                    pass
+
+            async for chunk in resp.aiter_bytes(chunk_size=64 * 1024):
+                if not chunk:
+                    continue
+                downloaded.extend(chunk)
+                if len(downloaded) > max_bytes:
+                    return JSONResponse({"error": "Image too large"}, status_code=413)
+    except Exception:
+        return JSONResponse({"error": "Image fetch failed"}, status_code=502)
 
     # Process image with Pillow
-    img = Image.open(io.BytesIO(resp.content))
-    img.thumbnail((300, 300))  # Resize to card size
-
-    img_io = io.BytesIO()
-    img.save(img_io, format="WEBP", quality=80)  # Convert to WebP
-    img_io.seek(0)
+    try:
+        img = Image.open(io.BytesIO(downloaded))
+        img.thumbnail((300, 300))  # Resize to card size
+        img_io = io.BytesIO()
+        img.save(img_io, format="WEBP", quality=80)  # Convert to WebP
+        img_io.seek(0)
+    except Exception:
+        return JSONResponse({"error": "Invalid image payload"}, status_code=400)
 
     return Response(
         content=img_io.getvalue(), media_type="image/webp", headers={"Cache-Control": "public, max-age=604800"}

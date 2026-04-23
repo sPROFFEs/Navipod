@@ -1,13 +1,14 @@
 import logging
 import os
-import time
 import socket
 import threading
+import time
+
 import docker
+from navipod_config import settings
 
 client = docker.from_env()
-from navipod_config import settings
-DATA_ROOT = f"{settings.MUSIC_ROOT}" # Ruta interna del contenedor (/saas-data/users) 
+DATA_ROOT = f"{settings.MUSIC_ROOT}"  # Ruta interna del contenedor (/saas-data/users)
 logger = logging.getLogger(__name__)
 
 # --- GLOBAL IP CACHE ---
@@ -91,7 +92,7 @@ def get_or_spawn_container(username: str):
                 "ND_PORT": "4533",
                 "ND_SCANSCHEDULE": "1h",
                 "ND_REVERSEPROXYUSERHEADER": "x-navidrome-user",
-                "ND_REVERSEPROXYWHITELIST": "0.0.0.0/0",
+                "ND_REVERSEPROXYWHITELIST": settings.NAVIDROME_REVERSE_PROXY_WHITELIST,
                 "ND_ENABLELOGINFORM": "false",
                 "ND_PROMOTEUSERTOADMIN": "true",
                 "ND_ENABLEUSEREDITING": "false",
@@ -211,7 +212,7 @@ def get_pool_status(db, force_refresh: bool = False):
         
         # 2. Obtener Límite Global
         # Importación local para evitar ciclo
-        from database import SystemSettings 
+        from database import SystemSettings
         
         sys_settings = db.query(SystemSettings).first()
         if not sys_settings:
