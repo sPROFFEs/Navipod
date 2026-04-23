@@ -74,7 +74,7 @@ async def list_my_track_delete_requests(request: Request, db: Session = Depends(
         db.query(database.TrackDeleteRequest)
         .filter(database.TrackDeleteRequest.user_id == user.id)
         .order_by(database.TrackDeleteRequest.requested_at.desc(), database.TrackDeleteRequest.id.desc())
-        .limit(200)
+        .limit(100)
         .all()
     )
 

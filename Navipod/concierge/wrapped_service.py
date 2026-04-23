@@ -29,6 +29,8 @@ DAILY_WRAPPED_RUN_STATE_KEY = "wrapped_daily_last_run_utc"
 WRAPPED_ARTIST_IMAGE_CACHE_PATH = Path("/saas-data/cache/wrapped/artist_images.json")
 WRAPPED_ARTIST_IMAGE_POSITIVE_TTL_SECONDS = 30 * 24 * 60 * 60
 WRAPPED_ARTIST_IMAGE_NEGATIVE_TTL_SECONDS = 7 * 24 * 60 * 60
+WRAPPED_REGEN_LOCK_PREFIX = "wrapped_regen_lock:"
+WRAPPED_REGEN_LOCK_TIMEOUT_SECONDS = 4 * 60 * 60
 
 
 def utcnow() -> datetime:
@@ -979,6 +981,126 @@ def _get_job_state(key: str) -> str:
     return str((row["value"] if row else "") or "")
 
 
+def _wrapped_regen_lock_key(year: int) -> str:
+    return f"{WRAPPED_REGEN_LOCK_PREFIX}{int(year)}"
+
+
+def _read_wrapped_regen_lock(year: int) -> dict[str, Any] | None:
+    ensure_wrapped_summary_db()
+    with _connect_summary() as conn:
+        row = conn.execute(
+            "SELECT key, value, updated_at FROM wrapped_job_state WHERE key = ?",
+            (_wrapped_regen_lock_key(year),),
+        ).fetchone()
+    if not row:
+        return None
+    payload: dict[str, Any]
+    try:
+        parsed = json.loads(str(row["value"] or "{}"))
+        payload = parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        payload = {}
+    payload.setdefault("year", int(year))
+    payload.setdefault("updated_at", str(row["updated_at"] or ""))
+    return payload
+
+
+def acquire_wrapped_regeneration_lock(year: int, triggered_by: str | None = None) -> tuple[bool, dict[str, Any] | None]:
+    year = _safe_year(year)
+    ensure_wrapped_summary_db()
+    key = _wrapped_regen_lock_key(year)
+    now_iso = _iso_now()
+    now_ts = utcnow().timestamp()
+
+    with _connect_summary() as conn:
+        row = conn.execute(
+            "SELECT value, updated_at FROM wrapped_job_state WHERE key = ?",
+            (key,),
+        ).fetchone()
+
+        if row:
+            try:
+                existing = json.loads(str(row["value"] or "{}"))
+            except Exception:
+                existing = {}
+            updated_raw = str(row["updated_at"] or "")
+            try:
+                updated_ts = datetime.fromisoformat(updated_raw).timestamp() if updated_raw else 0
+            except Exception:
+                updated_ts = 0
+            if updated_ts and (now_ts - updated_ts) < WRAPPED_REGEN_LOCK_TIMEOUT_SECONDS:
+                if isinstance(existing, dict):
+                    existing.setdefault("updated_at", updated_raw)
+                    existing.setdefault("year", int(year))
+                    return False, existing
+                return False, {"year": int(year), "updated_at": updated_raw}
+            conn.execute("DELETE FROM wrapped_job_state WHERE key = ?", (key,))
+
+        payload = {
+            "year": int(year),
+            "job_id": None,
+            "triggered_by": triggered_by or "",
+            "acquired_at": now_iso,
+        }
+        conn.execute(
+            """
+            INSERT INTO wrapped_job_state (key, value, updated_at)
+            VALUES (?, ?, ?)
+            """,
+            (key, json.dumps(payload, ensure_ascii=False), now_iso),
+        )
+        conn.commit()
+    return True, payload
+
+
+def set_wrapped_regeneration_lock_job(year: int, job_id: int) -> None:
+    year = _safe_year(year)
+    ensure_wrapped_summary_db()
+    key = _wrapped_regen_lock_key(year)
+    now_iso = _iso_now()
+    with _connect_summary() as conn:
+        row = conn.execute("SELECT value FROM wrapped_job_state WHERE key = ?", (key,)).fetchone()
+        if not row:
+            return
+        try:
+            payload = json.loads(str(row["value"] or "{}"))
+            if not isinstance(payload, dict):
+                payload = {}
+        except Exception:
+            payload = {}
+        payload["year"] = int(year)
+        payload["job_id"] = int(job_id)
+        payload["updated_at"] = now_iso
+        conn.execute(
+            "UPDATE wrapped_job_state SET value = ?, updated_at = ? WHERE key = ?",
+            (json.dumps(payload, ensure_ascii=False), now_iso, key),
+        )
+        conn.commit()
+
+
+def release_wrapped_regeneration_lock(year: int, job_id: int | None = None) -> None:
+    year = _safe_year(year)
+    ensure_wrapped_summary_db()
+    key = _wrapped_regen_lock_key(year)
+    with _connect_summary() as conn:
+        if job_id is None:
+            conn.execute("DELETE FROM wrapped_job_state WHERE key = ?", (key,))
+            conn.commit()
+            return
+        row = conn.execute("SELECT value FROM wrapped_job_state WHERE key = ?", (key,)).fetchone()
+        if not row:
+            return
+        try:
+            payload = json.loads(str(row["value"] or "{}"))
+        except Exception:
+            payload = {}
+        current_job_id = int(payload.get("job_id") or 0) if isinstance(payload, dict) else 0
+        if current_job_id and current_job_id != int(job_id):
+            return
+        conn.execute("DELETE FROM wrapped_job_state WHERE key = ?", (key,))
+        conn.commit()
+
+
 def _snapshot_year_closed(year: int) -> bool:
     close_at = datetime(int(year) + 1, 1, 1, tzinfo=timezone.utc)
     return utcnow() >= close_at
@@ -1214,6 +1336,7 @@ def run_wrapped_regeneration_job(job_id: int, year: int) -> None:
             finished=True,
         )
     finally:
+        release_wrapped_regeneration_lock(year, job_id=job_id)
         db.close()
 
 

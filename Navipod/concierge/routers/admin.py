@@ -239,7 +239,7 @@ async def song_delete_requests_inbox(request: Request, db: Session = Depends(get
         .outerjoin(reviewer, reviewer.id == database.TrackDeleteRequest.reviewed_by_user_id)
         .filter(database.TrackDeleteRequest.status.in_(["approved", "rejected"]))
         .order_by(database.TrackDeleteRequest.reviewed_at.desc(), database.TrackDeleteRequest.id.desc())
-        .limit(50)
+        .limit(100)
         .all()
     )
 
@@ -682,7 +682,23 @@ async def regenerate_wrapped_now(
     admin: database.User = Depends(get_current_admin),
 ):
     target_year = wrapped_service.get_operational_wrapped_year(db)
-    job_id = wrapped_service.queue_wrapped_regeneration(admin.username, target_year)
+    acquired, existing_lock = wrapped_service.acquire_wrapped_regeneration_lock(target_year, triggered_by=admin.username)
+    if not acquired:
+        existing_job_id = int((existing_lock or {}).get("job_id") or 0)
+        if existing_job_id > 0:
+            return RedirectResponse(
+                f"/admin/system/updates/jobs/{existing_job_id}?msg=Wrapped%20regeneration%20already%20running",
+                status_code=303,
+            )
+        return RedirectResponse("/admin/system?msg=Wrapped regeneration already running", status_code=303)
+
+    try:
+        job_id = wrapped_service.queue_wrapped_regeneration(admin.username, target_year)
+        wrapped_service.set_wrapped_regeneration_lock_job(target_year, job_id)
+    except Exception:
+        wrapped_service.release_wrapped_regeneration_lock(target_year)
+        raise
+
     background_tasks.add_task(wrapped_service.run_wrapped_regeneration_job, job_id, target_year)
     return RedirectResponse(f"/admin/system/updates/jobs/{job_id}", status_code=303)
 

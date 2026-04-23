@@ -16,6 +16,8 @@ export function initSystemMonitor(root = document) {
   const confirmMessage = document.getElementById('monitor-confirm-message');
   const confirmCancel = document.getElementById('monitor-confirm-cancel');
   const confirmSubmit = document.getElementById('monitor-confirm-submit');
+  const wrappedRegenerateForm = document.getElementById('wrapped-regenerate-form');
+  const wrappedRegenerateSubmit = document.getElementById('wrapped-regenerate-submit');
   let pendingForm = null;
   let statsTimer = null;
 
@@ -86,6 +88,13 @@ export function initSystemMonitor(root = document) {
     if (event.key === 'Escape' && confirmBackdrop?.classList.contains('show')) {
       closeConfirmModal();
     }
+  });
+
+  wrappedRegenerateForm?.addEventListener('submit', () => {
+    if (!wrappedRegenerateSubmit) return;
+    wrappedRegenerateSubmit.disabled = true;
+    wrappedRegenerateSubmit.innerHTML = '<i data-lucide="loader-2" style="animation: spin 1s linear infinite;"></i><span>Queuing...</span>';
+    if (window.lucide) window.lucide.createIcons();
   });
 
   refreshStats();

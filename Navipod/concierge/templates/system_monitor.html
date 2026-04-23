@@ -274,14 +274,14 @@
                     Leave dates empty to show immediately while enabled. Schedule uses {{ wrapped.timezone }}.
                 </div>
             </form>
-            <form action="/admin/system/wrapped/regenerate" method="post" class="monitor-backup-form">
+            <form action="/admin/system/wrapped/regenerate" method="post" class="monitor-backup-form" id="wrapped-regenerate-form">
                 <div class="monitor-backup-form-row">
                     <div class="monitor-field">
                         <label>Operational year (automatic)</label>
                         <input class="monitor-input" type="text" value="{{ wrapped.year or '' }}" readonly>
                     </div>
                     <div class="monitor-field-action">
-                        <button type="submit" class="monitor-secondary"><i data-lucide="refresh-cw"></i><span>Regenerate Wrapped</span></button>
+                        <button type="submit" class="monitor-secondary" id="wrapped-regenerate-submit"><i data-lucide="refresh-cw"></i><span>Regenerate Wrapped</span></button>
                     </div>
                 </div>
                 <div class="monitor-field-help">Rebuilds user summaries and Wrapped Party for the current operational year automatically.</div>
