@@ -15,6 +15,7 @@
     audio: new Audio(),
     currentAudio: null,
     preloadedAudios: new Map(),
+    repeatActive: false,
     preloadedSrc: '',
     topTrackReady: false,
     introAudio: new Audio('/assets/wrapped_story/audio/light-transition.mp3'),
@@ -779,6 +780,7 @@
   function stopAudio() {
     window.clearTimeout(state.audioTimer);
     window.clearTimeout(state.repeatTimer);
+    state.repeatActive = false;
     if (state.currentAudio) {
       state.currentAudio.pause();
       state.currentAudio.currentTime = 0;
@@ -836,6 +838,10 @@
     const tracks = (slide.repeatTracks || []).filter((track) => trackStream(track));
     if (!tracks.length) return;
 
+    window.clearTimeout(state.audioTimer);
+    window.clearTimeout(state.repeatTimer);
+    state.repeatActive = true;
+
     const now = document.getElementById('story-repeat-now');
     const rows = [...stage.querySelectorAll('.story-repeat-list li')];
     const slotMs = repeatTrackMs;
@@ -843,6 +849,7 @@
 
     const showTrack = () => {
       if (state.paused) return;
+      if (state.slides[state.index] !== slide) return;
       const track = tracks[index % tracks.length];
       rows.forEach((row, rowIndex) => row.classList.toggle('is-playing', rowIndex === index % tracks.length));
       if (now) {
@@ -859,7 +866,11 @@
       }
       playPreviewAudio(trackStream(track), slotMs - 350, 0.13, Number(track.duration || 0));
       index += 1;
-      if (index < tracks.length) state.repeatTimer = window.setTimeout(showTrack, slotMs);
+      if (index < tracks.length) {
+        state.repeatTimer = window.setTimeout(showTrack, slotMs);
+      } else {
+        state.repeatActive = false;
+      }
     };
 
     showTrack();
@@ -908,6 +919,12 @@
       state.currentAudio?.pause();
       state.backgroundAudio.pause();
       setBackgroundPaused(true);
+    } else if (state.slides[state.index]?.repeatTracks?.length) {
+      state.currentAudio?.pause();
+      if (state.currentAudio) state.currentAudio.currentTime = 0;
+      startRepeatList(state.slides[state.index]);
+      state.backgroundAudio.play().catch(showSoundPrompt);
+      setBackgroundPaused(false);
     } else if (state.currentAudio?.src) {
       state.currentAudio.play().catch(() => {});
       state.backgroundAudio.play().catch(showSoundPrompt);
