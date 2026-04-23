@@ -79,5 +79,6 @@ Navipod/**/*.pyo
 Navipod/**/*.pyd
 
 # Local docs / scratch files that should not ship
+/docs/
 docs/
 spotifyapi.txt

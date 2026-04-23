@@ -331,6 +331,106 @@ Recommended order:
 
 Use a different order only if you have a specific reason.
 
+## Web App Usage Guide
+
+This section focuses on actual day-to-day usage after setup.
+
+### 1. Login and app shell
+
+- Open `/login`, sign in with your user.
+- You will land in `/portal` (single app shell with sidebar and player).
+- Logout revokes the session token; if you use multiple tabs, expect re-auth after logout.
+
+### 2. Main navigation
+
+Sidebar sections map to these workflows:
+
+- `Home`: recommendations, personal mixes, and Wrapped entry points.
+- `Search`: local + remote providers (Spotify/YouTube/Last.fm/MusicBrainz).
+- `Library`: your playlists and playlist management.
+- `Favorites`: tracks marked as liked in local library.
+- `Discover Radios` / `Your Radios`: Radio Garden discovery and saved radios.
+- `Settings`:
+  - user settings: avatar, password, providers/cookies/metadata priority.
+  - admin settings (admins only): users, operations, updates, backups, monitor.
+
+### 3. Search, preview and download flow
+
+- Use source chips in `Search` to narrow providers.
+- Remote results can be previewed first.
+- Start download to import to library:
+  - direct to library
+  - or to existing/new playlist from the download modal.
+- Watch progress in the downloads/jobs UI:
+  - pending -> downloading -> importing/deduping -> completed/failed.
+
+Expected behavior:
+
+- duplicate tracks should be reused by source/hash/fingerprint when possible.
+- old finished jobs are pruned automatically while active jobs remain visible.
+
+### 4. Playlist workflow
+
+In `Library` and playlist views you can:
+
+- create, rename, delete playlists.
+- add/remove local tracks.
+- play in order or shuffle.
+- set playlist cover:
+  - automatic cover
+  - upload image
+  - choose cover from a track.
+- toggle public/private visibility and copy/sync public playlists.
+
+### 5. Playback and queue behavior
+
+- The bottom player controls play/pause, prev/next, repeat, shuffle, queue, volume, and fullscreen.
+- Queue state persists for web playback sessions.
+- Favorites can be toggled directly from player controls for local tracks.
+- Media session integration is available for supported browsers/devices.
+
+### 6. Mixes and Wrapped
+
+- Home exposes personal local mixes:
+  - Repeat, Deep Cuts, Favorites, Rediscovery.
+- Each mix can be opened and saved as a normal playlist.
+- Wrapped view/story is available when enabled by admin window/config.
+
+### 7. Radios
+
+- `Discover Radios`: browse/search Radio Garden.
+- `Your Radios`: saved stations currently linked to your user.
+- You can inject stations into your Navidrome side and later remove them.
+
+### 8. Admin web operations (admin users)
+
+- `User Management`: create/edit/delete non-owner users, reset passwords.
+- `Library Management`: global track search and duplicate cleanup actions.
+- `System Monitor`:
+  - updates (check/apply)
+  - backups (current/previous rotation and restore)
+  - operations (quota, cleanup, cache/RAM tools)
+  - health/status logs.
+
+### 9. Multi-tab behavior and sync
+
+- The app runs lightweight heartbeat/sync checks.
+- Favorites and playlist changes should appear in other open tabs after sync.
+- If UI looks stale, hard refresh once after large updates.
+
+### 10. Practical verification checklist
+
+After deployment or update, quickly verify:
+
+1. Login works for user/admin and logout invalidates session.
+2. Search returns local + remote results.
+3. Download completes and appears in local library.
+4. Streaming supports seek on local tracks.
+5. Playlist create/add/remove/play flows work.
+6. Favorites toggle and sync to another tab.
+7. Radio browse/inject/delete works.
+8. Admin monitor pages load and update checks run.
+
 ## Mobile App Connection
 
 Navipod exposes each user's Navidrome instance through a Subsonic-compatible path.
