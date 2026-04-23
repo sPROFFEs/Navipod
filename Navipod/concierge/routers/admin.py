@@ -325,6 +325,12 @@ async def system_monitor(request: Request, db: Session = Depends(get_db)):
     active_lock = operations_service.get_active_operation_lock(db)
     timezone_options = operations_service.get_timezone_options()
     wrapped_state = wrapped_service.get_wrapped_settings(db)
+    wrapped_users = (
+        db.query(database.User.username)
+        .filter(database.User.is_active == True)
+        .order_by(database.User.username.asc())
+        .all()
+    )
 
     return templates.TemplateResponse(
         "system_monitor.html",
@@ -338,6 +344,7 @@ async def system_monitor(request: Request, db: Session = Depends(get_db)):
             "updates": update_state,
             "timezone_options": timezone_options,
             "wrapped": wrapped_state,
+            "wrapped_users": [row[0] for row in wrapped_users],
             "admin_jobs": recent_jobs,
             "active_lock": active_lock,
             "username": admin.username,
@@ -520,6 +527,34 @@ async def regenerate_wrapped_now(
     job_id = wrapped_service.queue_wrapped_regeneration(admin.username, target_year)
     background_tasks.add_task(wrapped_service.run_wrapped_regeneration_job, job_id, target_year)
     return RedirectResponse(f"/admin/system/updates/jobs/{job_id}", status_code=303)
+
+
+@router.post("/system/wrapped/reset-user")
+async def reset_wrapped_user_data(
+    wrapped_username: str = Form(""),
+    wrapped_reset_purge_tracking: str = Form("off"),
+    db: Session = Depends(get_db),
+    admin: database.User = Depends(get_current_admin),
+):
+    target_username = (wrapped_username or "").strip()
+    if not target_username:
+        return RedirectResponse("/admin/system?error=Wrapped reset requires a username", status_code=303)
+
+    purge_tracking = str(wrapped_reset_purge_tracking).lower() in {"1", "true", "on", "yes"}
+    try:
+        result = wrapped_service.reset_user_wrapped_data(db, target_username, purge_tracking=purge_tracking)
+    except ValueError as e:
+        return RedirectResponse(f"/admin/system?error={str(e)}", status_code=303)
+    except Exception as e:
+        return RedirectResponse(f"/admin/system?error=Wrapped reset failed: {str(e)}", status_code=303)
+
+    msg = (
+        f"Wrapped reset for {result['username']}: "
+        f"{result['deleted_user_aggregates']} aggregates, "
+        f"{result['deleted_user_snapshots']} snapshots, "
+        f"{result['tracking_reset']['deleted_tracking_events']} tracking events deleted"
+    )
+    return RedirectResponse(f"/admin/system?msg={msg}", status_code=303)
 
 
 @router.post("/system/updates/check")

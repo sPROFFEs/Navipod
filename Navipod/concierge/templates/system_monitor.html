@@ -286,6 +286,29 @@
                 </div>
                 <div class="monitor-field-help">Rebuilds user summaries and Wrapped Party for the current operational year automatically.</div>
             </form>
+            <form action="/admin/system/wrapped/reset-user" method="post" class="monitor-backup-form monitor-form" data-title="Reset wrapped user" data-confirm="This will delete Wrapped aggregates and optionally tracking history for the selected user. Continue?">
+                <div class="monitor-backup-form-row">
+                    <div class="monitor-field">
+                        <label for="wrapped-reset-user">Reset user Wrapped data</label>
+                        <select id="wrapped-reset-user" class="monitor-input" name="wrapped_username" required>
+                            <option value="">Select user</option>
+                            {% for wrapped_username in wrapped_users %}
+                            <option value="{{ wrapped_username }}">{{ wrapped_username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="monitor-field">
+                        <label class="monitor-inline-toggle">
+                            <input type="checkbox" name="wrapped_reset_purge_tracking" checked>
+                            <span>Purge tracking history too</span>
+                        </label>
+                    </div>
+                    <div class="monitor-field-action">
+                        <button type="submit" class="monitor-warning"><i data-lucide="trash-2"></i><span>Reset User Wrapped</span></button>
+                    </div>
+                </div>
+                <div class="monitor-field-help">Use this only for broken user stats. It clears Wrapped aggregates; tracking purge is optional.</div>
+            </form>
         </div>
     </section>
 

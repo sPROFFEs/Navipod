@@ -1110,3 +1110,42 @@ def run_daily_wrapped_pipeline() -> dict[str, Any]:
         return {"ran": True, "date_utc": today_utc, "result": result}
     finally:
         db.close()
+
+
+def reset_user_wrapped_data(db: Session, username: str, *, purge_tracking: bool = True) -> dict[str, Any]:
+    target = db.query(database.User).filter(database.User.username == username).first()
+    if not target:
+        raise ValueError("User not found")
+
+    ensure_wrapped_summary_db()
+    with _connect_summary() as conn:
+        deleted_user_aggregates = conn.execute(
+            "DELETE FROM user_wrapped_aggregate WHERE user_id = ? OR username = ?",
+            (int(target.id), str(target.username)),
+        ).rowcount or 0
+        deleted_user_snapshots = conn.execute(
+            "DELETE FROM wrapped_yearly_snapshots WHERE user_id = ? OR username = ?",
+            (int(target.id), str(target.username)),
+        ).rowcount or 0
+        # Party aggregates are derived from user aggregates, so clear cache for deterministic rebuild.
+        deleted_party_aggregates = conn.execute("DELETE FROM wrapped_party_aggregate").rowcount or 0
+        conn.commit()
+
+    tracking_reset = {
+        "deleted_tracking_events": 0,
+        "deleted_listen_events": 0,
+        "deleted_track_stats": 0,
+        "deleted_artist_stats": 0,
+    }
+    if purge_tracking:
+        tracking_reset = personalization_service.reset_user_tracking_data(str(target.username))
+
+    return {
+        "username": str(target.username),
+        "user_id": int(target.id),
+        "purge_tracking": bool(purge_tracking),
+        "deleted_user_aggregates": int(deleted_user_aggregates),
+        "deleted_user_snapshots": int(deleted_user_snapshots),
+        "deleted_party_aggregates": int(deleted_party_aggregates),
+        "tracking_reset": tracking_reset,
+    }

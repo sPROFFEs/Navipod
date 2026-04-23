@@ -18,11 +18,30 @@
     repeatActive: false,
     preloadedSrc: '',
     topTrackReady: false,
+    activePreviewToken: '',
     introAudio: new Audio('/assets/wrapped_story/audio/light-transition.mp3'),
-    backgroundAudio: new Audio('/assets/wrapped_story/audio/wrapped-background.mp3')
+    backgroundAudio: new Audio('/assets/wrapped_story/audio/wrapped-background.mp3'),
+    loudness: {
+      context: null,
+      compressor: null,
+      analyser: null,
+      gain: null,
+      data: null,
+      sourceByAudio: new WeakMap(),
+      timer: null,
+      targetDb: -20,
+      currentGain: 1,
+      enabled: false
+    },
+    keydownHandler: null,
+    resizeHandler: null
   };
   const maxReasonableMinutes = 365 * 24 * 60;
   const repeatTrackMs = 10000;
+  const PREVIEW_BASE_VOLUME_TOP = 0.27;
+  const PREVIEW_BASE_VOLUME_REPEAT = 0.24;
+  const BACKGROUND_VOLUME_NORMAL = 0.12;
+  const BACKGROUND_VOLUME_DUCK = 0.045;
 
   const root = document.getElementById('story-root');
   const bg = document.getElementById('story-bg');
@@ -95,6 +114,18 @@
   function validCount(value) {
     const parsed = Number(value || 0);
     return Number.isFinite(parsed) && parsed > 0 && parsed < 1000000;
+  }
+
+  function safeMinutes(value) {
+    return validMinutes(value) ? Number(value) : 0;
+  }
+
+  function safeStreamCount(value) {
+    return validCount(value) ? Number(value) : 0;
+  }
+
+  function hasPlayableTrack(track) {
+    return Boolean(track?.db_id || track?.id);
   }
 
   function avatarUrl(username) {
@@ -178,8 +209,87 @@
   function startBackgroundAudio() {
     state.backgroundAudio
       .play()
-      .then(() => fadeAudio(state.backgroundAudio, 0.12, 2200))
+      .then(() => fadeAudio(state.backgroundAudio, BACKGROUND_VOLUME_NORMAL, 2200))
       .catch(showSoundPrompt);
+  }
+
+  function stopPreviewLoudnessNormalization() {
+    const loudness = state.loudness;
+    window.clearInterval(loudness.timer);
+    loudness.timer = null;
+    if (loudness.gain && loudness.context) {
+      try {
+        loudness.gain.gain.setTargetAtTime(1, loudness.context.currentTime, 0.06);
+      } catch {
+        loudness.gain.gain.value = 1;
+      }
+    }
+    loudness.currentGain = 1;
+  }
+
+  function ensurePreviewLoudnessNodes(audio) {
+    const loudness = state.loudness;
+    if (!window.AudioContext && !window.webkitAudioContext) return false;
+
+    if (!loudness.context) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      loudness.context = new Ctx();
+      loudness.compressor = loudness.context.createDynamicsCompressor();
+      loudness.compressor.threshold.value = -24;
+      loudness.compressor.knee.value = 18;
+      loudness.compressor.ratio.value = 3;
+      loudness.compressor.attack.value = 0.003;
+      loudness.compressor.release.value = 0.2;
+      loudness.analyser = loudness.context.createAnalyser();
+      loudness.analyser.fftSize = 2048;
+      loudness.data = new Float32Array(loudness.analyser.fftSize);
+      loudness.gain = loudness.context.createGain();
+      loudness.gain.gain.value = 1;
+      loudness.compressor.connect(loudness.analyser);
+      loudness.analyser.connect(loudness.gain);
+      loudness.gain.connect(loudness.context.destination);
+    }
+
+    if (!loudness.sourceByAudio.has(audio)) {
+      try {
+        const source = loudness.context.createMediaElementSource(audio);
+        source.connect(loudness.compressor);
+        loudness.sourceByAudio.set(audio, source);
+      } catch {
+        return false;
+      }
+    }
+    loudness.enabled = true;
+    if (loudness.context.state === 'suspended') {
+      loudness.context.resume().catch(() => {});
+    }
+    return true;
+  }
+
+  function startPreviewLoudnessNormalization(audio) {
+    if (!ensurePreviewLoudnessNodes(audio)) return;
+    const loudness = state.loudness;
+    stopPreviewLoudnessNormalization();
+    loudness.currentGain = 1;
+    loudness.timer = window.setInterval(() => {
+      if (state.currentAudio !== audio || audio.paused) return;
+      loudness.analyser.getFloatTimeDomainData(loudness.data);
+      let sumSquares = 0;
+      for (let i = 0; i < loudness.data.length; i += 1) {
+        const sample = loudness.data[i];
+        sumSquares += sample * sample;
+      }
+      const rms = Math.sqrt(sumSquares / loudness.data.length);
+      const db = 20 * Math.log10(Math.max(rms, 1e-8));
+      let desiredGain = Math.pow(10, (loudness.targetDb - db) / 20);
+      desiredGain = Math.min(2.1, Math.max(0.45, desiredGain));
+      loudness.currentGain = loudness.currentGain + (desiredGain - loudness.currentGain) * 0.16;
+      try {
+        loudness.gain.gain.setTargetAtTime(loudness.currentGain, loudness.context.currentTime, 0.07);
+      } catch {
+        loudness.gain.gain.value = loudness.currentGain;
+      }
+    }, 130);
   }
 
   function preloadTrackAudios(tracks) {
@@ -612,7 +722,16 @@
     const sprint = sprintLeader(wrapped.top_artist_sprint);
     const partyMinutes = party?.most_minutes_listened || [];
     const repeaters = party?.biggest_repeaters || [];
-    const personalDuration = listeningDuration(wrapped.minutes_listened);
+    const listenedMinutes = safeMinutes(wrapped.minutes_listened);
+    const personalDuration = listeningDuration(listenedMinutes);
+    const trackedListens = safeStreamCount(wrapped.qualified_event_count || wrapped.event_count);
+    const topPlayableSongs = topSongs.filter((track) => hasPlayableTrack(track)).slice(0, 100);
+    const repeatPlayable = topPlayableSongs.slice(0, 5);
+    const validPartyMinutes = partyMinutes.filter((item) => validMinutes(item.minutes_listened)).slice(0, 5);
+    const validRepeaters = repeaters.filter((item) => validCount(item.stream_count)).slice(0, 5);
+    const hasTopSong = hasPlayableTrack(topSong) && validCount(topSong?.stream_count);
+    const hasTopArtist = topArtist && validCount(topArtist.stream_count);
+    const hasSprint = sprint.length > 0;
 
     return [
       {
@@ -623,36 +742,46 @@
       },
       {
         kicker: `${titleCase(personalDuration.unit)} listened`,
-        title: `<span class="story-duration"><span class="story-big-number">${esc(personalDuration.value)}</span><span>${esc(personalDuration.unit)}</span></span>`,
-        copy: `${number(wrapped.event_count)} tracked listens across your library.`
+        title:
+          listenedMinutes > 0
+            ? `<span class="story-duration"><span class="story-big-number">${esc(personalDuration.value)}</span><span>${esc(personalDuration.unit)}</span></span>`
+            : 'No listening time yet',
+        copy:
+          listenedMinutes > 0
+            ? `${number(trackedListens)} tracked listens across your library.`
+            : 'Start listening and this slide will unlock with real stats.',
+        className: listenedMinutes > 0 ? '' : 'story-slide-copy'
       },
       {
         kicker: 'Your top song',
-        title: topSong
+        title: hasTopSong
           ? `<span class="story-feature-track"><img src="${trackCover(topSong)}" alt=""><span>${esc(topSong.title)}</span></span>`
-          : 'No data',
-        copy: topSong
+          : 'No top song yet',
+        copy: hasTopSong
           ? `${esc(topSong.artist || 'Unknown Artist')} - ${number(topSong.stream_count)} plays`
-          : 'Play more tracks and this slide will fill itself.',
+          : 'Play more tracks and this slide will unlock with your #1.',
         className: 'story-slide-feature',
-        audioSrc: trackStream(topSong),
-        audioDuration: Number(topSong?.duration || 0)
+        audioSrc: hasTopSong ? trackStream(topSong) : '',
+        audioDuration: hasTopSong ? Number(topSong?.duration || 0) : 0
       },
       {
         kicker: 'Top songs',
         title: `${repeatIcon()}<span>The repeat list</span>`,
-        html: `${repeatPreview(topSongs[0])}${listItems(topSongs.slice(0, 5), trackRow, 'story-list-media story-repeat-list')}`,
+        html:
+          repeatPlayable.length > 0
+            ? `${repeatPreview(repeatPlayable[0])}${listItems(repeatPlayable, trackRow, 'story-list-media story-repeat-list')}`
+            : '<p class="story-copy">No repeat list yet. Keep listening to unlock your top replayed tracks.</p>',
         className: 'story-slide-list story-slide-repeat',
-        repeatTracks: topSongs.slice(0, 5),
+        repeatTracks: repeatPlayable,
         durationMs: Math.max(
           state.intervalMs,
-          topSongs.slice(0, 5).filter((track) => trackStream(track)).length * repeatTrackMs
+          repeatPlayable.filter((track) => trackStream(track)).length * repeatTrackMs
         )
       },
       {
         kicker: 'Top artists',
-        title: esc(topArtist?.artist || 'No data'),
-        html: listItems(topArtists.slice(0, 5), (artist, index) => {
+        title: esc(hasTopArtist ? topArtist.artist : 'No top artists yet'),
+        html: listItems(topArtists.filter((artist) => validCount(artist.stream_count)).slice(0, 5), (artist, index) => {
           return `<li class="story-list-with-art">
             <span class="story-rank">#${index + 1}</span>
             <span class="story-artist-mark">${esc(initials(artist.artist))}</span>
@@ -665,7 +794,7 @@
       {
         kicker: 'Top artist sprint',
         title: 'Who led each month',
-        html: listItems(sprint, (item) => {
+        html: listItems(hasSprint ? sprint : [], (item) => {
           return `<li><span>${esc(item.month)}</span><strong>${esc(item.artist)}</strong><em>${number(item.plays)} plays</em></li>`;
         }),
         className: 'story-slide-list story-slide-sprint'
@@ -673,21 +802,24 @@
       {
         kicker: 'Wrapped Party',
         title: 'Most listening time',
-        html: listItems(
-          partyMinutes.filter((item) => validMinutes(item.minutes_listened)).slice(0, 5),
-          (item, index) => {
-            return userRow(item, index, listeningDuration(item.minutes_listened).label);
-          }
-        ),
+        html:
+          validPartyMinutes.length > 0
+            ? listItems(validPartyMinutes, (item, index) => {
+                return userRow(item, index, listeningDuration(item.minutes_listened).label);
+              })
+            : '<p class="story-copy">No party ranking yet. Ask everyone to listen more and come back later.</p>',
         className: 'story-slide-list'
       },
       {
         kicker: 'Wrapped Party',
         title: 'Biggest repeaters',
         copy: 'Users whose #1 song got the most repeated plays.',
-        html: listItems(repeaters.filter((item) => validCount(item.stream_count)).slice(0, 5), (item, index) => {
-          return userRow(item, index, `${number(item.stream_count)} plays`);
-        }),
+        html:
+          validRepeaters.length > 0
+            ? listItems(validRepeaters, (item, index) => {
+                return userRow(item, index, `${number(item.stream_count)} plays`);
+              })
+            : '<p class="story-copy">No repeater ranking yet. Replays will appear here once data is stable.</p>',
         className: 'story-slide-list'
       },
       {
@@ -697,10 +829,17 @@
         className: 'story-slide-copy'
       },
       {
-        kicker: 'Done',
-        title: 'Keep the list',
-        copy: 'Save your top songs playlist or open the full resume view.',
-        html: `<div class="story-actions">
+        kicker: 'Resume',
+        title: 'Your wrapped at a glance',
+        copy: 'Save your top songs playlist, then open the full resume panel.',
+        html: `<div class="story-resume-grid">
+            <div><span>Listened</span><strong>${esc(personalDuration.label)}</strong></div>
+            <div><span>Tracked listens</span><strong>${number(trackedListens)}</strong></div>
+            <div><span>Top artist</span><strong>${esc(hasTopArtist ? topArtist.artist : 'No data')}</strong></div>
+            <div><span>Top song</span><strong>${esc(hasTopSong ? topSong.title : 'No data')}</strong></div>
+            <div><span>Top Songs playlist</span><strong>${number(topPlayableSongs.length)} tracks</strong></div>
+        </div>
+        <div class="story-actions">
             <a class="story-action" href="#" id="story-save-playlist">Save Top Songs</a>
             <a class="story-action secondary" href="/wrapped/${state.year}">Resume</a>
         </div>`,
@@ -781,21 +920,22 @@
     window.clearTimeout(state.audioTimer);
     window.clearTimeout(state.repeatTimer);
     state.repeatActive = false;
+    stopPreviewLoudnessNormalization();
     if (state.currentAudio) {
       state.currentAudio.pause();
       state.currentAudio.currentTime = 0;
     }
-    fadeAudio(state.backgroundAudio, 0.12, 600);
+    fadeAudio(state.backgroundAudio, BACKGROUND_VOLUME_NORMAL, 600);
   }
 
   function audioForSrc(src) {
     return state.preloadedAudios.get(src) || null;
   }
 
-  function playPreviewAudio(src, durationMs, volume = 0.27, fallbackDuration = 0) {
+  function playPreviewAudio(src, durationMs, volume = PREVIEW_BASE_VOLUME_TOP, fallbackDuration = 0) {
     if (!src) return;
     window.clearTimeout(state.audioTimer);
-    fadeAudio(state.backgroundAudio, 0.045, 450);
+    fadeAudio(state.backgroundAudio, BACKGROUND_VOLUME_DUCK, 450);
     if (state.currentAudio) {
       state.currentAudio.pause();
       state.currentAudio.currentTime = 0;
@@ -808,17 +948,22 @@
     }
     audio.volume = volume;
     state.currentAudio = audio;
+    const previewToken = `${src}:${Date.now()}`;
+    state.activePreviewToken = previewToken;
 
     const startPlayback = () => {
+      if (state.activePreviewToken !== previewToken) return;
       const duration = Number(audio.duration || fallbackDuration || 0);
       if (Number.isFinite(duration) && duration > 18) {
         const maxStart = Math.max(0, duration - durationMs / 1000 - 2);
         audio.currentTime = Math.floor(Math.random() * maxStart);
       }
       audio.play().catch(() => {});
+      startPreviewLoudnessNormalization(audio);
       updateWrappedMediaSession();
       state.audioTimer = window.setTimeout(() => {
         audio.pause();
+        stopPreviewLoudnessNormalization();
       }, durationMs);
     };
 
@@ -831,7 +976,7 @@
 
   function playSlideAudio(slide) {
     if (!slide.audioSrc) return;
-    playPreviewAudio(slide.audioSrc, slideDuration(slide) - 400, 0.27, slide.audioDuration);
+    playPreviewAudio(slide.audioSrc, slideDuration(slide) - 400, PREVIEW_BASE_VOLUME_TOP, slide.audioDuration);
   }
 
   function startRepeatList(slide) {
@@ -864,7 +1009,7 @@
             <em>${esc(track.artist || 'Unknown Artist')}</em>
           </div>`;
       }
-      playPreviewAudio(trackStream(track), slotMs - 350, 0.24, Number(track.duration || 0));
+      playPreviewAudio(trackStream(track), slotMs - 350, PREVIEW_BASE_VOLUME_REPEAT, Number(track.duration || 0));
       index += 1;
       if (index < tracks.length) {
         state.repeatTimer = window.setTimeout(showTrack, slotMs);
@@ -917,6 +1062,7 @@
       window.clearTimeout(state.audioTimer);
       window.clearTimeout(state.repeatTimer);
       state.currentAudio?.pause();
+      stopPreviewLoudnessNormalization();
       state.backgroundAudio.pause();
       setBackgroundPaused(true);
     } else if (state.slides[state.index]?.repeatTracks?.length) {
@@ -927,6 +1073,7 @@
       setBackgroundPaused(false);
     } else if (state.currentAudio?.src) {
       state.currentAudio.play().catch(() => {});
+      startPreviewLoudnessNormalization(state.currentAudio);
       state.backgroundAudio.play().catch(showSoundPrompt);
       setBackgroundPaused(false);
     } else {
@@ -937,12 +1084,53 @@
     scheduleNext();
   }
 
+  function teardownWrappedMediaSession() {
+    if (!('mediaSession' in navigator)) return;
+    try {
+      ['play', 'pause', 'previoustrack', 'nexttrack', 'seekbackward', 'seekforward', 'seekto'].forEach((action) => {
+        try {
+          navigator.mediaSession.setActionHandler(action, null);
+        } catch {
+          // Ignore unsupported actions.
+        }
+      });
+      navigator.mediaSession.playbackState = 'none';
+    } catch {
+      // Ignore teardown failures.
+    }
+  }
+
+  function stopStoryAudio() {
+    window.clearTimeout(state.timer);
+    window.clearTimeout(state.audioTimer);
+    window.clearTimeout(state.repeatTimer);
+    stopPreviewLoudnessNormalization();
+    try {
+      state.currentAudio?.pause();
+    } catch {}
+    try {
+      state.backgroundAudio.pause();
+    } catch {}
+    try {
+      state.introAudio.pause();
+    } catch {}
+  }
+
+  function closeStoryToResume() {
+    stopStoryAudio();
+    teardownWrappedMediaSession();
+    window.location.href = `/wrapped/${state.year}`;
+  }
+
   async function init() {
     createPanels();
     resumeTop.href = `/wrapped/${state.year}`;
     setupWrappedMediaSession();
-    close.addEventListener('click', () => {
-      window.location.href = `/wrapped/${state.year}`;
+    close.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      closeStoryToResume();
     });
     prev.addEventListener('click', () => go(-1));
     next.addEventListener('click', () => go(1));
@@ -952,30 +1140,42 @@
     pause.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation();
       setStoryPaused(!state.paused);
     });
-    window.addEventListener('resize', () => buildBgTimeline());
-    window.addEventListener('keydown', (event) => {
+    state.resizeHandler = () => buildBgTimeline();
+    window.addEventListener('resize', state.resizeHandler);
+    state.keydownHandler = (event) => {
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
         event.stopPropagation();
+        event.stopImmediatePropagation();
         go(-1);
       }
       if (event.key === 'ArrowRight') {
         event.preventDefault();
         event.stopPropagation();
+        event.stopImmediatePropagation();
         go(1);
       }
       if (event.key === ' ') {
         event.preventDefault();
         event.stopPropagation();
+        event.stopImmediatePropagation();
         setStoryPaused(!state.paused);
       }
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
-        window.location.href = `/wrapped/${state.year}`;
+        event.stopImmediatePropagation();
+        closeStoryToResume();
       }
+    };
+    window.addEventListener('keydown', state.keydownHandler, true);
+    window.addEventListener('pagehide', stopStoryAudio);
+    window.addEventListener('beforeunload', () => {
+      stopStoryAudio();
+      teardownWrappedMediaSession();
     });
 
     const [wrapped, party] = await Promise.all([
@@ -984,11 +1184,12 @@
     ]);
 
     if (!wrapped || wrapped.visible === false || wrapped.enabled === false || wrapped.error) {
-      stage.innerHTML = '<div class="story-error">Wrapped is not available right now.</div>';
+      stage.innerHTML = '<div class="story-error">Not enough listening data yet. Keep playing and come back later.</div>';
       return;
     }
 
     state.year = Number(wrapped.year || state.year);
+    resumeTop.href = `/wrapped/${state.year}`;
     state.slides = buildSlides(wrapped, party);
 
     preloadTrackAudios((wrapped.top_songs_playlist?.tracks || []).slice(0, 5));

@@ -708,6 +708,22 @@ def get_user_tracking_stats(username: str, year: int) -> dict[str, Any]:
     return {"raw_event_count": raw_event_count, "latest_event_at": latest_event_at}
 
 
+def reset_user_tracking_data(username: str) -> dict[str, int]:
+    ensure_user_activity_db(username)
+    with _connect(username) as conn:
+        deleted_tracking = conn.execute("DELETE FROM user_tracking_raw").rowcount or 0
+        deleted_listen_events = conn.execute("DELETE FROM listen_events").rowcount or 0
+        deleted_track_stats = conn.execute("DELETE FROM track_stats").rowcount or 0
+        deleted_artist_stats = conn.execute("DELETE FROM artist_stats").rowcount or 0
+        conn.commit()
+    return {
+        "deleted_tracking_events": int(deleted_tracking),
+        "deleted_listen_events": int(deleted_listen_events),
+        "deleted_track_stats": int(deleted_track_stats),
+        "deleted_artist_stats": int(deleted_artist_stats),
+    }
+
+
 def _load_mix_cache(username: str) -> dict[str, Any] | None:
     path = get_mix_cache_path(username)
     if not path.exists():
