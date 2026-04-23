@@ -14,12 +14,20 @@ router = APIRouter()
 
 class ListenEventRequest(BaseModel):
     track_id: int
-    played_seconds: float
+    played_seconds: float = 0
     duration_seconds: float | None = None
     completed: bool = False
     skipped_early: bool = False
     context_type: str = ""
     context_key: str = ""
+    event_type: str = ""
+    session_id: str = ""
+    played_ms: int | None = None
+    duration_ms: int | None = None
+    timestamp_utc: str = ""
+    source_context: str = ""
+    client_event_id: str = ""
+    wrapped_schema_version: int = 1
 
 
 class SaveMixRequest(BaseModel):
@@ -32,18 +40,58 @@ async def record_listen_event(payload: ListenEventRequest, request: Request, db:
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-    recorded = personalization_service.record_track_play(
-        db,
-        user,
-        track_id=payload.track_id,
-        played_seconds=payload.played_seconds,
-        duration_seconds=payload.duration_seconds,
-        completed=payload.completed,
-        skipped_early=payload.skipped_early,
-        context_type=payload.context_type,
-        context_key=payload.context_key,
+    canonical_recorded = False
+    normalized_event = personalization_service.normalize_tracking_event_type(payload.event_type)
+    played_ms = payload.played_ms if payload.played_ms is not None else int(float(payload.played_seconds or 0) * 1000)
+    duration_ms = payload.duration_ms
+    if duration_ms is None and payload.duration_seconds is not None:
+        duration_ms = int(float(payload.duration_seconds) * 1000)
+
+    if normalized_event:
+        canonical_recorded = personalization_service.record_tracking_event(
+            username=user.username,
+            user_id=int(user.id),
+            track_id=payload.track_id,
+            event_type=normalized_event,
+            session_id=payload.session_id,
+            played_ms=played_ms,
+            duration_ms=duration_ms,
+            timestamp_utc=payload.timestamp_utc or None,
+            context_type=payload.context_type,
+            context_key=payload.context_key,
+            source_context=payload.source_context or payload.context_type,
+            client_event_id=payload.client_event_id,
+            wrapped_schema_version=max(1, int(payload.wrapped_schema_version or 1)),
+            event_payload={
+                "completed": bool(payload.completed),
+                "skipped_early": bool(payload.skipped_early),
+            },
+        )
+
+    should_write_legacy = not normalized_event or normalized_event in {"play_complete", "skip"}
+    legacy_recorded = False
+    if should_write_legacy:
+        legacy_recorded = personalization_service.record_track_play(
+            db,
+            user,
+            track_id=payload.track_id,
+            played_seconds=float(payload.played_seconds or 0),
+            duration_seconds=payload.duration_seconds,
+            completed=payload.completed or normalized_event == "play_complete",
+            skipped_early=payload.skipped_early or normalized_event == "skip",
+            context_type=payload.context_type,
+            context_key=payload.context_key,
+            write_tracking_backfill=not bool(normalized_event),
+        )
+
+    return JSONResponse(
+        {
+            "status": "ok",
+            "recorded": bool(canonical_recorded or legacy_recorded),
+            "canonical_recorded": bool(canonical_recorded),
+            "legacy_recorded": bool(legacy_recorded),
+        }
     )
-    return JSONResponse({"status": "ok", "recorded": bool(recorded)})
 
 
 @router.get("/api/mixes")

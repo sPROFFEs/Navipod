@@ -118,6 +118,31 @@ async def admin_regenerate_wrapped(
     return JSONResponse({"job_id": job_id, "year": year})
 
 
+@router.post("/admin/api/wrapped/{year}/regenerate-user")
+async def admin_regenerate_wrapped_user(
+    year: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    username: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user_safe(db, request)
+    if not user or not user.is_admin:
+        return JSONResponse({"error": "Forbidden"}, status_code=403)
+
+    target = db.query(database.User).filter(database.User.username == username.strip()).first()
+    if not target:
+        return JSONResponse({"error": "User not found"}, status_code=404)
+
+    try:
+        job_id = wrapped_service.queue_wrapped_user_regeneration(user.username, year, target.username)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+    background_tasks.add_task(wrapped_service.run_wrapped_user_regeneration_job, job_id, year, target.username)
+    return JSONResponse({"job_id": job_id, "year": year, "username": target.username})
+
+
 @router.get("/admin/api/wrapped/{year}/status")
 async def admin_wrapped_status(year: int, request: Request, db: Session = Depends(get_db)):
     user = get_current_user_safe(db, request)
@@ -131,6 +156,7 @@ async def admin_wrapped_status(year: int, request: Request, db: Session = Depend
 
     user_count = db.query(database.User).filter(database.User.is_active == True).count()
     party = wrapped_service.get_cached_party_summary(year)
+    latest_audit = wrapped_service.get_latest_regeneration_audit(year)
     settings = wrapped_service.get_wrapped_settings(db)
     return JSONResponse(
         {
@@ -139,6 +165,7 @@ async def admin_wrapped_status(year: int, request: Request, db: Session = Depend
             "summary_db_exists": wrapped_service.get_wrapped_summary_db_path().exists(),
             "active_user_count": user_count,
             "party_generated_at": party.get("generated_at") if party else None,
+            "latest_regeneration_audit": latest_audit,
             "settings": settings,
         }
     )

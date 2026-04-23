@@ -18,6 +18,47 @@ const PLAYBACK_SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const PLAYBACK_AUTO_RESUME_MAX_AGE_MS = 30 * 60 * 1000;
 const PLAYBACK_PROGRESS_SAVE_INTERVAL_MS = 10000;
 const PLAYBACK_REMOTE_SAVE_DEBOUNCE_MS = 1500;
+const TRACKING_SCHEMA_VERSION = 1;
+
+function makeClientEventId(prefix = 'evt') {
+  const randomPart =
+    typeof crypto !== 'undefined' && crypto?.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `${prefix}:${randomPart}`;
+}
+
+function sendTrackingEvent(eventType, session, extra = {}) {
+  if (!session?.trackId || !eventType) return;
+  const currentTimeSeconds = Number(state.audio.currentTime || 0);
+  const playedSeconds = Number.isFinite(extra.played_seconds)
+    ? Number(extra.played_seconds)
+    : Math.max(0, Number(session.maxPositionSeconds || currentTimeSeconds || 0));
+  const durationSeconds =
+    Number.isFinite(extra.duration_seconds)
+      ? Number(extra.duration_seconds)
+      : Number.isFinite(state.audio.duration) && state.audio.duration > 0
+        ? Number(state.audio.duration)
+        : Number(session.durationSeconds || 0);
+
+  api.recordListenEvent({
+    event_type: eventType,
+    track_id: session.trackId,
+    session_id: session.sessionId || '',
+    played_seconds: playedSeconds,
+    duration_seconds: durationSeconds > 0 ? durationSeconds : null,
+    played_ms: Math.max(0, Math.round(playedSeconds * 1000)),
+    duration_ms: durationSeconds > 0 ? Math.max(0, Math.round(durationSeconds * 1000)) : null,
+    context_type: session.contextType || '',
+    context_key: session.contextKey || '',
+    source_context: session.contextType || '',
+    timestamp_utc: new Date().toISOString(),
+    wrapped_schema_version: TRACKING_SCHEMA_VERSION,
+    client_event_id: makeClientEventId(eventType),
+    completed: Boolean(extra.completed),
+    skipped_early: Boolean(extra.skipped_early)
+  });
+}
 
 // Acquire a Web Lock to prevent Android Chrome from suspending the tab
 async function acquirePlaybackLock() {
@@ -693,11 +734,16 @@ function beginListenSession(track) {
   const { contextType, contextKey } = currentContextPayload();
   _activeListenSession = {
     trackId: Number(track.db_id),
+    sessionId: makeClientEventId('session'),
     durationSeconds: Number(track.duration || 0),
     maxPositionSeconds: 0,
+    reached30s: false,
+    lastSeekPositionSeconds: 0,
     contextType,
     contextKey
   };
+  sendTrackingEvent('play_start', _activeListenSession, { played_seconds: 0 });
+  sendTrackingEvent('source_context', _activeListenSession, { played_seconds: 0 });
 }
 
 function updateListenProgress() {
@@ -705,6 +751,10 @@ function updateListenProgress() {
   const currentTime = Number(state.audio.currentTime || 0);
   if (Number.isFinite(currentTime) && currentTime > _activeListenSession.maxPositionSeconds) {
     _activeListenSession.maxPositionSeconds = currentTime;
+  }
+  if (!_activeListenSession.reached30s && _activeListenSession.maxPositionSeconds >= 30) {
+    _activeListenSession.reached30s = true;
+    sendTrackingEvent('play_30s', _activeListenSession);
   }
 }
 
@@ -729,6 +779,13 @@ function finalizeListenSession(reason = 'stopped') {
     return;
   }
 
+  sendTrackingEvent(completed ? 'play_complete' : 'skip', session, {
+    played_seconds: playedSeconds,
+    duration_seconds: durationSeconds || null,
+    completed,
+    skipped_early: skippedEarly
+  });
+
   api.recordListenEvent({
     track_id: session.trackId,
     played_seconds: playedSeconds,
@@ -736,7 +793,14 @@ function finalizeListenSession(reason = 'stopped') {
     completed,
     skipped_early: skippedEarly,
     context_type: session.contextType || '',
-    context_key: session.contextKey || ''
+    context_key: session.contextKey || '',
+    event_type: completed ? 'play_complete' : 'skip',
+    session_id: session.sessionId || '',
+    played_ms: Math.round(playedSeconds * 1000),
+    duration_ms: durationSeconds ? Math.round(durationSeconds * 1000) : null,
+    timestamp_utc: new Date().toISOString(),
+    source_context: session.contextType || '',
+    client_event_id: makeClientEventId('legacy-final')
   });
 }
 
@@ -811,6 +875,15 @@ export function setupPlayer() {
         playNext();
       }
     }
+  });
+
+  state.audio.addEventListener('seeked', () => {
+    if (!_activeListenSession) return;
+    const currentTime = Math.max(0, Number(state.audio.currentTime || 0));
+    const previous = Math.max(0, Number(_activeListenSession.lastSeekPositionSeconds || 0));
+    _activeListenSession.lastSeekPositionSeconds = currentTime;
+    if (Math.abs(currentTime - previous) < 1) return;
+    sendTrackingEvent('seek', _activeListenSession, { played_seconds: currentTime });
   });
 
   state.audio.addEventListener('error', () => {

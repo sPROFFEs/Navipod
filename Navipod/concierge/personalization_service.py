@@ -28,6 +28,10 @@ RECENT_HISTORY_LIMIT = 12
 MIN_TRACK_PLAY_SECONDS = 8
 COMPLETION_RATIO = 0.85
 EARLY_SKIP_SECONDS = 30
+WRAPPED_MIN_LISTEN_SECONDS = 30.0
+WRAPPED_MIN_LISTEN_RATIO = 0.20
+TRACKING_SCHEMA_VERSION = 1
+TRACKING_DEDUPE_WINDOW_SECONDS = 10
 MIX_TRACK_LIMIT = 50
 TOP_POOL_TRACK_LIMIT = 50
 LATEST_POOL_TRACK_LIMIT = 100
@@ -165,9 +169,33 @@ def ensure_user_activity_db(username: str) -> Path:
                 UNIQUE(item_type, item_key)
             );
 
+            CREATE TABLE IF NOT EXISTS user_tracking_raw (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL,
+                track_id INTEGER NOT NULL,
+                user_id INTEGER,
+                session_id TEXT,
+                played_ms INTEGER NOT NULL DEFAULT 0,
+                duration_ms INTEGER,
+                timestamp_utc TEXT NOT NULL,
+                context_type TEXT,
+                context_key TEXT,
+                source_context TEXT,
+                wrapped_schema_version INTEGER NOT NULL DEFAULT 1,
+                client_event_id TEXT,
+                event_payload_json TEXT,
+                dedupe_bucket INTEGER NOT NULL DEFAULT 0,
+                dedupe_key TEXT NOT NULL,
+                inserted_at TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS ix_listen_events_track_id ON listen_events(track_id);
             CREATE INDEX IF NOT EXISTS ix_listen_events_recorded_at ON listen_events(recorded_at);
             CREATE INDEX IF NOT EXISTS ix_recent_items_type_accessed ON recent_items(item_type, last_accessed_at DESC);
+            CREATE INDEX IF NOT EXISTS ix_user_tracking_raw_timestamp ON user_tracking_raw(timestamp_utc);
+            CREATE INDEX IF NOT EXISTS ix_user_tracking_raw_track_type ON user_tracking_raw(track_id, event_type);
+            CREATE INDEX IF NOT EXISTS ix_user_tracking_raw_session ON user_tracking_raw(session_id, timestamp_utc);
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_user_tracking_raw_dedupe_key ON user_tracking_raw(dedupe_key);
             """
         )
         conn.commit()
@@ -373,6 +401,140 @@ def get_recent_activity_payload(db: Session, user) -> dict[str, Any]:
     return {"playlists": playlists, "radios": radios}
 
 
+def _normalize_tracking_event_type(value: str | None) -> str:
+    allowed = {"play_start", "play_30s", "play_complete", "skip", "seek", "source_context"}
+    normalized = str(value or "").strip().lower()
+    return normalized if normalized in allowed else ""
+
+
+def normalize_tracking_event_type(value: str | None) -> str:
+    return _normalize_tracking_event_type(value)
+
+
+def _normalize_iso_utc(value: str | None) -> str:
+    if value:
+        parsed = _parse_dt(value)
+        if parsed:
+            return parsed.isoformat()
+    return _iso_now()
+
+
+def _safe_int_ms(value: Any) -> int:
+    try:
+        ms = int(float(value or 0))
+    except Exception:
+        return 0
+    return max(0, ms)
+
+
+def is_wrapped_qualified_play(played_seconds: float, duration_seconds: float | None = None, completed: bool = False) -> bool:
+    played = max(0.0, float(played_seconds or 0.0))
+    if completed:
+        return True
+    if played >= WRAPPED_MIN_LISTEN_SECONDS:
+        return True
+    if duration_seconds is None:
+        return False
+    try:
+        duration = float(duration_seconds)
+    except Exception:
+        return False
+    if duration <= 0:
+        return False
+    return played >= duration * WRAPPED_MIN_LISTEN_RATIO
+
+
+def _tracking_dedupe_key(
+    *,
+    event_type: str,
+    track_id: int,
+    session_id: str,
+    client_event_id: str,
+    timestamp_utc: str,
+    played_ms: int,
+) -> tuple[str, int]:
+    if client_event_id:
+        return (f"client:{client_event_id.strip()[:120]}", -1)
+
+    parsed = _parse_dt(timestamp_utc) or utcnow()
+    bucket = int(parsed.timestamp()) // TRACKING_DEDUPE_WINDOW_SECONDS
+    played_bucket = played_ms // 1000
+    return (f"auto:{event_type}:{track_id}:{session_id[:120]}:{bucket}:{played_bucket}", bucket)
+
+
+def record_tracking_event(
+    *,
+    username: str,
+    user_id: int,
+    track_id: int,
+    event_type: str,
+    session_id: str = "",
+    played_ms: int = 0,
+    duration_ms: int | None = None,
+    timestamp_utc: str | None = None,
+    context_type: str = "",
+    context_key: str = "",
+    source_context: str = "",
+    wrapped_schema_version: int = TRACKING_SCHEMA_VERSION,
+    client_event_id: str = "",
+    event_payload: dict[str, Any] | None = None,
+) -> bool:
+    normalized_event = _normalize_tracking_event_type(event_type)
+    if not normalized_event or not int(track_id or 0):
+        return False
+
+    ensure_user_activity_db(username)
+    ts_utc = _normalize_iso_utc(timestamp_utc)
+    safe_played_ms = _safe_int_ms(played_ms)
+    safe_duration_ms = _safe_int_ms(duration_ms) if duration_ms is not None else None
+    dedupe_key, dedupe_bucket = _tracking_dedupe_key(
+        event_type=normalized_event,
+        track_id=int(track_id),
+        session_id=str(session_id or "").strip(),
+        client_event_id=str(client_event_id or "").strip(),
+        timestamp_utc=ts_utc,
+        played_ms=safe_played_ms,
+    )
+    payload_json = ""
+    if event_payload:
+        try:
+            payload_json = json.dumps(event_payload, ensure_ascii=False, separators=(",", ":"))
+        except Exception:
+            payload_json = ""
+
+    with _connect(username) as conn:
+        cur = conn.execute(
+            """
+            INSERT OR IGNORE INTO user_tracking_raw (
+                event_type, track_id, user_id, session_id, played_ms, duration_ms,
+                timestamp_utc, context_type, context_key, source_context,
+                wrapped_schema_version, client_event_id, event_payload_json,
+                dedupe_bucket, dedupe_key, inserted_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                normalized_event,
+                int(track_id),
+                int(user_id or 0),
+                str(session_id or "").strip()[:120] or None,
+                safe_played_ms,
+                safe_duration_ms,
+                ts_utc,
+                str(context_type or "").strip()[:64] or None,
+                str(context_key or "").strip()[:128] or None,
+                str(source_context or "").strip()[:128] or None,
+                int(wrapped_schema_version or TRACKING_SCHEMA_VERSION),
+                str(client_event_id or "").strip()[:120] or None,
+                payload_json or None,
+                int(dedupe_bucket),
+                dedupe_key,
+                _iso_now(),
+            ),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+
 def record_track_play(
     db: Session,
     user,
@@ -384,6 +546,7 @@ def record_track_play(
     skipped_early: bool = False,
     context_type: str = "",
     context_key: str = "",
+    write_tracking_backfill: bool = True,
 ) -> bool:
     if not track_id or played_seconds < MIN_TRACK_PLAY_SECONDS:
         return False
@@ -460,7 +623,89 @@ def record_track_play(
                 ),
             )
         conn.commit()
+
+    if write_tracking_backfill:
+        # Backfill canonical tracking table for legacy clients that only send final listen payload.
+        final_event_type = "play_complete" if completed else ("skip" if skipped_early else "play_30s")
+        record_tracking_event(
+            username=user.username,
+            user_id=int(user.id),
+            track_id=int(track_id),
+            event_type=final_event_type,
+            played_ms=int(played_seconds * 1000),
+            duration_ms=int(duration_seconds * 1000) if duration_seconds else None,
+            timestamp_utc=now_iso,
+            context_type=context_type,
+            context_key=context_key,
+            source_context=context_type,
+            client_event_id=f"legacy:{user.id}:{track_id}:{int(time.time() * 1000)}",
+            event_payload={
+                "legacy": True,
+                "completed": bool(completed),
+                "skipped_early": bool(skipped_early),
+                "qualified_wrapped": is_wrapped_qualified_play(played_seconds, duration_seconds, completed),
+            },
+        )
     return True
+
+
+def fetch_user_tracking_events(username: str, year: int) -> list[sqlite3.Row]:
+    ensure_user_activity_db(username)
+    start = datetime(int(year), 1, 1, tzinfo=timezone.utc).isoformat()
+    end = datetime(int(year) + 1, 1, 1, tzinfo=timezone.utc).isoformat()
+    with _connect(username) as conn:
+        return conn.execute(
+            """
+            SELECT
+                id,
+                event_type,
+                track_id,
+                user_id,
+                session_id,
+                played_ms,
+                duration_ms,
+                timestamp_utc,
+                context_type,
+                context_key,
+                source_context,
+                wrapped_schema_version
+            FROM user_tracking_raw
+            WHERE timestamp_utc >= ? AND timestamp_utc < ?
+            ORDER BY timestamp_utc ASC, id ASC
+            """,
+            (start, end),
+        ).fetchall()
+
+
+def get_user_tracking_stats(username: str, year: int) -> dict[str, Any]:
+    ensure_user_activity_db(username)
+    start = datetime(int(year), 1, 1, tzinfo=timezone.utc).isoformat()
+    end = datetime(int(year) + 1, 1, 1, tzinfo=timezone.utc).isoformat()
+    with _connect(username) as conn:
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS raw_event_count,
+                MAX(timestamp_utc) AS latest_event_at
+            FROM user_tracking_raw
+            WHERE timestamp_utc >= ? AND timestamp_utc < ?
+            """,
+            (start, end),
+        ).fetchone()
+        raw_event_count = int((row["raw_event_count"] or 0) if row else 0)
+        latest_event_at = (row["latest_event_at"] if row else None) or ""
+        if raw_event_count <= 0:
+            legacy = conn.execute(
+                """
+                SELECT COUNT(*) AS raw_event_count, MAX(recorded_at) AS latest_event_at
+                FROM listen_events
+                WHERE recorded_at >= ? AND recorded_at < ?
+                """,
+                (start, end),
+            ).fetchone()
+            raw_event_count = int((legacy["raw_event_count"] or 0) if legacy else 0)
+            latest_event_at = (legacy["latest_event_at"] if legacy else None) or ""
+    return {"raw_event_count": raw_event_count, "latest_event_at": latest_event_at}
 
 
 def _load_mix_cache(username: str) -> dict[str, Any] | None:

@@ -17,6 +17,7 @@ import operations_service
 import reaper
 import security
 import track_identity
+import wrapped_service
 from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -135,6 +136,7 @@ async def startup_event():
     asyncio.create_task(reaper_scheduler())
     asyncio.create_task(cache_cleanup_scheduler())
     asyncio.create_task(operations_service.autobackup_scheduler())
+    asyncio.create_task(wrapped_daily_scheduler())
 
 
 async def reaper_scheduler():
@@ -163,6 +165,19 @@ async def cache_cleanup_scheduler():
             await asyncio.sleep(cache_maintenance.CACHE_CLEAN_INTERVAL_SECONDS)
         except Exception as e:
             logger.exception("Cache cleanup failed: %s", e)
+            await asyncio.sleep(300)
+
+
+async def wrapped_daily_scheduler():
+    logger.info("Starting wrapped daily scheduler (UTC)")
+    while True:
+        try:
+            result = await asyncio.to_thread(wrapped_service.run_daily_wrapped_pipeline)
+            if result.get("ran"):
+                logger.info("Wrapped daily pipeline completed: %s", result.get("result", {}))
+            await asyncio.sleep(3600)
+        except Exception as e:
+            logger.exception("Wrapped daily scheduler failed: %s", e)
             await asyncio.sleep(300)
 
 
