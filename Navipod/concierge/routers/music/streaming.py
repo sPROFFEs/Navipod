@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 MEDIA_ROOTS = ("/saas-data/pool", "/saas-data/users")
 CACHE_ROOTS = ("/saas-data/cache", "/saas-data/cover_cache")
+STREAM_CHUNK_SIZE = 256 * 1024
 
 
 def _resolve_allowed_media_path(raw_path: str | None) -> Path | None:
@@ -60,6 +61,59 @@ def _resolve_allowed_cache_path(raw_path: str | Path | None) -> Path | None:
 
 def _cover_metadata_key(artist: str, title: str) -> str:
     return metadata_cache.make_key("cover-proxy", artist=artist, title=title)
+
+
+def _iter_file_chunks(file_path: Path, start: int = 0, end: int | None = None):
+    with file_path.open("rb") as f:
+        f.seek(max(0, start))
+        remaining = None if end is None else max(0, (end - start) + 1)
+        while True:
+            read_size = STREAM_CHUNK_SIZE if remaining is None else min(STREAM_CHUNK_SIZE, remaining)
+            if read_size <= 0:
+                break
+            chunk = f.read(read_size)
+            if not chunk:
+                break
+            yield chunk
+            if remaining is not None:
+                remaining -= len(chunk)
+
+
+def _parse_range_header(range_header: str, file_size: int) -> tuple[int, int] | None:
+    if not range_header:
+        return None
+    value = range_header.strip()
+    if not value.lower().startswith("bytes="):
+        return None
+    value = value.split("=", 1)[1].strip()
+    if "," in value:
+        return None
+    if "-" not in value:
+        return None
+
+    start_raw, end_raw = value.split("-", 1)
+    try:
+        if start_raw == "":
+            if end_raw == "":
+                return None
+            suffix_len = int(end_raw)
+            if suffix_len <= 0:
+                return None
+            start = max(file_size - suffix_len, 0)
+            end = file_size - 1
+        else:
+            start = int(start_raw)
+            if start < 0:
+                return None
+            end = file_size - 1 if end_raw == "" else int(end_raw)
+            if end < start:
+                return None
+            end = min(end, file_size - 1)
+        if start >= file_size:
+            return None
+        return start, end
+    except ValueError:
+        return None
 
 
 def _pick_random_track(db: Session):
@@ -139,34 +193,25 @@ async def stream_track(track_id: int, request: Request, db: Session = Depends(ge
     content_type = content_type or "audio/mpeg"
 
     # Handle Range Header
-    range_header = request.headers.get("range")
+    range_header = (request.headers.get("range") or "").strip()
     if not range_header:
-        # No range: Serve full file
-        def iterfile():
-            with file_path.open("rb") as f:
-                yield from f
-
         return StreamingResponse(
-            iterfile(), media_type=content_type, headers={"Content-Length": str(file_size), "Accept-Ranges": "bytes"}
+            _iter_file_chunks(file_path),
+            media_type=content_type,
+            headers={"Content-Length": str(file_size), "Accept-Ranges": "bytes"},
         )
 
     # Range Requested
     try:
-        start, end = range_header.replace("bytes=", "").split("-")
-        start = int(start)
-        end = int(end) if end else file_size - 1
-        if start < 0 or end < start or start >= file_size:
+        parsed_range = _parse_range_header(range_header, file_size)
+        if not parsed_range:
             return Response(status_code=416, headers={"Content-Range": f"bytes */{file_size}"})
+        start, end = parsed_range
         end = min(end, file_size - 1)
         chunk_size = (end - start) + 1
 
-        def iterfile():
-            with file_path.open("rb") as f:
-                f.seek(start)
-                yield f.read(chunk_size)
-
         return StreamingResponse(
-            iterfile(),
+            _iter_file_chunks(file_path, start=start, end=end),
             status_code=206,
             media_type=content_type,
             headers={
