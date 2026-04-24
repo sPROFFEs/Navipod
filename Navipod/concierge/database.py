@@ -1,5 +1,9 @@
 import sqlite3
+import sys
+import tempfile
+from pathlib import Path
 
+from navipod_config import settings
 from secrets_store import decrypt_secret, encrypt_secret
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, create_engine, event
 from sqlalchemy.ext.declarative import declarative_base
@@ -7,7 +11,40 @@ from sqlalchemy.orm import relationship, sessionmaker
 from sqlalchemy.pool import NullPool
 from sqlalchemy.sql import func
 
-SQLALCHEMY_DATABASE_URL = "sqlite:////saas-data/concierge.db"
+
+def _resolve_database_url() -> str:
+    configured = (getattr(settings, "DATABASE_URL", None) or "").strip()
+    if configured:
+        return configured
+
+    db_path = Path(settings.HOST_DATA_ROOT).resolve() / "concierge.db"
+    return f"sqlite:///{db_path.as_posix()}"
+
+
+SQLALCHEMY_DATABASE_URL = _resolve_database_url()
+
+
+def _ensure_sqlite_parent_dir(database_url: str) -> None:
+    if not database_url.startswith("sqlite:///") or database_url in {"sqlite://", "sqlite:///:memory:"}:
+        return
+
+    db_path_str = database_url[len("sqlite:///") :]
+    if not db_path_str or db_path_str == ":memory:":
+        return
+    parent = Path(db_path_str).expanduser().resolve().parent
+    try:
+        parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        # Local tests often run outside container mounts (/saas-data, /opt/saas-data).
+        if "pytest" in sys.modules:
+            fallback = Path(tempfile.gettempdir()) / "navipod-test-db"
+            fallback.mkdir(parents=True, exist_ok=True)
+            globals()["SQLALCHEMY_DATABASE_URL"] = f"sqlite:///{(fallback / 'concierge.db').as_posix()}"
+            return
+        raise
+
+
+_ensure_sqlite_parent_dir(SQLALCHEMY_DATABASE_URL)
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,

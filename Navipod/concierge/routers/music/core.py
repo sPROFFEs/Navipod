@@ -64,7 +64,10 @@ async def proxy_image(url: str):
             url,
             headers={"Accept": "image/*"},
             timeout=float(settings.PROXY_IMAGE_TIMEOUT_SECONDS or 8.0),
+            follow_redirects=False,
         ) as resp:
+            if 300 <= resp.status_code < 400:
+                return JSONResponse({"error": "Image redirects are not allowed"}, status_code=400)
             if resp.status_code != 200:
                 return JSONResponse({"error": "Image fetch failed"}, status_code=502)
 
