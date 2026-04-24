@@ -9,12 +9,12 @@ import random
 import time
 
 import database
-import httpx
 import manager
 import spotify_service
 import youtube_service
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
+from http_client import http_client
 from lastfm_service import lastfm_service
 from musicbrainz_service import musicbrainz_service
 from sqlalchemy.orm import Session
@@ -71,17 +71,16 @@ async def get_navidrome_top_songs(user, db: Session, limit: int = 5):
         }
         headers = {"x-navidrome-user": user.username}
 
-        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
-            resp = await client.get(url, params=params, headers=headers)
-            if resp.status_code == 200:
-                data = resp.json()
-                songs = data.get("subsonic-response", {}).get("topSongs", {}).get("song", [])
-                if isinstance(songs, dict):
-                    songs = [songs]
+        resp = await http_client.get(url, params=params, headers=headers, timeout=5.0, follow_redirects=True)
+        if resp.status_code == 200:
+            data = resp.json()
+            songs = data.get("subsonic-response", {}).get("topSongs", {}).get("song", [])
+            if isinstance(songs, dict):
+                songs = [songs]
 
-                return [{"title": s.get("title"), "artist": s.get("artist")} for s in songs]
-            else:
-                logger.warning("Navidrome top songs failed with status %s", resp.status_code)
+            return [{"title": s.get("title"), "artist": s.get("artist")} for s in songs]
+        else:
+            logger.warning("Navidrome top songs failed with status %s", resp.status_code)
     except Exception as e:
         logger.warning("Error fetching Navidrome history: %s", e)
 
@@ -103,34 +102,41 @@ async def get_navidrome_seeds(user, db: Session, limit: int = 5):
     common_params = {"u": user.username, "p": "enc:000000", "v": "1.16.1", "c": "concierge-internal", "f": "json"}
     headers = {"x-navidrome-user": user.username}
 
-    async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
-        # A. TOP SONGS
-        try:
-            url_top = f"http://{target_ip}:4533/{user.username}/rest/getTopSongs"
-            resp = await client.get(url_top, params={**common_params, "count": 10}, headers=headers)
-            if resp.status_code == 200:
-                data = resp.json()
-                items = data.get("subsonic-response", {}).get("topSongs", {}).get("song", [])
-                if isinstance(items, dict):
-                    items = [items]
-                for s in items:
-                    add_seed(s.get("title"), s.get("artist"))
-        except Exception as e:
-            logger.debug("Navidrome top-songs seed lookup failed for %s: %s", user.username, e)
+    # A. TOP SONGS
+    try:
+        url_top = f"http://{target_ip}:4533/{user.username}/rest/getTopSongs"
+        resp = await http_client.get(
+            url_top, params={**common_params, "count": 10}, headers=headers, timeout=5.0, follow_redirects=True
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            items = data.get("subsonic-response", {}).get("topSongs", {}).get("song", [])
+            if isinstance(items, dict):
+                items = [items]
+            for s in items:
+                add_seed(s.get("title"), s.get("artist"))
+    except Exception as e:
+        logger.debug("Navidrome top-songs seed lookup failed for %s: %s", user.username, e)
 
-        # B. RECENTLY ADDED
-        try:
-            url_recent = f"http://{target_ip}:4533/{user.username}/rest/getAlbumList2"
-            resp = await client.get(url_recent, params={**common_params, "type": "newest", "size": 3}, headers=headers)
-            if resp.status_code == 200:
-                data = resp.json()
-                albums = data.get("subsonic-response", {}).get("albumList2", {}).get("album", [])
-                if isinstance(albums, dict):
-                    albums = [albums]
-                for a in albums:
-                    add_seed("", a.get("artist"))
-        except Exception as e:
-            logger.debug("Navidrome recent-albums seed lookup failed for %s: %s", user.username, e)
+    # B. RECENTLY ADDED
+    try:
+        url_recent = f"http://{target_ip}:4533/{user.username}/rest/getAlbumList2"
+        resp = await http_client.get(
+            url_recent,
+            params={**common_params, "type": "newest", "size": 3},
+            headers=headers,
+            timeout=5.0,
+            follow_redirects=True,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            albums = data.get("subsonic-response", {}).get("albumList2", {}).get("album", [])
+            if isinstance(albums, dict):
+                albums = [albums]
+            for a in albums:
+                add_seed("", a.get("artist"))
+    except Exception as e:
+        logger.debug("Navidrome recent-albums seed lookup failed for %s: %s", user.username, e)
 
     # Return shuffled mix
     if seeds:

@@ -25,7 +25,9 @@ def get_secure_path(base_dir: Path | str, user_input_path: str) -> Path:
     target = (base / clean_input).resolve()
     
     # 3. Jail Check
-    if not str(target).startswith(str(base)):
+    try:
+        target.relative_to(base)
+    except ValueError:
         raise ValueError(f"Path Traversal Attempt Detected: {user_input_path}")
         
     return target

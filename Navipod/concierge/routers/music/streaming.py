@@ -11,12 +11,12 @@ from pathlib import Path
 
 import cover_cache
 import database
-import httpx
 import metadata_cache
 import mutagen
 import path_security
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
+from http_client import http_client
 from PIL import Image
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -286,21 +286,20 @@ async def resolve_cover(request: Request, artist: str = "", title: str = "", db:
         cached_image_url = (cached_metadata.get("image_url") or "").strip()
         if cached_image_url:
             try:
-                async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
-                    resp = await client.get(cached_image_url)
-                    if resp.status_code == 200 and len(resp.content) > 500:
-                        img = Image.open(io.BytesIO(resp.content))
-                        img.thumbnail((400, 400))
-                        img = img.convert("RGB")
-                        img_bytes = io.BytesIO()
-                        img.save(img_bytes, "JPEG", quality=80)
-                        with open(cached_path, "wb") as f:
-                            f.write(img_bytes.getvalue())
-                        return FileResponse(
-                            cached_path,
-                            media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=604800"},
-                        )
+                resp = await http_client.get(cached_image_url, timeout=8.0, follow_redirects=True)
+                if resp.status_code == 200 and len(resp.content) > 500:
+                    img = Image.open(io.BytesIO(resp.content))
+                    img.thumbnail((400, 400))
+                    img = img.convert("RGB")
+                    img_bytes = io.BytesIO()
+                    img.save(img_bytes, "JPEG", quality=80)
+                    with open(cached_path, "wb") as f:
+                        f.write(img_bytes.getvalue())
+                    return FileResponse(
+                        cached_path,
+                        media_type="image/jpeg",
+                        headers={"Cache-Control": "public, max-age=604800"},
+                    )
             except Exception as e:
                 logger.warning("Cached cover image download failed: %s", e)
 
@@ -314,105 +313,104 @@ async def resolve_cover(request: Request, artist: str = "", title: str = "", db:
     image_url = None
     provider = "unknown"
 
-    async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
-        if user and user.download_settings:
-            settings = user.download_settings
-            if settings.spotify_client_id and settings.spotify_client_secret:
-                try:
-                    import spotify_service
+    if user and user.download_settings:
+        settings = user.download_settings
+        if settings.spotify_client_id and settings.spotify_client_secret:
+            try:
+                import spotify_service
 
-                    query = f"track:{title} artist:{artist}" if title else f"artist:{artist}"
+                query = f"track:{title} artist:{artist}" if title else f"artist:{artist}"
+                sp = await spotify_service.spotify_service.search_item(
+                    settings.spotify_client_id,
+                    settings.spotify_client_secret,
+                    query,
+                    type="track",
+                    limit=1,
+                )
+                if not sp:
+                    fallback_query = f"{artist} {title}".strip()
                     sp = await spotify_service.spotify_service.search_item(
                         settings.spotify_client_id,
                         settings.spotify_client_secret,
-                        query,
+                        fallback_query,
                         type="track",
                         limit=1,
                     )
-                    if not sp:
-                        fallback_query = f"{artist} {title}".strip()
-                        sp = await spotify_service.spotify_service.search_item(
-                            settings.spotify_client_id,
-                            settings.spotify_client_secret,
-                            fallback_query,
-                            type="track",
-                            limit=1,
-                        )
-                    if sp and sp.get("image"):
-                        image_url = sp["image"]
-                        provider = "spotify"
-                except Exception as e:
-                    logger.warning("Spotify cover lookup failed: %s", e)
-
-        if not image_url and user and user.download_settings:
-            lastfm_key = getattr(user.download_settings, "lastfm_api_key", None)
-            if lastfm_key and title and artist:
-                try:
-                    from lastfm_service import lastfm_service as lfm_svc
-
-                    info = await lfm_svc.get_track_info(lastfm_key, artist, title)
-                    if info and info.get("image"):
-                        image_url = info["image"]
-                        provider = "lastfm"
-                except Exception as e:
-                    logger.warning("Last.fm cover lookup failed: %s", e)
-
-        if not image_url:
-            try:
-                from musicbrainz_service import musicbrainz_service as mb_svc
-
-                query = f"{artist} {title}".strip()
-                results = await mb_svc.search_recordings(query, limit=1)
-                if results and results[0].get("image"):
-                    test_url = results[0]["image"]
-                    resp = await client.head(test_url)
-                    if resp.status_code == 200:
-                        image_url = test_url
-                        provider = "musicbrainz"
+                if sp and sp.get("image"):
+                    image_url = sp["image"]
+                    provider = "spotify"
             except Exception as e:
-                logger.warning("MusicBrainz cover lookup failed: %s", e)
+                logger.warning("Spotify cover lookup failed: %s", e)
 
-        if not image_url:
+    if not image_url and user and user.download_settings:
+        lastfm_key = getattr(user.download_settings, "lastfm_api_key", None)
+        if lastfm_key and title and artist:
             try:
-                import youtube_service as yt_svc
+                from lastfm_service import lastfm_service as lfm_svc
 
-                yt_results = await yt_svc.youtube_service.search_videos(
-                    f"{artist} {title} official",
-                    limit=1,
+                info = await lfm_svc.get_track_info(lastfm_key, artist, title)
+                if info and info.get("image"):
+                    image_url = info["image"]
+                    provider = "lastfm"
+            except Exception as e:
+                logger.warning("Last.fm cover lookup failed: %s", e)
+
+    if not image_url:
+        try:
+            from musicbrainz_service import musicbrainz_service as mb_svc
+
+            query = f"{artist} {title}".strip()
+            results = await mb_svc.search_recordings(query, limit=1)
+            if results and results[0].get("image"):
+                test_url = results[0]["image"]
+                resp = await http_client.head(test_url, timeout=8.0, follow_redirects=True)
+                if resp.status_code == 200:
+                    image_url = test_url
+                    provider = "musicbrainz"
+        except Exception as e:
+            logger.warning("MusicBrainz cover lookup failed: %s", e)
+
+    if not image_url:
+        try:
+            import youtube_service as yt_svc
+
+            yt_results = await yt_svc.youtube_service.search_videos(
+                f"{artist} {title} official",
+                limit=1,
+            )
+            if yt_results:
+                vid_id = yt_results[0].get("id")
+                if vid_id:
+                    image_url = f"https://i.ytimg.com/vi/{vid_id}/hqdefault.jpg"
+                    provider = "youtube"
+        except Exception as e:
+            logger.warning("YouTube cover lookup failed: %s", e)
+
+    if image_url:
+        try:
+            resp = await http_client.get(image_url, timeout=8.0, follow_redirects=True)
+            if resp.status_code == 200 and len(resp.content) > 500:
+                img = Image.open(io.BytesIO(resp.content))
+                img.thumbnail((400, 400))
+                img = img.convert("RGB")
+                img_bytes = io.BytesIO()
+                img.save(img_bytes, "JPEG", quality=80)
+
+                with open(cached_path, "wb") as f:
+                    f.write(img_bytes.getvalue())
+
+                metadata_cache.set(
+                    metadata_key,
+                    {"image_url": image_url, "provider": provider, "negative": False},
                 )
-                if yt_results:
-                    vid_id = yt_results[0].get("id")
-                    if vid_id:
-                        image_url = f"https://i.ytimg.com/vi/{vid_id}/hqdefault.jpg"
-                        provider = "youtube"
-            except Exception as e:
-                logger.warning("YouTube cover lookup failed: %s", e)
 
-        if image_url:
-            try:
-                resp = await client.get(image_url)
-                if resp.status_code == 200 and len(resp.content) > 500:
-                    img = Image.open(io.BytesIO(resp.content))
-                    img.thumbnail((400, 400))
-                    img = img.convert("RGB")
-                    img_bytes = io.BytesIO()
-                    img.save(img_bytes, "JPEG", quality=80)
-
-                    with open(cached_path, "wb") as f:
-                        f.write(img_bytes.getvalue())
-
-                    metadata_cache.set(
-                        metadata_key,
-                        {"image_url": image_url, "provider": provider, "negative": False},
-                    )
-
-                    return FileResponse(
-                        cached_path,
-                        media_type="image/jpeg",
-                        headers={"Cache-Control": "public, max-age=604800"},
-                    )
-            except Exception as e:
-                logger.warning("Cover download/cache failed: %s", e)
+                return FileResponse(
+                    cached_path,
+                    media_type="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=604800"},
+                )
+        except Exception as e:
+            logger.warning("Cover download/cache failed: %s", e)
 
     try:
         with open(neg_cache, "w") as f:
