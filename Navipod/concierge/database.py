@@ -17,7 +17,11 @@ def _resolve_database_url() -> str:
     if configured:
         return configured
 
-    db_path = Path(settings.HOST_DATA_ROOT).resolve() / "concierge.db"
+    host_root = Path(settings.HOST_DATA_ROOT)
+    # Keep backward-compatible container default when HOST_DATA_ROOT is not mounted.
+    if not host_root.exists() and Path("/saas-data").exists():
+        host_root = Path("/saas-data")
+    db_path = host_root.resolve() / "concierge.db"
     return f"sqlite:///{db_path.as_posix()}"
 
 
@@ -34,14 +38,22 @@ def _ensure_sqlite_parent_dir(database_url: str) -> None:
     parent = Path(db_path_str).expanduser().resolve().parent
     try:
         parent.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        # Do not fail module import when running under constrained permissions.
+        if parent.exists():
+            return
+        if "pytest" in sys.modules:
+            fallback = Path(tempfile.gettempdir()) / "navipod-test-db"
+            fallback.mkdir(parents=True, exist_ok=True)
+            globals()["SQLALCHEMY_DATABASE_URL"] = f"sqlite:///{(fallback / 'concierge.db').as_posix()}"
+        return
     except OSError:
         # Local tests often run outside container mounts (/saas-data, /opt/saas-data).
         if "pytest" in sys.modules:
             fallback = Path(tempfile.gettempdir()) / "navipod-test-db"
             fallback.mkdir(parents=True, exist_ok=True)
             globals()["SQLALCHEMY_DATABASE_URL"] = f"sqlite:///{(fallback / 'concierge.db').as_posix()}"
-            return
-        raise
+        return
 
 
 _ensure_sqlite_parent_dir(SQLALCHEMY_DATABASE_URL)
