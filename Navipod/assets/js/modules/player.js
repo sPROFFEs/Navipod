@@ -438,7 +438,14 @@ export async function restorePlaybackSession() {
       }
     };
 
-    state.audio.addEventListener('loadedmetadata', restorePosition, { once: true });
+    // If the audio was already cached, loadedmetadata may have fired before
+    // we could attach the listener. readyState >= HAVE_METADATA (1) means
+    // duration/currentTime are usable already.
+    if (state.audio.readyState >= 1) {
+      restorePosition();
+    } else {
+      state.audio.addEventListener('loadedmetadata', restorePosition, { once: true });
+    }
     if (window.renderQueue) window.renderQueue();
 
     return {
@@ -652,16 +659,14 @@ export async function playPreview(data) {
   updatePlayerUIForPreview(track);
 
   finalizeListenSession('preview_switch');
-  // Stop current audio
-  state.audio.pause();
-  state.audio.src = '';
 
-  // Use proxy endpoint
+  // Use proxy endpoint. Reassigning src is enough to swap source without
+  // tearing down the active MediaSession — avoid the previous src='' reset
+  // and explicit load() which interrupted Android background playback.
   const previewUrl = `${state.API}/playback/preview?url=${encodeURIComponent(track.id)}`;
 
   try {
     state.audio.src = previewUrl;
-    state.audio.load();
     await state.audio.play();
     state.setIsPlaying(true);
     ui.updatePlayButton();
@@ -865,23 +870,6 @@ function finalizeListenSession(reason = 'stopped') {
     duration_seconds: durationSeconds || null,
     completed,
     skipped_early: skippedEarly
-  });
-
-  api.recordListenEvent({
-    track_id: session.trackId,
-    played_seconds: playedSeconds,
-    duration_seconds: durationSeconds || null,
-    completed,
-    skipped_early: skippedEarly,
-    context_type: session.contextType || '',
-    context_key: session.contextKey || '',
-    event_type: completed ? 'play_complete' : 'skip',
-    session_id: session.sessionId || '',
-    played_ms: Math.round(playedSeconds * 1000),
-    duration_ms: durationSeconds ? Math.round(durationSeconds * 1000) : null,
-    timestamp_utc: new Date().toISOString(),
-    source_context: session.contextType || '',
-    client_event_id: makeClientEventId('legacy-final')
   });
 }
 

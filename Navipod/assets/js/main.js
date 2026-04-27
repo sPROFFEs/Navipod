@@ -160,8 +160,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   initUserMenu();
   views.initSpaHistory();
 
-  // Initialize YouTube API
-  player.initYoutubeAPI();
+  // YouTube IFrame API is loaded lazily on first preview to avoid an
+  // unconditional cross-origin script on app boot. See player.playPreview.
 
   // Load user data (favorites, playlists)
   views.loadUserData();
