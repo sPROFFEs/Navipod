@@ -543,9 +543,28 @@ def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
             update_admin_job_progress(job_id, message="Another admin operation is already running", status="failed", progress=100, finished=True)
             return
 
-        if _get_worktree_dirty():
-            update_admin_job_progress(job_id, message="Repository has local tracked changes. Refusing to apply update.", status="failed", phase="preflight", progress=100, extra={"dirty": True}, finished=True)
-            return
+        # The apply phase later runs `git reset --hard <target_sha>`, which
+        # overwrites tracked local modifications by design. Untracked files
+        # (e.g. .env, generated configs) are NOT touched by reset --hard, so
+        # discarding tracked drift is the intended behaviour for self-hosted
+        # deployments where the operator has edited tracked files in place.
+        # We surface the discarded paths in the activity log for traceability.
+        dirty_status = _run_git(
+            ["status", "--porcelain", "--untracked-files=no", "--", ".", ":(exclude).env", ":(exclude)Navipod/.env"],
+            fallback="",
+        ) or ""
+        dirty_paths = [line.strip() for line in dirty_status.splitlines() if line.strip()]
+        if dirty_paths:
+            preview = ", ".join(dirty_paths[:10])
+            suffix = f" (+{len(dirty_paths) - 10} more)" if len(dirty_paths) > 10 else ""
+            update_admin_job_progress(
+                job_id,
+                message=f"Local tracked changes detected; they will be overwritten by the remote update: {preview}{suffix}",
+                status="running",
+                phase="preflight",
+                progress=5,
+                extra={"dirty": True, "dirty_paths": dirty_paths[:200]},
+            )
 
         update_admin_job_progress(job_id, message="Checking GitHub main for updates", status="running", phase="check", progress=10)
         payload = asyncio.run(_get_update_check_payload())
