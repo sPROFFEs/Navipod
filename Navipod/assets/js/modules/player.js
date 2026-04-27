@@ -7,8 +7,10 @@ import * as state from './state.js';
 import * as ui from './ui.js';
 import * as api from './api.js';
 
-// Background playback lock reference
-let _wakeLock = null;
+// Background playback lock references
+let _webLockRelease = null;        // resolves the navigator.locks promise
+let _screenWakeLock = null;        // navigator.wakeLock sentinel (only valid while visible)
+let _mediaSessionInitialised = false;
 let _activeListenSession = null;
 let _sessionPersistInterval = null;
 let _remoteQueueSaveTimer = null;
@@ -60,29 +62,48 @@ function sendTrackingEvent(eventType, session, extra = {}) {
   });
 }
 
-// Acquire a Web Lock to prevent Android Chrome from suspending the tab
+// Background playback keep-alive.
+//
+// On Android with the screen off the only thing that *actually* keeps the
+// browser delivering audio is having an active MediaSession bound to the
+// playing <audio> element. We use a couple of additional best-effort hints:
+//
+//  - navigator.wakeLock('screen') while the tab is visible: prevents the
+//    screen from sleeping during user-driven playback. Cannot be re-acquired
+//    while the page is hidden, but we re-request it on visibilitychange.
+//  - navigator.locks: holding an exclusive lock keeps the realm alive across
+//    some Chrome aggressive suspension paths. Harmless if unsupported.
 async function acquirePlaybackLock() {
-  // Release any existing lock
   releasePlaybackLock();
 
   try {
     if ('locks' in navigator) {
       navigator.locks.request('navipod-playback', { mode: 'exclusive' }, () => {
-        // This promise stays pending as long as we hold the lock
-        return new Promise((resolve) => {
-          _wakeLock = resolve;
-        });
+        return new Promise((resolve) => { _webLockRelease = resolve; });
       });
     }
   } catch (e) {
     console.log('[BG-PLAY] Web Lock not available:', e);
   }
+
+  try {
+    if ('wakeLock' in navigator && document.visibilityState === 'visible') {
+      _screenWakeLock = await navigator.wakeLock.request('screen');
+      _screenWakeLock.addEventListener?.('release', () => { _screenWakeLock = null; });
+    }
+  } catch (e) {
+    // Common when the tab is hidden — not actionable.
+  }
 }
 
 function releasePlaybackLock() {
-  if (_wakeLock) {
-    _wakeLock();
-    _wakeLock = null;
+  if (_webLockRelease) {
+    try { _webLockRelease(); } catch (e) { /* noop */ }
+    _webLockRelease = null;
+  }
+  if (_screenWakeLock) {
+    try { _screenWakeLock.release(); } catch (e) { /* noop */ }
+    _screenWakeLock = null;
   }
 }
 
@@ -229,6 +250,88 @@ async function requestPersistentStorage() {
 function applyPlaybackModes() {
   if (state.audio) {
     state.audio.loop = state.repeatMode === 'one';
+  }
+}
+
+// Register MediaSession action handlers exactly once. Re-registering on every
+// track change can cause some Android builds to drop the active session and
+// stop delivering audio when the screen turns off between tracks.
+function ensureMediaSessionHandlers() {
+  if (_mediaSessionInitialised) return;
+  if (!('mediaSession' in navigator)) return;
+
+  const ms = navigator.mediaSession;
+  const safeSet = (action, handler) => {
+    try { ms.setActionHandler(action, handler); } catch (e) { /* unsupported */ }
+  };
+
+  safeSet('play', () => {
+    state.audio.play().catch(() => {});
+    ms.playbackState = 'playing';
+  });
+  safeSet('pause', () => {
+    state.audio.pause();
+    ms.playbackState = 'paused';
+  });
+  safeSet('previoustrack', () => playPrev());
+  safeSet('nexttrack', () => playNext());
+  safeSet('seekbackward', (details) => {
+    const offset = (details && details.seekOffset) || 10;
+    state.audio.currentTime = Math.max(0, state.audio.currentTime - offset);
+  });
+  safeSet('seekforward', (details) => {
+    const offset = (details && details.seekOffset) || 10;
+    if (Number.isFinite(state.audio.duration)) {
+      state.audio.currentTime = Math.min(state.audio.duration, state.audio.currentTime + offset);
+    }
+  });
+  safeSet('seekto', (details) => {
+    if (details && details.seekTime != null) {
+      state.audio.currentTime = details.seekTime;
+    }
+  });
+  safeSet('stop', () => {
+    state.audio.pause();
+    ms.playbackState = 'paused';
+  });
+
+  _mediaSessionInitialised = true;
+}
+
+function inferArtworkMime(url) {
+  if (!url) return 'image/png';
+  const clean = url.split('?')[0].toLowerCase();
+  if (clean.endsWith('.jpg') || clean.endsWith('.jpeg')) return 'image/jpeg';
+  if (clean.endsWith('.webp')) return 'image/webp';
+  if (clean.endsWith('.gif')) return 'image/gif';
+  return 'image/png';
+}
+
+function updateMediaSessionMetadata(track) {
+  if (!('mediaSession' in navigator) || !track) return;
+  const artworkUrl = track.thumbnail || '/static/img/default_cover.png';
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title || 'Unknown',
+      artist: track.artist || 'Unknown',
+      album: track.album || '',
+      artwork: [
+        { src: artworkUrl, sizes: '96x96',   type: inferArtworkMime(artworkUrl) },
+        { src: artworkUrl, sizes: '256x256', type: inferArtworkMime(artworkUrl) },
+        { src: artworkUrl, sizes: '512x512', type: inferArtworkMime(artworkUrl) }
+      ]
+    });
+    if (Number.isFinite(state.audio.duration) && state.audio.duration > 0) {
+      try {
+        navigator.mediaSession.setPositionState({
+          duration: state.audio.duration,
+          position: Math.min(state.audio.currentTime || 0, state.audio.duration),
+          playbackRate: state.audio.playbackRate || 1
+        });
+      } catch (e) { /* unsupported */ }
+    }
+  } catch (e) {
+    console.warn('[BG-PLAY] Failed to set MediaSession metadata:', e);
   }
 }
 
@@ -492,60 +595,38 @@ export function playTrack(track) {
 
   if (track.db_id) {
     beginListenSession(track);
+
+    // Update metadata BEFORE swapping src so the existing MediaSession stays
+    // continuously active across track transitions on Android. We also keep
+    // playbackState='playing' to retain audio focus through the gap.
+    ensureMediaSessionHandlers();
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = 'playing';
+    }
+    updateMediaSessionMetadata(track);
+    document.title = `${track.title} - Navipod`;
+
+    // Assigning src triggers the load automatically — explicit load() resets
+    // the resource selection algorithm and on backgrounded tabs can drop the
+    // bound MediaSession.
     state.audio.src = `/api/stream/${track.db_id}`;
-    state.audio.load();
     state.audio
       .play()
       .then(() => {
         state.setIsPlaying(true);
         ui.updatePlayButton();
-        document.title = `${track.title} - Navipod`;
-
-        // Acquire Web Lock to prevent tab suspension on Android
         acquirePlaybackLock();
         startPlaybackSessionPersistence();
         persistPlaybackSession();
-
-        // Media Session API
-        if ('mediaSession' in navigator) {
-          navigator.mediaSession.metadata = new MediaMetadata({
-            title: track.title,
-            artist: track.artist,
-            album: track.album || '',
-            artwork: [{ src: track.thumbnail || '/static/img/default_cover.png', sizes: '512x512', type: 'image/png' }]
-          });
-          navigator.mediaSession.playbackState = 'playing';
-          navigator.mediaSession.setActionHandler('play', () => {
-            state.audio.play();
-            navigator.mediaSession.playbackState = 'playing';
-          });
-          navigator.mediaSession.setActionHandler('pause', () => {
-            state.audio.pause();
-            navigator.mediaSession.playbackState = 'paused';
-          });
-          navigator.mediaSession.setActionHandler('previoustrack', playPrev);
-          navigator.mediaSession.setActionHandler('nexttrack', playNext);
-          navigator.mediaSession.setActionHandler('seekbackward', () => {
-            state.audio.currentTime = Math.max(0, state.audio.currentTime - 10);
-          });
-          navigator.mediaSession.setActionHandler('seekforward', () => {
-            state.audio.currentTime = Math.min(state.audio.duration, state.audio.currentTime + 10);
-          });
-          try {
-            navigator.mediaSession.setActionHandler('seekto', (details) => {
-              if (details.seekTime != null) {
-                state.audio.currentTime = details.seekTime;
-              }
-            });
-          } catch (e) {
-            /* seekto not supported on all browsers */
-          }
-        }
+        updateMediaSessionMetadata(track);
       })
       .catch((e) => {
         if (e.name === 'AbortError') return;
         console.error('Playback error:', e);
         ui.showToast('Playback failed', 'error');
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'paused';
+        }
         persistPlaybackSession();
       });
   } else if (track.is_radio) {
@@ -814,6 +895,7 @@ export function setupPlayer() {
   syncPlayerShellVisibility();
   requestPersistentStorage();
   applyPlaybackModes();
+  ensureMediaSessionHandlers();
 
   if (playBtn) {
     playBtn.addEventListener('click', () => {
@@ -849,15 +931,23 @@ export function setupPlayer() {
   });
 
   state.audio.addEventListener('ended', () => {
-    state.setIsPlaying(false);
-    ui.updatePlayButton();
     state.audio._endHandled = true;
-    stopPlaybackSessionPersistence();
     finalizeListenSession('ended');
+    const willContinue = hasUpcomingTrack();
+    // If another track is queued, keep the MediaSession alive so Android
+    // doesn't drop audio focus during the brief swap. Only the *final* track
+    // should transition the player into the idle state.
     if ('mediaSession' in navigator) {
-      navigator.mediaSession.playbackState = hasUpcomingTrack() ? 'playing' : 'none';
+      navigator.mediaSession.playbackState = willContinue ? 'playing' : 'none';
     }
-    playNext();
+    if (willContinue) {
+      playNext();
+    } else {
+      state.setIsPlaying(false);
+      ui.updatePlayButton();
+      stopPlaybackSessionPersistence();
+      playNext(); // still call to reach the clearFinishedPlaybackState branch
+    }
     syncPlayerShellVisibility();
   });
 
@@ -951,6 +1041,10 @@ export function setupPlayer() {
         console.log('[BG-PLAY] Track ended while backgrounded, advancing...');
         state.audio._endHandled = true;
         playNext();
+      }
+      // Re-acquire screen wake lock (cannot be requested while hidden).
+      if (!state.audio.paused) {
+        acquirePlaybackLock();
       }
       // Update MediaSession state
       if ('mediaSession' in navigator) {

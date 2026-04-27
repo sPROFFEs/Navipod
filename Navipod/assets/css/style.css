@@ -665,28 +665,29 @@ body {
 .play-main {
     width: 40px;
     height: 40px;
-    background: white;
+    background: var(--accent);
+    border: 1px solid transparent;
     border-radius: 50%;
-    color: black;
+    color: #0b1410;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.2);
+    box-shadow: 0 4px 12px rgba(20, 154, 81, 0.28);
     transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* When playing: purple glassmorphic style (like mobile) */
 .play-main.is-playing {
-    background: rgba(168, 85, 247, 0.15);
+    background: rgba(20, 154, 81, 0.16);
     color: var(--accent);
-    border: 1px solid rgba(168, 85, 247, 0.3);
+    border-color: rgba(20, 154, 81, 0.4);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    box-shadow: 0 4px 15px rgba(168, 85, 247, 0.2);
+    box-shadow: 0 4px 15px rgba(20, 154, 81, 0.25);
 }
 
 .play-main:hover {
     transform: scale(1.05);
+    box-shadow: 0 6px 18px rgba(20, 154, 81, 0.4);
 }
 
 .active-control {
@@ -2636,26 +2637,27 @@ body {
 .fs-play-main {
     width: 72px !important;
     height: 72px !important;
-    background: white;
+    background: var(--accent);
+    border: 1px solid transparent;
     border-radius: 50%;
-    color: black;
+    color: #0b1410;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 8px 25px rgba(255, 255, 255, 0.2);
+    box-shadow: 0 8px 25px rgba(20, 154, 81, 0.32);
     transition: all 0.3s;
 }
 
 .fs-play-main.is-playing {
-    background: rgba(168, 85, 247, 0.15);
+    background: rgba(20, 154, 81, 0.16);
     color: var(--accent);
-    border: 1px solid rgba(168, 85, 247, 0.3);
-    box-shadow: 0 8px 25px rgba(168, 85, 247, 0.3);
+    border-color: rgba(20, 154, 81, 0.4);
+    box-shadow: 0 8px 25px rgba(20, 154, 81, 0.3);
 }
 
 .fs-play-main:hover {
     transform: scale(1.1);
-    box-shadow: 0 12px 35px rgba(255, 255, 255, 0.3);
+    box-shadow: 0 12px 35px rgba(20, 154, 81, 0.45);
 }
 
 .fs-progress-container {
