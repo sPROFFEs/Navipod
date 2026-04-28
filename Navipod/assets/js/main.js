@@ -177,18 +177,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   const restoredSession = await player.restorePlaybackSession();
 
   // Load initial view
-  // Load initial view only if we are on the root path
+  // Load initial view only if we are on the root/portal path.
+  // window.NAVIPOD_INITIAL_VIEW / NAVIPOD_INITIAL_PARAM are set by app_shell.html
+  // (a non-blocking inline <script> that runs before this deferred module).
+  // We are the *only* caller of loadView on page load — the template no longer
+  // calls it a second time, eliminating the double-render (fix Q-10).
+  const _serverView  = window.NAVIPOD_INITIAL_VIEW  ?? 'home';
+  const _serverParam = window.NAVIPOD_INITIAL_PARAM ?? null;
+
   if (window.location.pathname === '/' || window.location.pathname === '/index.html') {
     if (restoredSession?.view && restoredSession.view !== 'home') {
       views.loadView(restoredSession.view, restoredSession.param ?? null, { replaceHistory: true });
     } else {
-      views.loadView('home', null, { replaceHistory: true });
+      views.loadView(_serverView, _serverParam, { replaceHistory: true });
     }
   } else if (window.location.pathname === '/portal') {
     if (restoredSession?.view && restoredSession.view !== 'home') {
       views.loadView(restoredSession.view, restoredSession.param ?? null, { replaceHistory: true });
     } else {
-      views.loadView('home', null, { replaceHistory: true });
+      views.loadView(_serverView, _serverParam, { replaceHistory: true });
     }
   } else {
     // If we are on a different page (e.g. /admin/system), we just set the view state without rendering

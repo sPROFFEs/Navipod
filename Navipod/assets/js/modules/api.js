@@ -268,10 +268,13 @@ export async function fetchRadioPlace(placeId) {
 
 export async function injectRadioApi(id, name) {
   try {
+    // Backend expects multipart/form-data with fields: channel_id, name
+    const form = new FormData();
+    form.append('channel_id', id);
+    form.append('name', name);
     const res = await fetch(`${state.API}/radio/inject`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ radio_garden_id: id, name })
+      body: form
     });
     return res.ok;
   } catch (e) {

@@ -76,8 +76,14 @@ export async function toggleFavorite(trackId, btn) {
       res = await fetch(`${state.API}/favorites/${trackId}`, { method: 'POST' });
     } else {
       res = await fetch(`${state.API}/favorites/${trackId}`, { method: 'DELETE' });
-      if (res.status === 404 || res.status === 405) {
-        res = await fetch(`${state.API}/favorites/${trackId}`, { method: 'POST' });
+      // 404 on DELETE means the track was already not favorited — that IS the
+      // desired state after an unlike, so treat it as success instead of
+      // retrying with POST (which would incorrectly re-add the favorite).
+      if (res.status === 404) {
+        state.userFavorites.delete(trackId);
+        if (btn) updateElement(btn, false);
+        if (window.lucide) lucide.createIcons();
+        return;
       }
     }
 

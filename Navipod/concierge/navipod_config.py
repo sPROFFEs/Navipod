@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     SPOTIFY_CLIENT_ID: str | None = None
     SPOTIFY_CLIENT_SECRET: str | None = None
     
+    # Navidrome internal auth (used by concierge↔Navidrome Subsonic calls)
+    # Override via NAVIDROME_INTERNAL_PASSWORD env var in production.
+    NAVIDROME_INTERNAL_PASSWORD: str = "enc:000000"
+
     # Infrastructure
     CHECK_INTERVAL_MINUTES: int = 30
     NAVIDROME_IMAGE: str = "deluan/navidrome:latest"

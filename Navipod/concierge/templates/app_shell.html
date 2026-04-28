@@ -17,9 +17,9 @@
 
 {% block scripts %}
 <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        // Trigger the specific view for this page (SPA root)
-        loadView({{ initial_view|default('home')|tojson }}, {{ initial_param|default(none)|tojson }});
-    });
+    // Expose server-rendered initial view hints for main.js.
+    // main.js reads these and calls loadView exactly once — no second call here.
+    window.NAVIPOD_INITIAL_VIEW  = {{ initial_view|default('home')|tojson }};
+    window.NAVIPOD_INITIAL_PARAM = {{ initial_param|default(none)|tojson }};
 </script>
 {% endblock %}

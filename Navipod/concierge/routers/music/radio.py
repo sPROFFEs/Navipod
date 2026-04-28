@@ -9,6 +9,7 @@ import manager
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from http_client import http_client
+from navipod_config import settings
 from shared_templates import templates
 from sqlalchemy.orm import Session
 
@@ -29,7 +30,7 @@ RG_HEADERS = {
 async def fetch_saved_radios_for_user(user):
     target_ip = manager.get_or_spawn_container(user.username)
     url = f"http://{target_ip}:4533/{user.username}/rest/getInternetRadioStations"
-    params = {"u": user.username, "p": "enc:000000", "v": "1.16.1", "c": "navipod-concierge", "f": "json"}
+    params = {"u": user.username, "p": settings.NAVIDROME_INTERNAL_PASSWORD, "v": "1.16.1", "c": "navipod-concierge", "f": "json"}
     headers = {"x-navidrome-user": user.username}
 
     resp = await http_client.get(url, params=params, headers=headers, timeout=5.0)
@@ -66,8 +67,12 @@ async def radio_page(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/api/radio/browse")
-async def browse_radio_garden():
+async def browse_radio_garden(request: Request, db: Session = Depends(get_db)):
     """Get recommended radio playlists from Radio Garden"""
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
     url = "https://radio.garden/api/ara/content/browse"
     try:
         resp = await http_client.get(url, headers=RG_HEADERS, timeout=10.0)
@@ -82,11 +87,15 @@ async def browse_radio_garden():
 
 
 @router.get("/api/radio/playlist/{playlist_path:path}")
-async def get_playlist_content(playlist_path: str):
+async def get_playlist_content(playlist_path: str, request: Request, db: Session = Depends(get_db)):
     """
     Get playlist content from Radio Garden.
     Example path: playlist/rain-and-tears/5aeJ27yR
     """
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
     # Build URL from the frontend path
     url = f"https://radio.garden/api/ara/content/{playlist_path.lstrip('/')}"
 
@@ -113,8 +122,12 @@ async def get_playlist_content(playlist_path: str):
 
 
 @router.get("/api/radio/search")
-async def search_radio_garden(q: str):
+async def search_radio_garden(q: str, request: Request, db: Session = Depends(get_db)):
     """Search radio stations on Radio Garden"""
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
     url = f"https://radio.garden/api/search?q={q}"
     try:
         resp = await http_client.get(url, headers=RG_HEADERS, timeout=10.0)
@@ -125,8 +138,12 @@ async def search_radio_garden(q: str):
 
 
 @router.get("/api/radio/place/{place_id}")
-async def get_place_radios(place_id: str):
+async def get_place_radios(place_id: str, request: Request, db: Session = Depends(get_db)):
     """Get radio stations for a specific location"""
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
     url = f"https://radio.garden/api/ara/content/page/{place_id}"
     try:
         resp = await http_client.get(url, headers=RG_HEADERS, timeout=10.0)
@@ -240,7 +257,7 @@ async def delete_saved_radio(radio_id: str, request: Request, db: Session = Depe
         url = f"http://{target_ip}:4533/{user.username}/rest/deleteInternetRadioStation"
         params = {
             "u": user.username,
-            "p": "enc:000000",
+            "p": settings.NAVIDROME_INTERNAL_PASSWORD,
             "v": "1.16.1",
             "c": "navipod-concierge",
             "f": "json",

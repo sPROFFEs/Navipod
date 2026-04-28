@@ -399,8 +399,18 @@ async def login(
         pass
 
     if next and next != "None":
-        clean_next = next.strip("/")
-        redirect_url = f"https://{request.headers.get('host')}/{username}/{clean_next}"
+        # SECURITY: reject any next= value that looks like an absolute URL or
+        # contains a scheme/authority to prevent open-redirect attacks.
+        _next_stripped = next.strip()
+        _is_safe = (
+            _next_stripped
+            and "://" not in _next_stripped
+            and not _next_stripped.startswith("//")
+            and not _next_stripped.startswith("\\")
+        )
+        if _is_safe:
+            clean_next = _next_stripped.strip("/")
+            redirect_url = f"/portal/{username}/{clean_next}"
 
     response = RedirectResponse(url=redirect_url, status_code=303)
     # SECURITY HARDENING: HttpOnly, configurable Secure flag, SameSite=Lax
@@ -764,9 +774,9 @@ async def gateway(username: str, path: str, request: Request, db: Session = Depe
     # 2. AUTH RÁPIDA (Sin DB)
     authorized = False
 
-    # Check cookie token
+    # Check cookie token — pass db so blacklisted (logged-out) tokens are rejected
     token = request.cookies.get("access_token")
-    if token and auth.verify_token(token, username):
+    if token and auth.verify_token(token, username, db=db):
         authorized = True
 
     # 3. AUTH LENTA (Legacy / Subsonic API)

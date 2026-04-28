@@ -61,7 +61,7 @@ async def sync_favorite_to_navidrome(user, track, is_starred: bool):
     """Synchronize favorite status with Navidrome via Subsonic API"""
     try:
         target_ip = manager.get_or_spawn_container(user.username)
-        base_params = {"u": user.username, "p": "enc:000000", "v": "1.16.1", "c": "navipod-concierge", "f": "json"}
+        base_params = {"u": user.username, "p": settings.NAVIDROME_INTERNAL_PASSWORD, "v": "1.16.1", "c": "navipod-concierge", "f": "json"}
         headers = {"x-navidrome-user": user.username}
 
         # 1. Search for track in Navidrome to get its ID
@@ -121,7 +121,7 @@ async def sync_navidrome_to_local(db: Session, user):
     """
     try:
         target_ip = manager.get_or_spawn_container(user.username)
-        base_params = {"u": user.username, "p": "enc:000000", "v": "1.16.1", "c": "navipod-concierge", "f": "json"}
+        base_params = {"u": user.username, "p": settings.NAVIDROME_INTERNAL_PASSWORD, "v": "1.16.1", "c": "navipod-concierge", "f": "json"}
         headers = {"x-navidrome-user": user.username}
 
         async with httpx.AsyncClient(timeout=10.0) as client:
