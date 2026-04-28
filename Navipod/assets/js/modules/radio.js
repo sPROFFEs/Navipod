@@ -20,16 +20,19 @@ export async function renderRadio(container) {
         </div>
         <p class="section-subtitle">Dial: <span id="radio-dial" class="text-accent">${state.currentRadioHub.toUpperCase()}</span></p>
 
-        <h2 class="shelf-title" style="margin-bottom: 16px;">Editorial Playlists</h2>
+        <h2 class="shelf-title radio-shelf-title" style="margin-bottom: 16px;">Editorial Playlists</h2>
         <div id="radio-playlists" class="grid-shelf"></div>
 
-        <h2 class="shelf-title" style="margin: 32px 0 16px 0;">Search Stations</h2>
-        <div class="search-bar-row">
+        <h2 class="shelf-title radio-shelf-title" style="margin: 32px 0 16px 0;">Search Stations</h2>
+        <div class="search-bar-row radio-search-bar">
             <div class="search-input-wrapper glass-panel" style="margin:0; flex:1;">
                 <i data-lucide="radio" class="search-icon"></i>
                 <input type="text" id="radio-search-input" placeholder="Search city or station..." value="${state.currentRadioHub}" onkeyup="if(event.key==='Enter') executeRadioSearch()">
             </div>
-            <button onclick="executeRadioSearch()" class="btn-primary">Search</button>
+            <button onclick="executeRadioSearch()" class="btn-primary radio-search-btn">
+                <i data-lucide="search"></i>
+                <span>Search</span>
+            </button>
         </div>
 
         <div id="radio-results" style="margin-top: 24px;"></div>
@@ -177,30 +180,68 @@ export function drawRadioGrid(stations) {
   const grid = document.getElementById('radio-results');
   if (!grid) return;
 
-  grid.innerHTML = `<div class="grid-shelf">${stations
-    .map((s) => {
-      if (!s || !s.url) return '';
-      const id = s.url.split('/').pop();
-      if (id === 'channels' || id.length < 5) return '';
-      const title = (s.title || 'Unknown').replace(/'/g, "\\'");
-      return `
-            <div class="card glass-hover">
-                <div class="card-img-container radio-card-bg">
-                    <div class="card-placeholder-icon">
-                        <i data-lucide="radio"></i>
-                    </div>
-                    <div class="play-overlay">
-                        <div class="card-actions">
-                            <button class="play-btn-card" onclick="event.stopPropagation(); playRadioStream('${id}', '${title}')" title="Preview"><i data-lucide="play"></i></button>
-                            <button class="play-btn-card" onclick="event.stopPropagation(); injectRadioToNavidrome('${id}', '${title}')" title="Add to Navidrome"><i data-lucide="plus"></i></button>
-                        </div>
-                    </div>
+  const isMobile = window.innerWidth <= 768;
+
+  if (isMobile) {
+    // ── Mobile: vertical list rows (accessible tap targets, no overlay needed) ──
+    grid.innerHTML = `<div class="saved-radio-list">${stations
+      .map((s) => {
+        if (!s || !s.url) return '';
+        const id = s.url.split('/').pop();
+        if (id === 'channels' || id.length < 5) return '';
+        const safeTitle  = ui.escHtml(s.title || 'Unknown');
+        const jsSafeTitle = (s.title || 'Unknown').replace(/'/g, "\\'");
+        const safeSub    = ui.escHtml(s.subtitle || 'Streaming');
+        return `
+          <div class="saved-radio-row">
+            <button class="saved-radio-main"
+                    onclick="playRadioStream('${id}', '${jsSafeTitle}')"
+                    title="Play ${safeTitle}">
+              <span class="saved-radio-icon"><i data-lucide="radio"></i></span>
+              <span class="saved-radio-copy">
+                <span class="saved-radio-name">${safeTitle}</span>
+                <span class="saved-radio-meta">${safeSub}</span>
+              </span>
+            </button>
+            <button class="action-btn radio-save-btn"
+                    onclick="injectRadioToNavidrome('${id}', '${jsSafeTitle}')"
+                    title="Save to Navidrome">
+              <i data-lucide="plus"></i>
+            </button>
+          </div>`;
+      })
+      .join('')}</div>`;
+  } else {
+    // ── Desktop: card grid with hover overlay ──
+    grid.innerHTML = `<div class="grid-shelf">${stations
+      .map((s) => {
+        if (!s || !s.url) return '';
+        const id = s.url.split('/').pop();
+        if (id === 'channels' || id.length < 5) return '';
+        const title = (s.title || 'Unknown').replace(/'/g, "\\'");
+        return `
+          <div class="card glass-hover"
+               onclick="document.querySelectorAll('#radio-results .card.active-mobile').forEach(c=>c!==this&&c.classList.remove('active-mobile')); this.classList.toggle('active-mobile')">
+            <div class="card-img-container radio-card-bg">
+              <div class="card-placeholder-icon"><i data-lucide="radio"></i></div>
+              <div class="play-overlay">
+                <div class="card-actions">
+                  <button class="play-btn-card"
+                          onclick="event.stopPropagation(); playRadioStream('${id}', '${title}')"
+                          title="Play"><i data-lucide="play"></i></button>
+                  <button class="play-btn-card"
+                          onclick="event.stopPropagation(); injectRadioToNavidrome('${id}', '${title}')"
+                          title="Save to Navidrome"><i data-lucide="plus"></i></button>
                 </div>
-                <div class="card-title">${ui.escHtml(s.title || 'Unknown')}</div>
-                <div class="card-subtitle">${ui.escHtml(s.subtitle || 'Streaming')}</div>
-            </div>`;
-    })
-    .join('')}</div>`;
+              </div>
+            </div>
+            <div class="card-title">${ui.escHtml(s.title || 'Unknown')}</div>
+            <div class="card-subtitle">${ui.escHtml(s.subtitle || 'Streaming')}</div>
+          </div>`;
+      })
+      .join('')}</div>`;
+  }
+
   lucide.createIcons();
 }
 

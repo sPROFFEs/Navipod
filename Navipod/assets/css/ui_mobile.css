@@ -571,3 +571,71 @@
         grid-template-columns: 16px 24px minmax(0, 1fr) auto !important;
     }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   RADIO PAGE — MOBILE RESPONSIVE
+   ═══════════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+
+    /* ── Search bar: stacks vertically on mobile ── */
+    .radio-search-bar {
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+    .radio-search-bar .search-input-wrapper {
+        flex: none;
+        width: 100%;
+        margin: 0;
+    }
+    .radio-search-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    /* ── Editorial playlist shelf: limit card width so 2 fit ── */
+    #radio-playlists.grid-shelf > .card {
+        flex: 0 0 140px;
+        min-width: 140px;
+    }
+
+    /* ── Radio station list rows (mobile list, not grid) ── */
+    /* drawRadioGrid already renders saved-radio-row on mobile;
+       these rules ensure the save button is always a comfortable tap target */
+    #radio-results .saved-radio-list {
+        gap: 8px;
+    }
+    #radio-results .radio-save-btn {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        border-radius: 50%;
+        background: var(--surface-1);
+        border: 1px solid var(--border-subtle);
+        color: var(--text-sub);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    #radio-results .radio-save-btn i,
+    #radio-results .radio-save-btn svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    /* ── Section spacing ── */
+    .shelf-title.radio-shelf-title {
+        margin-top: 24px;
+        margin-bottom: 12px;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Slightly smaller editorial cards on very narrow screens */
+    #radio-playlists.grid-shelf > .card {
+        flex: 0 0 120px;
+        min-width: 120px;
+    }
+}
