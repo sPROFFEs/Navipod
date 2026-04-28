@@ -433,68 +433,105 @@
     <script>
     (function () {
         var DISMISS_KEY = 'navipod_pwa_dismissed';
-        var banner = document.getElementById('pwa-banner');
-        var installBtn = document.getElementById('pwa-install-btn');
-        var dismissBtn = document.getElementById('pwa-dismiss-btn');
-        var hintEl = document.getElementById('pwa-banner-hint');
+        var banner      = document.getElementById('pwa-banner');
+        var installBtn  = document.getElementById('pwa-install-btn');
+        var dismissBtn  = document.getElementById('pwa-dismiss-btn');
+        var hintEl      = document.getElementById('pwa-banner-hint');
         var deferredPrompt = null;
+        var bannerVisible  = false;
 
-        // Don't show if already installed (standalone mode) or previously dismissed
-        if (window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches) return;
+        // ── Early exits ───────────────────────────────────────────────────
+        // Already running as installed PWA
+        if (window.navigator.standalone) return;
+        if (window.matchMedia('(display-mode: standalone)').matches) return;
+        // User already dismissed permanently
         if (localStorage.getItem(DISMISS_KEY)) return;
 
+        // ── Helpers ───────────────────────────────────────────────────────
         function showBanner() {
+            if (bannerVisible) return;
+            bannerVisible = true;
             banner.style.display = 'flex';
-            // Trigger transition on next frame
             requestAnimationFrame(function () {
                 requestAnimationFrame(function () { banner.classList.add('visible'); });
             });
         }
 
         function hideBanner() {
+            bannerVisible = false;
             banner.classList.remove('visible');
             setTimeout(function () { banner.style.display = 'none'; }, 400);
         }
 
-        dismissBtn.addEventListener('click', function () {
-            localStorage.setItem(DISMISS_KEY, '1');
-            hideBanner();
-        });
+        function setManualMode(hint) {
+            hintEl.textContent = hint;
+            installBtn.textContent = 'Got it';
+            installBtn.onclick = function () {
+                localStorage.setItem(DISMISS_KEY, '1');
+                hideBanner();
+            };
+        }
 
-        // ── Android / Chrome: use BeforeInstallPromptEvent ────────────────
-        window.addEventListener('beforeinstallprompt', function (e) {
-            e.preventDefault();
-            deferredPrompt = e;
-            showBanner();
-        });
-
-        installBtn.addEventListener('click', function () {
-            if (deferredPrompt) {
+        function setNativeMode() {
+            hintEl.textContent = 'Add to your home screen for the full app experience';
+            installBtn.textContent = 'Install';
+            installBtn.onclick = function () {
+                if (!deferredPrompt) return;
                 deferredPrompt.prompt();
                 deferredPrompt.userChoice.then(function (result) {
                     if (result.outcome === 'accepted') localStorage.setItem(DISMISS_KEY, '1');
                     deferredPrompt = null;
                     hideBanner();
                 });
-            }
-        });
-
-        // ── iOS Safari: no BeforeInstallPrompt, show manual instructions ──
-        var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-        var isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-        if (isIOS && isSafari) {
-            hintEl.textContent = 'Tap the Share button \u{1F4E4} then “Add to Home Screen”';
-            installBtn.textContent = 'Got it';
-            installBtn.addEventListener('click', function () {
-                localStorage.setItem(DISMISS_KEY, '1');
-                hideBanner();
-            });
-            setTimeout(showBanner, 1200);
+            };
         }
 
-        // Register service worker so the app is installable in future visits
+        dismissBtn.onclick = function () {
+            localStorage.setItem(DISMISS_KEY, '1');
+            hideBanner();
+        };
+
+        // ── Platform detection ────────────────────────────────────────────
+        var ua      = navigator.userAgent;
+        var isIOS   = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+        var isSafari = isIOS && /Safari/.test(ua) && !/CriOS|FxiOS|OPiOS/.test(ua);
+        var isAndroid = /Android/.test(ua);
+
+        // ── iOS Safari ────────────────────────────────────────────────────
+        // No BeforeInstallPromptEvent on iOS — always show manual hint.
+        if (isSafari) {
+            setManualMode('Tap the Share button 📤 then “Add to Home Screen”');
+            setTimeout(showBanner, 1400);
+            return; // iOS done — skip Android + SW registration below
+        }
+
+        // ── Android / Chrome ──────────────────────────────────────────────
+        // beforeinstallprompt only fires when Chrome is satisfied the PWA
+        // criteria are met (active SW + engagement score). It does NOT fire
+        // on a first-ever visit. Strategy:
+        //   • Always show the banner after a delay with a manual fallback.
+        //   • If beforeinstallprompt fires (before OR after the delay),
+        //     upgrade to the native install button automatically.
+
+        // Start in manual-instructions mode
+        setManualMode('Open Chrome menu ⋮ then tap “Install App”');
+
+        // If Chrome gives us the native prompt at any point, upgrade the button
+        window.addEventListener('beforeinstallprompt', function (e) {
+            e.preventDefault();
+            deferredPrompt = e;
+            setNativeMode();   // swap hint + button action
+            showBanner();      // show immediately if not already visible
+        });
+
+        // Show after delay even without beforeinstallprompt
+        setTimeout(showBanner, 1400);
+
+        // ── Service Worker registration ───────────────────────────────────
+        // Registering here ensures the SW is active on the NEXT visit,
+        // which is when beforeinstallprompt will reliably fire.
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js', { scope: '/' });
+            navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function(){});
         }
     })();
     </script>
