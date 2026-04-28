@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <link rel="icon" type="image/png" href="/assets/icon.png">
+    <link rel="manifest" href="/assets/site.webmanifest">
 
     <style>
         :root {
@@ -506,30 +507,23 @@
         }
 
         // ── Android / Chrome ──────────────────────────────────────────────
-        // beforeinstallprompt only fires when Chrome is satisfied the PWA
-        // criteria are met (active SW + engagement score). It does NOT fire
-        // on a first-ever visit. Strategy:
-        //   • Always show the banner after a delay with a manual fallback.
-        //   • If beforeinstallprompt fires (before OR after the delay),
-        //     upgrade to the native install button automatically.
+        // Chrome fires beforeinstallprompt when ALL PWA criteria are met:
+        //   manifest present on current page + active SW + HTTPS + engagement.
+        // We capture the event, prevent the mini-infobar, and show our own
+        // banner instead so the user gets a consistent in-page Install button.
 
-        // Start in manual-instructions mode
-        setManualMode('Open Chrome menu ⋮ then tap “Install App”');
-
-        // If Chrome gives us the native prompt at any point, upgrade the button
         window.addEventListener('beforeinstallprompt', function (e) {
             e.preventDefault();
             deferredPrompt = e;
-            setNativeMode();   // swap hint + button action
-            showBanner();      // show immediately if not already visible
+            setNativeMode();
+            showBanner();
         });
 
-        // Show after delay even without beforeinstallprompt
-        setTimeout(showBanner, 1400);
-
         // ── Service Worker registration ───────────────────────────────────
-        // Registering here ensures the SW is active on the NEXT visit,
-        // which is when beforeinstallprompt will reliably fire.
+        // SW must be registered on a page that also has the manifest link.
+        // Both conditions are now met here: <link rel=”manifest”> is in <head>
+        // and we register /sw.js below, so Chrome can evaluate installability
+        // on this page and fire beforeinstallprompt on qualifying visits.
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function(){});
         }
