@@ -1606,20 +1606,29 @@ body {
     text-overflow: ellipsis;
 }
 
-/* Playlist drag-and-drop */
+/* ── Playlist drag-and-drop ──────────────────────────────────────────────
+   .playlist-draggable-list adds a 20 px grip column BEFORE the number
+   column so the base .track-row grid is untouched everywhere else.       */
+
+.playlist-draggable-list .track-row {
+    grid-template-columns: 20px 40px 1fr 100px 120px;
+}
+
 .track-drag-handle {
     cursor: grab;
     color: var(--text-faint);
     display: flex;
     align-items: center;
+    justify-content: center;
     flex-shrink: 0;
-    padding: 0 4px 0 0;
+    width: 20px;
     opacity: 0;
     transition: opacity 0.15s;
     user-select: none;
 }
 .track-row:hover .track-drag-handle { opacity: 1; }
 .track-drag-handle:active { cursor: grabbing; }
+
 .track-row.dragging {
     opacity: 0.35;
     background: rgba(255, 255, 255, 0.03) !important;

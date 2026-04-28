@@ -547,3 +547,20 @@
         max-width: 100% !important;
     }
 }
+
+/* ── Playlist drag-and-drop: mobile column overrides ─────────────────── */
+@media (max-width: 768px) {
+    .playlist-draggable-list.track-list .track-row,
+    .playlist-draggable-list .track-row {
+        grid-template-columns: 18px 28px minmax(0, 1fr) auto !important;
+    }
+    /* Hide drag handles on touch-only screens — reorder is touch-drag */
+    .track-drag-handle { opacity: 0.45; }
+}
+
+@media (max-width: 480px) {
+    .playlist-draggable-list.track-list .track-row,
+    .playlist-draggable-list .track-row {
+        grid-template-columns: 16px 24px minmax(0, 1fr) auto !important;
+    }
+}

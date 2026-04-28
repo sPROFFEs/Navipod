@@ -159,12 +159,19 @@ function initPlaylistDragDrop(container, playlistId) {
 
   const gripSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>`;
 
+  // Mark the list so the CSS can add the extra grip column without
+  // breaking the base .track-row grid-template-columns.
+  trackList.classList.add('playlist-draggable-list');
+
   Array.from(trackList.querySelectorAll('.track-row')).forEach((row, index) => {
     const handle = document.createElement('span');
     handle.className = 'track-drag-handle';
     handle.title = 'Drag to reorder';
     handle.innerHTML = gripSvg;
+    // Only activate draggable on mousedown on the handle itself so normal
+    // row clicks (play) still work.
     handle.addEventListener('mousedown', () => { row.draggable = true; });
+    handle.addEventListener('touchstart', () => { row.draggable = true; }, { passive: true });
     row.prepend(handle);
     row.dataset.dragIndex = index;
   });
