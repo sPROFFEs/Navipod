@@ -9,12 +9,38 @@ logger = logging.getLogger("security")
 
 # IN-MEMORY STORE (Volatile)
 # Structure: { "IP_ADDR": { "attempts": 0, "block_until": timestamp, "last_seen": timestamp } }
-login_attempts = {}
+login_attempts: dict[str, dict] = {}
 
 # --- HARDNESS CONFIGURATION ---
 MAX_ATTEMPTS = 5          # Failures allowed before ban
 BLOCK_TIME = 900          # Punishment time: 15 minutes (900s)
 RESET_TIME = 300          # Time to forget previous failures: 5 minutes
+
+# --- SWEEP THROTTLE ---
+# Purge stale entries at most once every N login-check calls to avoid
+# iterating the full dict on every request (Q-08: dict never cleaned).
+_check_call_counter = 0
+_PURGE_EVERY = 50         # sweep every 50 check_brute_force calls
+
+
+def purge_stale_attempts() -> int:
+    """Remove expired / inactive entries from login_attempts.
+
+    Called automatically every _PURGE_EVERY invocations of check_brute_force.
+    Safe to call manually at any time (e.g. from a background task).
+    Returns the number of entries removed.
+    """
+    now = time.time()
+    stale = [
+        ip
+        for ip, rec in login_attempts.items()
+        if rec["block_until"] <= now and (now - rec["last_seen"]) > RESET_TIME
+    ]
+    for ip in stale:
+        del login_attempts[ip]
+    if stale:
+        logger.debug("Purged %d stale login-attempt entries", len(stale))
+    return len(stale)
 
 def get_real_ip(request: Request) -> str:
     """
@@ -57,7 +83,14 @@ def get_real_ip(request: Request) -> str:
 def check_brute_force(request: Request):
     """
     Called BEFORE processing login. If banned, raises 429 error.
+    Also triggers a periodic sweep of stale entries (every _PURGE_EVERY calls).
     """
+    global _check_call_counter
+    _check_call_counter += 1
+    if _check_call_counter >= _PURGE_EVERY:
+        _check_call_counter = 0
+        purge_stale_attempts()
+
     client_ip = get_real_ip(request)
     now = time.time()
     

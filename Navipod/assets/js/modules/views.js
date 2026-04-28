@@ -182,11 +182,13 @@ export async function renderExternalView(container, url) {
     const newContent = doc.getElementById('view-container');
 
     if (newContent) {
-      container.innerHTML = newContent.innerHTML;
+      // Use replaceChildren with DOM nodes — avoids re-serialising/parsing HTML
+      // and keeps the browser from re-executing inline scripts in the fragment.
+      container.replaceChildren(...Array.from(newContent.childNodes));
     } else {
       const main = doc.querySelector('main');
-      if (main) container.innerHTML = main.innerHTML;
-      else container.innerHTML = text;
+      if (main) container.replaceChildren(...Array.from(main.childNodes));
+      else container.innerHTML = text; // Last resort: raw unparsed text
     }
 
     lucide.createIcons();

@@ -10,7 +10,6 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.FileHandler("janitor.log"),
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -90,10 +89,43 @@ def sync_playlists(db: Session):
 
 def reap_orphans(db: Session):
     """
-    Optional: Clean up files in pool that have no Track record?
-    Or Clean up M3Us that have no Playlist record?
+    Remove .m3u files from user music directories that have no matching Playlist
+    record in the database.  Skips users whose directory doesn't exist.
+    Safe to call at any time; errors on individual files are logged and skipped.
     """
-    pass
+    users = db.query(User).all()
+    removed = 0
+    for user in users:
+        user_music_root = os.path.join(settings.MUSIC_ROOT, user.username, "music")
+        if not os.path.isdir(user_music_root):
+            continue
+
+        # Build the set of M3U filenames that *should* exist for this user
+        playlists = db.query(Playlist).filter(Playlist.owner_id == user.id).all()
+        expected_names: set[str] = set()
+        for pl in playlists:
+            safe_name = "".join(c for c in pl.name if c.isalnum() or c in (' ', '-', '_')).strip()
+            if not safe_name:
+                safe_name = f"Playlist_{pl.id}"
+            expected_names.add(f"{safe_name}.m3u")
+
+        # Remove any .m3u file that has no corresponding playlist record
+        try:
+            for fname in os.listdir(user_music_root):
+                if not fname.endswith(".m3u"):
+                    continue
+                if fname not in expected_names:
+                    fpath = os.path.join(user_music_root, fname)
+                    try:
+                        os.remove(fpath)
+                        logger.info("Removed orphan M3U: %s", fpath)
+                        removed += 1
+                    except OSError as err:
+                        logger.warning("Could not remove orphan %s: %s", fpath, err)
+        except OSError as err:
+            logger.warning("Could not list directory %s: %s", user_music_root, err)
+
+    logger.info("Orphan reap complete: %d file(s) removed.", removed)
 
 def main():
     db = SessionLocal()

@@ -272,7 +272,18 @@ class PlaylistItem(Base):
     track = relationship("Track", back_populates="playlist_items")
 
 
+# ── LEGACY MODELS (DEPRECATED) ─────────────────────────────────────────────
+# UserPlaylist / PlaylistTrack were the original playlist implementation.
+# New code must use Playlist / PlaylistItem instead.
+# These models remain in the schema only to satisfy the
+# download_jobs.target_playlist_id foreign key for in-flight jobs.
+# Do NOT add new references to these models.
+# ────────────────────────────────────────────────────────────────────────────
+
+
 class UserPlaylist(Base):
+    """DEPRECATED — use Playlist instead."""
+
     __tablename__ = "user_playlists"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
@@ -287,6 +298,8 @@ class UserPlaylist(Base):
 
 
 class PlaylistTrack(Base):
+    """DEPRECATED — use PlaylistItem instead."""
+
     __tablename__ = "playlist_tracks"
     id = Column(Integer, primary_key=True, index=True)
     playlist_id = Column(Integer, ForeignKey("user_playlists.id"))

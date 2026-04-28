@@ -372,8 +372,9 @@ async def login(
     try:
         security.check_brute_force(request)
     except Exception as e:
-        # Trick to show error in HTML instead of ugly JSON
-        return RedirectResponse(f"/login?error={e.detail}", status_code=303)
+        # B-01: .detail only exists on HTTPException; use getattr as safe fallback
+        detail = getattr(e, "detail", str(e))
+        return RedirectResponse(f"/login?error={detail}", status_code=303)
 
     user = auth.get_user_by_username(db, username)
 
@@ -393,10 +394,6 @@ async def login(
 
     access_token = auth.create_access_token(data={"sub": user.username})
     redirect_url = "/portal"
-
-    # Redirect to Admin if admin enters (optional, better to portal)
-    if user.is_admin:
-        pass
 
     if next and next != "None":
         # SECURITY: reject any next= value that looks like an absolute URL or

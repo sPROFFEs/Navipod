@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+import warnings
 
 import database
 import httpx
@@ -141,6 +142,12 @@ class DownloadManager:
             )
 
         if job.target_playlist_id:
+            warnings.warn(
+                f"Job {job.id} uses deprecated target_playlist_id "
+                "(legacy UserPlaylist). Migrate to target_modern_playlist_id.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             legacy_pl = self.db.query(database.UserPlaylist).filter(
                 database.UserPlaylist.id == job.target_playlist_id,
                 database.UserPlaylist.user_id == self.user_id,
