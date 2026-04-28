@@ -210,4 +210,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.lucide) {
     lucide.createIcons();
   }
+
+  // Register PWA service worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(err => {
+      console.warn('[SW] Registration failed:', err);
+    });
+  }
 });

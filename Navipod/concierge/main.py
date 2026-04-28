@@ -65,6 +65,21 @@ app.add_middleware(
 
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 app.mount("/static", StaticFiles(directory="assets"), name="static")  # Alias for legacy paths
+
+
+@app.get("/sw.js", include_in_schema=False)
+async def service_worker():
+    """Serve the PWA service worker from the root scope.
+
+    The file lives at /assets/sw.js but a SW can only control pages within
+    its own path scope.  Serving it from / with Service-Worker-Allowed: /
+    grants it control over the entire app.
+    """
+    from fastapi.responses import FileResponse
+    response = FileResponse("assets/sw.js", media_type="application/javascript")
+    response.headers["Service-Worker-Allowed"] = "/"
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
 # templates = Jinja2Templates(directory="templates")  <-- Eliminado, usamos el compartido
 
 RESERVED_GATEWAY_PREFIXES = {
