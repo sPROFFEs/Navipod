@@ -586,8 +586,10 @@ export async function renderLibrary(container) {
   let playlistList = [];
   try {
     const res = await fetch(`${state.API}/playlists`);
+    // Check res.ok BEFORE calling .json() — a non-JSON 500 body would
+    // otherwise surface a misleading "JSON parse error" to the user (B-13).
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     playlistList = await res.json();
-    if (!res.ok) throw new Error(playlistList.error || `HTTP ${res.status}`);
     state.setUserPlaylists(playlistList);
     renderSidebarRecents();
   } catch (e) {

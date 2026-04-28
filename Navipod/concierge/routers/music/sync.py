@@ -34,21 +34,19 @@ async def get_sync_state(request: Request, db: Session = Depends(get_db)):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
     try:
-        # Get counts
-        fav_count = db.query(database.UserFavorite).filter(database.UserFavorite.user_id == user.id).count()
-
-        playlist_count = db.query(database.Playlist).filter(database.Playlist.owner_id == user.id).count()
-
-        # Get favorite IDs for quick state comparison
+        # Get favorite IDs — derive fav_count from len() to avoid a second
+        # COUNT query (P-07: reduce heartbeat from 5 → 3 queries).
         fav_ids = db.query(database.UserFavorite.track_id).filter(database.UserFavorite.user_id == user.id).all()
         fav_id_list = sorted([f[0] for f in fav_ids])
+        fav_count = len(fav_id_list)
 
-        # Get playlist data including item counts without N+1 relationship loads
+        # Get playlist rows — derive playlist_count from len() same reason.
         playlists = (
             db.query(database.Playlist.id, database.Playlist.name)
             .filter(database.Playlist.owner_id == user.id)
             .all()
         )
+        playlist_count = len(playlists)
         playlist_ids = [row[0] for row in playlists]
         playlist_item_counts = {}
         if playlist_ids:

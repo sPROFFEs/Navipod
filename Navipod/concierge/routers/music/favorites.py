@@ -12,7 +12,7 @@ import manager
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from navipod_config import settings
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from .core import get_current_user_safe, get_db
 
@@ -35,9 +35,17 @@ def generate_favorites_m3u(db: Session, user):
             logger.debug("Could not chmod favorites playlist directory %s: %s", playlist_dir, e)
         m3u_path = f"{playlist_dir}/Liked Songs.m3u"
 
+        # Eager-load tracks in a single JOIN query to avoid N+1 (P-02)
+        favorites = (
+            db.query(database.UserFavorite)
+            .options(joinedload(database.UserFavorite.track))
+            .filter(database.UserFavorite.user_id == user.id)
+            .all()
+        )
+
         with open(m3u_path, "w", encoding="utf-8") as f:
             f.write("#EXTM3U\n")
-            for fav in user.favorites:
+            for fav in favorites:
                 track = fav.track
                 if track and track.filepath:
                     if "/pool/" in track.filepath:

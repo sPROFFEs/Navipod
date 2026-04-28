@@ -124,9 +124,18 @@ function ensureDownloadPolling() {
   }
 }
 
+function stopDownloadPolling() {
+  if (state.downloadPolling) {
+    clearInterval(state.downloadPolling);
+    state.setDownloadPolling(null);
+  }
+}
+
 export function initDownloadHud() {
+  // One-time badge refresh on boot — do NOT start perpetual polling here.
+  // Polling is started when the modal opens or a download is queued, and
+  // auto-stops once there are no active jobs and the modal is closed.
   refreshJobs();
-  ensureDownloadPolling();
 }
 
 async function refreshDeleteResponsesBadge() {
@@ -277,6 +286,13 @@ export async function refreshJobs() {
       } else {
         badge.style.display = 'none';
       }
+    }
+
+    // Auto-stop polling: no reason to keep ticking when there are no active
+    // jobs and the modal is not visible.  Polling restarts automatically when
+    // the modal opens or a new download is queued.
+    if (activeCount === 0 && !isDownloadsModalOpen()) {
+      stopDownloadPolling();
     }
 
     if (!container) return;

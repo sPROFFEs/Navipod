@@ -202,10 +202,17 @@ def serialize_playlist_summary(db: Session, playlist, viewer_id: int | None = No
         if source_playlist and source_playlist.owner:
             source_owner_name = source_playlist.owner.username
 
+    # Use a scalar COUNT instead of loading the full items relationship (P-01)
+    track_count = (
+        db.query(func.count(database.PlaylistItem.id))
+        .filter(database.PlaylistItem.playlist_id == playlist.id)
+        .scalar()
+        or 0
+    )
     return {
         "id": playlist.id,
         "name": playlist.name,
-        "track_count": len(playlist.items),
+        "track_count": track_count,
         "thumbnail": get_playlist_thumbnail(db, playlist),
         "is_public": bool(playlist.is_public),
         "source_playlist_id": playlist.source_playlist_id,

@@ -13,10 +13,11 @@ export function handleSearch(val) {
   if (state.searchDebounce) clearTimeout(state.searchDebounce);
   state.setSearchDebounce(
     setTimeout(() => {
+      // Previously `query.length > 1` silently skipped single-character
+      // queries (U-08). Allow any length — empty triggers discovery mode,
+      // anything else is a normal search.
       const query = val.trim();
-      if (query.length === 0 || query.length > 1) {
-        executeSearch(query);
-      }
+      executeSearch(query);
     }, 400)
   );
 }
@@ -102,8 +103,17 @@ export async function downloadUrl() {
     ui.showToast('Please enter a URL', 'error');
     return;
   }
-  if (!url.includes('youtube.com') && !url.includes('youtu.be') && !url.includes('spotify.com')) {
-    ui.showToast('Invalid URL. Use YouTube or Spotify links.', 'error');
+  // Accept all sources the backend actually supports (U-09)
+  const SUPPORTED_DOMAINS = [
+    'youtube.com', 'youtu.be',
+    'spotify.com',
+    'soundcloud.com',
+    'audius.co',
+    'jamendo.com',
+  ];
+  const isSupported = SUPPORTED_DOMAINS.some((d) => url.includes(d));
+  if (!isSupported) {
+    ui.showToast('Invalid URL. Supported: YouTube, Spotify, SoundCloud, Audius, Jamendo.', 'error');
     return;
   }
 

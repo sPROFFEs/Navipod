@@ -42,7 +42,7 @@ def clean_name(name):
     cleaned = "".join(c for c in name if c.isalnum() or c in allowed_symbols)
     return cleaned.strip() or "Unknown"
 
-def process_file(db, filepath, playlist=None):
+def process_file(db, filepath, playlist=None, position_counter=None):
     """Process a single file: import to pool or link if exists."""
     try:
         file_hash = get_file_hash(filepath)
@@ -154,14 +154,19 @@ def process_file(db, filepath, playlist=None):
             ).first()
             
             if not exists:
-                # Find next position
-                # Efficient position query needed
-                # For now just count
-                count = db.query(PlaylistItem).filter_by(playlist_id=playlist.id).count() 
+                # Use in-memory counter when available (P-04) to avoid a
+                # COUNT(*) query per track during bulk imports.
+                if position_counter is not None:
+                    position_counter[0] += 1
+                    next_position = position_counter[0]
+                else:
+                    next_position = (
+                        db.query(PlaylistItem).filter_by(playlist_id=playlist.id).count() + 1
+                    )
                 item = PlaylistItem(
-                    playlist_id=playlist.id, 
+                    playlist_id=playlist.id,
                     track_id=track.id,
-                    position=count + 1
+                    position=next_position,
                 )
                 db.add(item)
                 db.commit()
@@ -186,22 +191,29 @@ def scan_folder(folder_path, user=None):
         # We might want to create a playlist for the top level folders?
         # User logic: "Move from a folder-centric model".
         # If I point this to /music/Rock, it should probably be a playlist "Rock"?
-        
+
         folder_name = os.path.basename(os.path.normpath(folder_path))
         playlist = db.query(Playlist).filter_by(name=folder_name, owner_id=user.id).first()
-        
+
         if not playlist:
             logger.info(f"Creating playlist from folder: {folder_name}")
             playlist = Playlist(name=folder_name, owner_id=user.id)
             db.add(playlist)
             db.commit()
             db.refresh(playlist)
-        
+
+        # Query the existing item count ONCE before the loop so that each
+        # subsequent process_file call can receive the next position directly,
+        # eliminating the per-file COUNT(*) query (P-04).
+        position_counter = [
+            db.query(PlaylistItem).filter_by(playlist_id=playlist.id).count()
+        ]
+
         for root, dirs, files in os.walk(folder_path):
             for file in files:
                 if file.lower().endswith(('.mp3', '.m4a', '.flac', '.wav', '.ogg')):
                     filepath = os.path.join(root, file)
-                    process_file(db, filepath, playlist)
+                    process_file(db, filepath, playlist, position_counter)
         
         # Path Cleanup: Remove empty directories
         for root, dirs, files in os.walk(folder_path, topdown=False):
