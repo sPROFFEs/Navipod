@@ -14,6 +14,7 @@ let _mediaSessionInitialised = false;
 let _activeListenSession = null;
 let _sessionPersistInterval = null;
 let _remoteQueueSaveTimer = null;
+let _trackTransitionInFlight = false;
 
 const PLAYBACK_SESSION_KEY = 'navipod.playback.session.v1';
 const PLAYBACK_SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -579,6 +580,8 @@ export function updatePlayerUIForPreview(track) {
 export function playTrack(track) {
   if (!track) return;
 
+  _trackTransitionInFlight = Boolean(state.currentTrack?.db_id && track.db_id);
+
   finalizeListenSession('track_switch');
 
   // Stop YouTube preview if playing
@@ -620,6 +623,7 @@ export function playTrack(track) {
     state.audio
       .play()
       .then(() => {
+        _trackTransitionInFlight = false;
         state.setIsPlaying(true);
         ui.updatePlayButton();
         acquirePlaybackLock();
@@ -628,6 +632,7 @@ export function playTrack(track) {
         updateMediaSessionMetadata(track);
       })
       .catch((e) => {
+        _trackTransitionInFlight = false;
         if (e.name === 'AbortError') return;
         console.error('Playback error:', e);
         ui.showToast('Playback failed', 'error');
@@ -907,6 +912,14 @@ export function setupPlayer() {
   });
 
   state.audio.addEventListener('pause', () => {
+    // When the browser pauses the previous resource during an automatic
+    // track swap, briefly reporting MediaSession as "paused" can make
+    // Android drop the active background session between songs.
+    if (_trackTransitionInFlight && hasUpcomingTrack()) {
+      persistPlaybackSession();
+      return;
+    }
+
     state.setIsPlaying(false);
     syncPlayerShellVisibility();
     ui.updatePlayButton();
@@ -919,6 +932,7 @@ export function setupPlayer() {
   });
 
   state.audio.addEventListener('ended', () => {
+    _trackTransitionInFlight = hasUpcomingTrack();
     state.audio._endHandled = true;
     finalizeListenSession('ended');
     const willContinue = hasUpcomingTrack();
@@ -965,6 +979,7 @@ export function setupPlayer() {
   });
 
   state.audio.addEventListener('error', () => {
+    _trackTransitionInFlight = false;
     finalizeListenSession('error');
     stopPlaybackSessionPersistence();
     persistPlaybackSession();
