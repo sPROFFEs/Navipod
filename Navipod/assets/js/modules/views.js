@@ -630,17 +630,21 @@ export function createCard(item) {
   const src = sourceMap[item.source] || sourceMap['local'];
   const sourceIcon = src.icon;
   const sourceColor = src.color;
+  const canAddToPlaylist = item.is_local && item.db_id;
 
   return `<div class="card" onclick="handleCardClick('${data}', this)">
-        <div class="card-img-container">
-            <img src="${img}" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
+        <div class="card-img-container cover-loading">
+            <img src="${img}" loading="lazy" decoding="async"
+                 onload="this.closest('.cover-loading')?.classList.remove('cover-loading')"
+                 onerror="this.closest('.cover-loading')?.classList.remove('cover-loading'); this.src='/static/img/default_cover.png'">
             <div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.7);border-radius:50%;padding:4px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;">
                 <i data-lucide="${sourceIcon}" style="color:${sourceColor};width:14px;height:14px;"></i>
             </div>
             <div class="play-overlay">
-                <div style="display:flex;gap:8px;">
+                <div style="display:flex;gap:8px;align-items:center;">
                     ${!item.is_local ? `<button class="play-btn-card" onclick="event.stopPropagation(); playPreview('${data}')" title="Preview" style="background:#444; color:white;"><i data-lucide="eye"></i></button>` : ''}
-                    <button class="play-btn-card"><i data-lucide="${item.is_local ? 'play' : 'download'}"></i></button>
+                    <button class="play-btn-card" onclick="event.stopPropagation(); handleCardClick('${data}', this.closest('.card'))"><i data-lucide="${item.is_local ? 'play' : 'download'}"></i></button>
+                    ${canAddToPlaylist ? `<button class="play-btn-card play-btn-add-pl" onclick="event.stopPropagation(); showAddToPlaylistModal(${item.db_id})" title="Add to playlist"><i data-lucide="plus"></i></button>` : ''}
                 </div>
             </div>
         </div>

@@ -143,6 +143,21 @@ export async function addToPlaylistApi(playlistId, trackId) {
   }
 }
 
+export async function reorderPlaylistApi(playlistId, items) {
+  try {
+    const res = await fetch(`${state.API}/playlists/${playlistId}/reorder`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items })
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    console.error('[PLAYLIST] Reorder error:', e);
+    return null;
+  }
+}
+
 export async function removeFromPlaylistApi(playlistId, trackId) {
   try {
     const res = await fetch(`${state.API}/playlists/${playlistId}/remove/${trackId}`, {

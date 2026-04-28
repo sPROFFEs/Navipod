@@ -57,6 +57,7 @@ window.playFromView = player.playFromView;
 // Queue
 window.addToQueue = queue.addToQueue;
 window.addToQueueCurrent = queue.addToQueueCurrent;
+window.removeFromQueue = queue.removeFromQueue;
 window.toggleShuffle = queue.toggleShuffle;
 window.toggleRepeat = queue.toggleRepeat;
 window.toggleQueue = queue.toggleQueue;

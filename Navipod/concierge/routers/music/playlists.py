@@ -49,6 +49,15 @@ class PlaylistCoverTrackRequest(PydanticBaseModel):
     track_id: int
 
 
+class ReorderItemSchema(PydanticBaseModel):
+    track_id: int
+    position: int
+
+
+class ReorderRequest(PydanticBaseModel):
+    items: list[ReorderItemSchema]
+
+
 SYSTEM_PLAYLIST_NAMES = {"music", "pool", "users", "podcasts", "downloads"}
 ALLOWED_PLAYLIST_COVER_TYPES = {
     "image/jpeg": [b"\xff\xd8\xff"],
@@ -872,3 +881,39 @@ async def update_playlist(
     schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
 
     return JSONResponse({"id": playlist.id, "name": playlist.name})
+
+
+@router.patch("/api/playlists/{playlist_id}/reorder")
+async def reorder_playlist_tracks(
+    playlist_id: int, body: ReorderRequest, request: Request, db: Session = Depends(get_db)
+):
+    """Bulk-update track positions for drag-and-drop reorder."""
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    playlist = (
+        db.query(database.Playlist)
+        .filter(database.Playlist.id == playlist_id, database.Playlist.owner_id == user.id)
+        .first()
+    )
+    if not playlist:
+        return JSONResponse({"error": "Playlist not found"}, status_code=404)
+
+    if not playlist_is_editable_by_user(playlist, user):
+        return JSONResponse({"error": "This playlist is read-only."}, status_code=403)
+
+    if not body.items:
+        return JSONResponse({"ok": True})
+
+    for item in body.items:
+        db.query(database.PlaylistItem).filter(
+            database.PlaylistItem.playlist_id == playlist_id,
+            database.PlaylistItem.track_id == item.track_id,
+        ).update({"position": item.position})
+
+    db.commit()
+    generate_m3u_for_playlist(db, playlist, user.username)
+    schedule_playlist_sync(db, user)
+
+    return JSONResponse({"ok": True})

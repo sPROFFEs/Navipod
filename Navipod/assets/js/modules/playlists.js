@@ -146,6 +146,95 @@ export async function renderPlaylist(container, playlistId) {
             : '<div class="empty-state glass-panel"><p>This playlist is empty.</p></div>'
         }`;
   lucide.createIcons();
+  if (isEditable && trackCount > 0) {
+    initPlaylistDragDrop(container, playlistId);
+  }
+}
+
+// === DRAG-AND-DROP REORDER ===
+
+function initPlaylistDragDrop(container, playlistId) {
+  const trackList = container.querySelector('.track-list');
+  if (!trackList) return;
+
+  const gripSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>`;
+
+  Array.from(trackList.querySelectorAll('.track-row')).forEach((row, index) => {
+    const handle = document.createElement('span');
+    handle.className = 'track-drag-handle';
+    handle.title = 'Drag to reorder';
+    handle.innerHTML = gripSvg;
+    handle.addEventListener('mousedown', () => { row.draggable = true; });
+    row.prepend(handle);
+    row.dataset.dragIndex = index;
+  });
+
+  let dragSrc = null;
+
+  trackList.addEventListener('dragstart', (e) => {
+    const row = e.target.closest('.track-row');
+    if (!row) return;
+    dragSrc = row;
+    row.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', row.dataset.dragIndex);
+  });
+
+  trackList.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const row = e.target.closest('.track-row');
+    if (!row || row === dragSrc) return;
+    trackList.querySelectorAll('.drag-over').forEach((r) => r.classList.remove('drag-over'));
+    row.classList.add('drag-over');
+  });
+
+  trackList.addEventListener('dragleave', (e) => {
+    if (!trackList.contains(e.relatedTarget)) {
+      trackList.querySelectorAll('.drag-over').forEach((r) => r.classList.remove('drag-over'));
+    }
+  });
+
+  trackList.addEventListener('dragend', () => {
+    trackList.querySelectorAll('.track-row').forEach((r) => {
+      r.classList.remove('dragging', 'drag-over');
+      r.draggable = false;
+    });
+    dragSrc = null;
+  });
+
+  trackList.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    const targetRow = e.target.closest('.track-row');
+    if (!targetRow || !dragSrc || targetRow === dragSrc) return;
+
+    const allRows = Array.from(trackList.querySelectorAll('.track-row'));
+    const fromIdx = allRows.indexOf(dragSrc);
+    const toIdx = allRows.indexOf(targetRow);
+    if (fromIdx === toIdx) return;
+
+    // Reorder DOM immediately for snappy UX
+    if (fromIdx < toIdx) targetRow.after(dragSrc);
+    else targetRow.before(dragSrc);
+
+    // Reorder in-memory view list
+    const newOrder = [...state.currentViewList];
+    const [moved] = newOrder.splice(fromIdx, 1);
+    newOrder.splice(toIdx, 0, moved);
+    state.setCurrentViewList(newOrder);
+
+    // Update drag indices
+    trackList.querySelectorAll('.track-row').forEach((r, i) => { r.dataset.dragIndex = i; });
+
+    // Persist to server
+    const items = newOrder.map((t, i) => ({ track_id: t.db_id || t.id, position: i }));
+    const result = await api.reorderPlaylistApi(playlistId, items);
+    if (result?.ok) {
+      ui.showToast('Order saved', 'success');
+    } else {
+      ui.showToast('Failed to save order', 'error');
+    }
+  });
 }
 
 export function openPlaylistCoverUpload(playlistId) {

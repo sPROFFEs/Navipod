@@ -113,6 +113,16 @@ export function toggleQueue() {
   }
 }
 
+export function removeFromQueue(index) {
+  const newQueue = [...state.userQueue];
+  newQueue.splice(index, 1);
+  state.setUserQueue(newQueue);
+  player.persistPlaybackSession();
+  renderQueue();
+}
+
+const _gripSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>`;
+
 export function renderQueue() {
   const container = document.getElementById('queue-list');
   if (!container) return;
@@ -132,12 +142,16 @@ export function renderQueue() {
       ? state.userQueue
           .map(
             (t, i) => `
-            <div class="queue-item">
+            <div class="queue-item" draggable="true" data-qi="${i}">
+                <span class="queue-drag-handle" title="Drag to reorder">${_gripSvg}</span>
                 <img src="${t.thumbnail || '/static/img/default_cover.png'}" class="queue-img" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
                 <div class="queue-info">
                     <div class="queue-title">${ui.escHtml(t.title || 'Unknown')}</div>
-                    <div class="queue-artist">${ui.escHtml(t.artist || 'Unknown')}${i === 0 ? ' - Next' : ''}</div>
+                    <div class="queue-artist">${ui.escHtml(t.artist || 'Unknown')}${i === 0 ? ' · Next' : ''}</div>
                 </div>
+                <button class="queue-item-remove" onclick="removeFromQueue(${i})" title="Remove">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
             </div>`
           )
           .join('')
@@ -158,5 +172,58 @@ export function renderQueue() {
             </div>
         </div>
         <div class="queue-footnote">Manual queue plays before context and is restored after refresh.</div>`;
-  lucide.createIcons();
+
+  if (state.userQueue.length > 0) {
+    _initQueueDragDrop(container);
+  }
+}
+
+function _initQueueDragDrop(container) {
+  let dragSrc = null;
+
+  container.addEventListener('dragstart', (e) => {
+    const item = e.target.closest('.queue-item');
+    if (!item) return;
+    dragSrc = item;
+    item.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+
+  container.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const item = e.target.closest('.queue-item');
+    if (!item || item === dragSrc) return;
+    container.querySelectorAll('.queue-item.drag-over').forEach((i) => i.classList.remove('drag-over'));
+    item.classList.add('drag-over');
+  });
+
+  container.addEventListener('dragleave', (e) => {
+    if (!container.contains(e.relatedTarget)) {
+      container.querySelectorAll('.queue-item.drag-over').forEach((i) => i.classList.remove('drag-over'));
+    }
+  });
+
+  container.addEventListener('dragend', () => {
+    container.querySelectorAll('.queue-item').forEach((i) => i.classList.remove('dragging', 'drag-over'));
+    dragSrc = null;
+  });
+
+  container.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const targetItem = e.target.closest('.queue-item');
+    if (!targetItem || !dragSrc || targetItem === dragSrc) return;
+
+    const allItems = Array.from(container.querySelectorAll('.queue-item'));
+    const fromIdx = allItems.indexOf(dragSrc);
+    const toIdx = allItems.indexOf(targetItem);
+    if (fromIdx === toIdx) return;
+
+    const newQueue = [...state.userQueue];
+    const [moved] = newQueue.splice(fromIdx, 1);
+    newQueue.splice(toIdx, 0, moved);
+    state.setUserQueue(newQueue);
+    player.persistPlaybackSession();
+    renderQueue();
+  });
 }
