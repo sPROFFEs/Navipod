@@ -747,6 +747,20 @@ async def apply_updates(
     return RedirectResponse(f"/admin/system/updates/jobs/{job_id}", status_code=303)
 
 
+@router.post("/system/updates/force-clean")
+async def force_clean_update_workspace(
+    request: Request, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)
+):
+    """Emergency recovery: clear stale index.lock, release stuck operation lock, and reset
+    the working tree to HEAD so that subsequent update attempts can proceed."""
+    result = operations_service.force_clean_workspace(triggered_by=admin.username)
+    if result.get("ok"):
+        msg = "Workspace+lock reset successfully. You can now apply updates."
+    else:
+        msg = f"Force clean partially failed: {result.get('message', 'unknown error')}"
+    return RedirectResponse(f"/admin/system?msg={msg}", status_code=303)
+
+
 @router.get("/system/updates/jobs/{job_id}")
 async def update_job_progress_page(
     job_id: int, request: Request, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)

@@ -165,6 +165,60 @@ def _run_git(args, *, check=True, fallback=None, include_details=False):
     return ops._run_git(args, check=check, fallback=fallback, include_details=include_details)
 
 
+def _clear_git_index_lock() -> bool:
+    """Remove a stale .git/index.lock left by an interrupted git operation.
+
+    A container restart mid-update (git fetch / git reset) leaves this file
+    behind, causing every subsequent git command to fail with
+    'Another git process seems to be running in this repository'.
+    Safe to remove when no git process is actually running.
+    Returns True if the file was found and removed.
+    """
+    index_lock = ops.REPO_ROOT / ".git" / "index.lock"
+    if index_lock.exists():
+        try:
+            index_lock.unlink()
+            return True
+        except OSError:
+            pass
+    return False
+
+
+def force_clean_workspace(triggered_by: str | None = None) -> dict:
+    """Emergency recovery: clear stale git lock, release operation lock,
+    and reset the workspace to HEAD.
+
+    Use this when the apply-update pipeline is stuck due to a dirty working
+    tree or a stale index.lock left by an interrupted container restart.
+    """
+    db = database.SessionLocal()
+    results = {}
+    try:
+        # 1. Remove stale index.lock
+        results["index_lock_cleared"] = _clear_git_index_lock()
+
+        # 2. Force-release the operation lock so subsequent operations can proceed
+        release_lock(db)
+        results["operation_lock_released"] = True
+
+        # 3. Reset workspace to HEAD (discards any tracked local modifications)
+        reset = _run_git(["reset", "--hard", "HEAD"], include_details=True)
+        results["git_reset"] = reset if isinstance(reset, dict) else {"ok": bool(reset)}
+
+        results["ok"] = bool(results["git_reset"].get("ok"))
+        results["message"] = (
+            "Workspace reset to HEAD successfully."
+            if results["ok"]
+            else f"git reset failed: {results['git_reset'].get('stderr', 'unknown error')}"
+        )
+    except Exception as e:
+        results["ok"] = False
+        results["message"] = f"Force clean failed: {e}"
+    finally:
+        db.close()
+    return results
+
+
 def _fetch_update_tracking_ref():
     return _run_git(["fetch", "--prune", "--no-tags", "--no-write-fetch-head", ops.settings.UPDATE_SOURCE_REPO_URL, f"+refs/heads/{ops.settings.UPDATE_SOURCE_BRANCH}:{ops.UPDATE_TRACKING_REMOTE}"], fallback="", include_details=True)
 
@@ -542,6 +596,12 @@ def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
         if not acquire_lock(db, job_id):
             update_admin_job_progress(job_id, message="Another admin operation is already running", status="failed", progress=100, finished=True)
             return
+
+        # Clear any stale .git/index.lock left by an interrupted container
+        # restart; without this, every git command fails and the update
+        # never progresses past the fetch step.
+        if _clear_git_index_lock():
+            update_admin_job_progress(job_id, message="Removed stale .git/index.lock from previous interrupted operation", status="running", phase="preflight", progress=2)
 
         # The apply phase later runs `git reset --hard <target_sha>`, which
         # overwrites tracked local modifications by design. Untracked files
