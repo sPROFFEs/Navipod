@@ -356,7 +356,8 @@
         align-items: center;
     }
 
-    .track-list .track-row > div:nth-child(3),
+    /* Hide source-badge column (uses class now, not fragile nth-child) */
+    .track-list .track-source-col,
     .track-list .track-row.header {
         display: none !important;
     }
@@ -390,28 +391,42 @@
         line-height: 1.2;
     }
 
+    /* Action column: hide individual buttons, show only the three-dots */
     .track-list .action-btns {
         display: flex;
         flex-shrink: 0;
-        gap: 2px;
+        gap: 0;
         opacity: 1;
         justify-content: flex-end;
     }
 
-    .track-list .action-btn,
-    .track-list .action-btn-danger {
-        width: 28px;
-        height: 28px;
-        min-width: 28px;
-        padding: 0;
+    /* Hide all individual action buttons on mobile */
+    .track-list .action-btns > :not(.action-btn-more) {
+        display: none !important;
     }
 
-    .track-list .action-btn i,
-    .track-list .action-btn svg,
-    .track-list .action-btn-danger svg,
-    .track-list .action-btn-danger i {
-        width: 15px;
-        height: 15px;
+    /* Show the three-dots button */
+    .track-list .action-btn-more {
+        display: flex !important;
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+        padding: 0;
+        border-radius: 8px;
+        background: transparent;
+        border: none;
+        color: var(--text-sub, #aaa);
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        opacity: 1;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .track-list .action-btn-more i,
+    .track-list .action-btn-more svg {
+        width: 18px;
+        height: 18px;
     }
 
     .fullscreen-player .queue-panel {
@@ -503,19 +518,11 @@
         font-size: 0.7rem;
     }
 
-    .track-list .action-btn,
-    .track-list .action-btn-danger {
-        width: 26px;
-        height: 26px;
-        min-width: 26px;
-    }
-
-    .track-list .action-btn i,
-    .track-list .action-btn svg,
-    .track-list .action-btn-danger i,
-    .track-list .action-btn-danger svg {
-        width: 14px;
-        height: 14px;
+    /* At 480 px individual buttons are already hidden; size the three-dots */
+    .track-list .action-btn-more {
+        width: 32px;
+        height: 32px;
+        min-width: 32px;
     }
 }
 

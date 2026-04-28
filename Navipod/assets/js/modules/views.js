@@ -742,6 +742,9 @@ export function createTrackRow(item, idx, playlistId = null) {
 
   const rowClickAction = item.is_local ? `playFromView(${idx})` : `playPreview('${data}')`;
 
+  const _safeTitle  = ui.escHtml(item.title  || 'Unknown').replace(/'/g, "\\'");
+  const _safeArtist = ui.escHtml(item.artist || 'Unknown').replace(/'/g, "\\'");
+
   return `<div class="track-row glass-hover ${isLiked ? 'liked-row' : ''} ${isActive ? 'active-track' : ''}" onclick="${rowClickAction}" data-idx="${idx}">
         <div class="track-num">
             <span class="num-text">${idx + 1}</span>
@@ -755,27 +758,126 @@ export function createTrackRow(item, idx, playlistId = null) {
                 <div class="track-artist-sm">${ui.escHtml(item.artist || 'Unknown')}</div>
             </div>
         </div>
-        <div><span class="source-badge ${src}">${src}</span></div>
+        <div class="track-source-col"><span class="source-badge ${src}">${src}</span></div>
         <div class="action-btns" onclick="event.stopPropagation()">
             ${!item.is_local ? `<button class="action-btn" onclick="playPreview('${data}')" title="Preview"><i data-lucide="eye"></i></button>` : ''}
-            
+
             ${
               item.is_local
                 ? `<button class="action-btn ${isLiked ? 'liked' : ''}" onclick="toggleFavorite(${item.db_id || item.id}, this)"><i data-lucide="heart"></i></button>`
                 : `<button class="action-btn" onclick="triggerDownload('${data}')" title="Download to Library"><i data-lucide="download"></i></button>`
             }
-            
+
             ${item.is_local ? `<button class="action-btn" onclick="addToQueue('${data}')" title="Add to Queue"><i data-lucide="list-plus"></i></button>` : ''}
             ${canAddToPlaylist ? `<button class="action-btn" onclick="showAddToPlaylistModal(${item.db_id})"><i data-lucide="plus"></i></button>` : ''}
             ${
               item.is_local
-                ? `<button class="action-btn warning" onclick="showTrackDeleteRequestModal(${item.db_id || item.id}, '${ui.escHtml(item.title || 'Unknown').replace(/'/g, "\\'")}', '${ui.escHtml(item.artist || 'Unknown').replace(/'/g, "\\'")}')" title="Request deletion"><i data-lucide="flag"></i></button>`
+                ? `<button class="action-btn warning" onclick="showTrackDeleteRequestModal(${item.db_id || item.id}, '${_safeTitle}', '${_safeArtist}')" title="Request deletion"><i data-lucide="flag"></i></button>`
                 : ''
             }
-            
-            ${playlistId ? `<button class="action-btn-danger" onclick="showRemoveFromPlaylistModal(${playlistId}, ${item.id}, '${ui.escHtml(item.title || 'Track').replace(/'/g, "\\'")}')"><i data-lucide="trash-2"></i></button>` : ''}
+
+            ${playlistId ? `<button class="action-btn-danger" onclick="showRemoveFromPlaylistModal(${playlistId}, ${item.id}, '${_safeTitle}')"><i data-lucide="trash-2"></i></button>` : ''}
+
+            <!-- Mobile three-dots: shown only on ≤768 px via CSS -->
+            <button class="action-btn action-btn-more"
+                    onclick="showTrackActionsSheet('${data}', ${playlistId || 'null'})"
+                    title="More options">
+                <i data-lucide="more-vertical"></i>
+            </button>
         </div>
     </div>`;
+}
+
+// === MOBILE TRACK ACTIONS BOTTOM SHEET ===
+
+export function closeTrackActionsSheet() {
+  const sheet = document.getElementById('track-actions-sheet');
+  if (!sheet) return;
+  sheet.classList.remove('open');
+  // Remove after transition; setTimeout as safety net
+  sheet.addEventListener('transitionend', () => sheet.remove(), { once: true });
+  setTimeout(() => { if (sheet.parentNode) sheet.remove(); }, 400);
+}
+
+export function showTrackActionsSheet(encodedData, playlistId) {
+  closeTrackActionsSheet();
+
+  const item = JSON.parse(decodeURIComponent(atob(encodedData)));
+  const isLiked = state.userFavorites.has(item.db_id || item.id);
+  const canLike = item.is_local && item.db_id;
+  const canAddToPlaylist = item.is_local && item.db_id;
+  const img = item.thumbnail || '/static/img/default_cover.png';
+  const safeTitle  = ui.escHtml(item.title  || 'Unknown').replace(/'/g, "\\'");
+  const safeArtist = ui.escHtml(item.artist || 'Unknown').replace(/'/g, "\\'");
+
+  const actions = [];
+
+  if (!item.is_local) {
+    actions.push(`
+      <button class="tas-action-btn" onclick="playPreview('${encodedData}'); closeTrackActionsSheet()">
+        <i data-lucide="eye"></i><span>Preview</span>
+      </button>`);
+  }
+  if (canLike) {
+    actions.push(`
+      <button class="tas-action-btn ${isLiked ? 'liked' : ''}"
+              onclick="toggleFavorite(${item.db_id}, this); closeTrackActionsSheet()">
+        <i data-lucide="heart"></i><span>${isLiked ? 'Unlike' : 'Like'}</span>
+      </button>`);
+  }
+  if (!item.is_local) {
+    actions.push(`
+      <button class="tas-action-btn" onclick="triggerDownload('${encodedData}'); closeTrackActionsSheet()">
+        <i data-lucide="download"></i><span>Download to Library</span>
+      </button>`);
+  }
+  if (item.is_local) {
+    actions.push(`
+      <button class="tas-action-btn" onclick="addToQueue('${encodedData}'); closeTrackActionsSheet()">
+        <i data-lucide="list-plus"></i><span>Add to Queue</span>
+      </button>`);
+  }
+  if (canAddToPlaylist) {
+    actions.push(`
+      <button class="tas-action-btn" onclick="showAddToPlaylistModal(${item.db_id}); closeTrackActionsSheet()">
+        <i data-lucide="plus"></i><span>Add to Playlist</span>
+      </button>`);
+  }
+  if (item.is_local) {
+    actions.push(`
+      <button class="tas-action-btn warning"
+              onclick="showTrackDeleteRequestModal(${item.db_id || item.id}, '${safeTitle}', '${safeArtist}'); closeTrackActionsSheet()">
+        <i data-lucide="flag"></i><span>Request Deletion</span>
+      </button>`);
+  }
+  if (playlistId) {
+    actions.push(`
+      <button class="tas-action-btn danger"
+              onclick="showRemoveFromPlaylistModal(${playlistId}, ${item.id}, '${safeTitle}'); closeTrackActionsSheet()">
+        <i data-lucide="trash-2"></i><span>Remove from Playlist</span>
+      </button>`);
+  }
+
+  const sheet = document.createElement('div');
+  sheet.id = 'track-actions-sheet';
+  sheet.innerHTML = `
+    <div class="tas-overlay" onclick="closeTrackActionsSheet()"></div>
+    <div class="tas-sheet">
+      <div class="tas-handle-bar"></div>
+      <div class="tas-track-info">
+        <img src="${img}" class="tas-cover" onerror="this.src='/static/img/default_cover.png'">
+        <div class="tas-track-meta">
+          <div class="tas-title">${ui.escHtml(item.title || 'Unknown')}</div>
+          <div class="tas-artist">${ui.escHtml(item.artist || 'Unknown')}</div>
+        </div>
+      </div>
+      <div class="tas-actions">${actions.join('')}</div>
+    </div>`;
+
+  document.body.appendChild(sheet);
+  // Trigger enter animation on next paint
+  requestAnimationFrame(() => requestAnimationFrame(() => sheet.classList.add('open')));
+  if (window.lucide) lucide.createIcons();
 }
 
 // === CARD CLICK HANDLER ===
