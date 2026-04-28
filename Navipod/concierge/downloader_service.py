@@ -7,7 +7,6 @@ import shutil
 import subprocess
 import tempfile
 import time
-import warnings
 
 import database
 import httpx
@@ -140,24 +139,6 @@ class DownloadManager:
                 job.id,
                 job.target_modern_playlist_id,
             )
-
-        if job.target_playlist_id:
-            warnings.warn(
-                f"Job {job.id} uses deprecated target_playlist_id "
-                "(legacy UserPlaylist). Migrate to target_modern_playlist_id.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            legacy_pl = self.db.query(database.UserPlaylist).filter(
-                database.UserPlaylist.id == job.target_playlist_id,
-                database.UserPlaylist.user_id == self.user_id,
-            ).first()
-            if legacy_pl:
-                playlist = self._get_or_create_playlist_by_name(legacy_pl.name)
-                if playlist and not getattr(job, "target_modern_playlist_id", None):
-                    job.target_modern_playlist_id = playlist.id
-                    self.db.commit()
-                return playlist
 
         if job.new_playlist_name:
             return self._get_or_create_playlist_by_name(job.new_playlist_name)
@@ -370,8 +351,6 @@ class DownloadManager:
 
         pool_root = "/saas-data/pool"
 
-        # New jobs target Playlist/PlaylistItem. Legacy UserPlaylist ids are
-        # mapped once for old jobs and never used for new writes.
         target_playlist = self._resolve_target_playlist(job)
 
         # PRE-DOWNLOAD DEDUPLICATION CHECK

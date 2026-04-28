@@ -96,7 +96,6 @@ class User(Base):
         "DownloadSettings", uselist=False, back_populates="owner", cascade="all, delete-orphan"
     )
     downloads = relationship("DownloadJob", back_populates="owner", cascade="all, delete-orphan")
-    playlists = relationship("UserPlaylist", back_populates="owner", cascade="all, delete-orphan")
     new_playlists = relationship("Playlist", back_populates="owner", cascade="all, delete-orphan")
     favorites = relationship("UserFavorite", back_populates="user", cascade="all, delete-orphan")
     playback_queue_state = relationship(
@@ -272,44 +271,6 @@ class PlaylistItem(Base):
     track = relationship("Track", back_populates="playlist_items")
 
 
-# ── LEGACY MODELS (DEPRECATED) ─────────────────────────────────────────────
-# UserPlaylist / PlaylistTrack were the original playlist implementation.
-# New code must use Playlist / PlaylistItem instead.
-# These models remain in the schema only to satisfy the
-# download_jobs.target_playlist_id foreign key for in-flight jobs.
-# Do NOT add new references to these models.
-# ────────────────────────────────────────────────────────────────────────────
-
-
-class UserPlaylist(Base):
-    """DEPRECATED — use Playlist instead."""
-
-    __tablename__ = "user_playlists"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    name = Column(String)
-    source_url = Column(String)
-    folder_path = Column(String)
-    auto_sync = Column(Boolean, default=False)
-    last_synced_at = Column(DateTime(timezone=True), nullable=True)
-
-    owner = relationship("User", back_populates="playlists")
-    tracks = relationship("PlaylistTrack", back_populates="playlist", cascade="all, delete-orphan")
-
-
-class PlaylistTrack(Base):
-    """DEPRECATED — use PlaylistItem instead."""
-
-    __tablename__ = "playlist_tracks"
-    id = Column(Integer, primary_key=True, index=True)
-    playlist_id = Column(Integer, ForeignKey("user_playlists.id"))
-    title = Column(String)
-    file_path = Column(String)
-    source_id = Column(String)
-
-    playlist = relationship("UserPlaylist", back_populates="tracks")
-
-
 class DownloadJob(Base):
     __tablename__ = "download_jobs"
     id = Column(Integer, primary_key=True, index=True)
@@ -329,7 +290,6 @@ class DownloadJob(Base):
     engine_used = Column(String, nullable=True)
     fallback_reason = Column(Text, nullable=True)
     error_type = Column(String, nullable=True)
-    target_playlist_id = Column(Integer, ForeignKey("user_playlists.id"), nullable=True)
     target_modern_playlist_id = Column(Integer, ForeignKey("playlists.id"), nullable=True)
     new_playlist_name = Column(String, nullable=True)
     status = Column(String, default="pending")

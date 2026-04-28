@@ -255,8 +255,6 @@ async def downloads_status(request: Request, db: Session = Depends(get_db)):
         elif job.target_modern_playlist_id:
             playlist_name = playlist_names.get(job.target_modern_playlist_id)
             target = f"📂 {playlist_name}" if playlist_name else f"Playlist #{job.target_modern_playlist_id}"
-        elif job.target_playlist_id:
-            target = f"Legacy playlist #{job.target_playlist_id}"
 
         current_file = (
             os.path.basename(job.current_file) if job.current_file and "/" in job.current_file else job.current_file
