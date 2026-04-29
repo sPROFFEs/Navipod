@@ -87,8 +87,10 @@ export async function executeSearch(query) {
     if (query) state.setCurrentViewList(data);
 
     if (!data || data.length === 0) {
+      // Plain empty-state (no glass-panel card) — the flat redesign
+      // language doesn't carry boxes around explanatory text.
       results.innerHTML =
-        '<div class="empty-state glass-panel"><p>No results found in your library or remote sources.</p></div>';
+        '<div class="empty-state"><p>No results found in your library or remote sources.</p></div>';
       return;
     }
 

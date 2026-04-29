@@ -900,10 +900,22 @@ export async function submitTrackDeleteRequest(trackId, buttonEl) {
 
 // === TRACK ROW COMPONENT ===
 
+// Source icon mapping (same as createCard) — used by mobile track rows
+// where the dedicated source column is hidden, so we need an inline
+// indicator near the more-vertical button.
+const TRACK_SOURCE_ICONS = {
+  spotify:     { icon: 'music',      color: '#1DB954' },
+  youtube:     { icon: 'tv',         color: '#ff4444' },
+  lastfm:      { icon: 'radio',      color: '#d51007' },
+  musicbrainz: { icon: 'disc-3',     color: '#BA478F' },
+  local:       { icon: 'hard-drive', color: '#9aa3b2' }
+};
+
 export function createTrackRow(item, idx, playlistId = null) {
   const img = item.thumbnail || '/static/img/default_cover.png';
   const data = btoa(encodeURIComponent(JSON.stringify(item)));
   const src = item.source || 'local';
+  const srcMeta = TRACK_SOURCE_ICONS[src] || TRACK_SOURCE_ICONS.local;
   const isLiked = state.userFavorites.has(item.db_id || item.id);
   const canLike = item.is_local && item.db_id;
   const canAddToPlaylist = item.is_local && item.db_id;
@@ -946,6 +958,13 @@ export function createTrackRow(item, idx, playlistId = null) {
             }
 
             ${playlistId ? `<button class="action-btn-danger" onclick="showRemoveFromPlaylistModal(${playlistId}, ${item.id}, '${_safeTitle}')"><i data-lucide="trash-2"></i></button>` : ''}
+
+            <!-- Mobile-only source-of-origin glyph; shown via CSS only at
+                 <=768 px because desktop still has the full .track-source-col
+                 column with the proper text badge. -->
+            <span class="track-source-mini" title="${ui.escHtml(src)}">
+                <i data-lucide="${srcMeta.icon}" style="color: ${srcMeta.color};"></i>
+            </span>
 
             <!-- Mobile three-dots: shown only on ≤768 px via CSS -->
             <button class="action-btn action-btn-more"

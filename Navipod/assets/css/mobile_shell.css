@@ -667,6 +667,38 @@
 }
 
 
+/* ── 8d. Source-of-origin mini icon on track rows ───────────────
+ *  Desktop has a full .track-source-col with text badge. On mobile
+ *  that column is hidden, so we surface a small coloured glyph
+ *  inline just before the 3-dots menu. */
+
+.track-source-mini {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    opacity: 0.85;
+}
+
+.track-source-mini i,
+.track-source-mini svg {
+    width: 16px;
+    height: 16px;
+}
+
+
+/* ── 8e. User settings — restore horizontal padding on mobile ───
+ *  The flat redesign override stripped padding to 0 so it inherits
+ *  desktop's view-content:24px. Mobile has 0 view-content padding,
+ *  so the page would touch the screen edges without this. */
+
+.user-settings-shell {
+    padding: 16px 16px 8px 16px !important;
+}
+
+
 /* ── 9. Hide bits we don't want on mobile ───────────────────────── */
 
 /* Old desktop close button inside the (now-hidden) sidebar */

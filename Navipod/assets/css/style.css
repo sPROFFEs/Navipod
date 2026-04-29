@@ -35,7 +35,8 @@
  * with `display: flex`. */
 .m-topbar,
 .m-bottom-nav,
-.m-search-pill {
+.m-search-pill,
+.track-source-mini {
     display: none;
 }
 
