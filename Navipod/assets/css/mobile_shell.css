@@ -502,6 +502,16 @@
 }
 
 
+/* ── 8a. Library head actions (search + new playlist) ──────────
+ *  Hidden by default on desktop (the topbar handles search and the
+ *  sidebar has its own "+ Create playlist" row). On mobile they're
+ *  the only entry point for both, so re-enable. */
+
+.library-head-actions {
+    display: flex !important;
+}
+
+
 /* ── 8b. Library view — Spotify-style row list ───────────────────
  *  Replaces the bordered playlist cards with compact rows: cover on
  *  the left, name + meta on the right, no card chrome. The "New

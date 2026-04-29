@@ -239,7 +239,11 @@
 }
 
 .library-head-actions {
-    display: flex;
+    /* Hidden on desktop because the topbar already has a search pill
+     * and the sidebar has a + create-playlist row. mobile_shell.css
+     * re-enables this row at <=768 px (the mobile shell hides both of
+     * those affordances). */
+    display: none;
     align-items: center;
     gap: 4px;
 }
