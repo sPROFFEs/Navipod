@@ -1,0 +1,400 @@
+/* ─────────────────────────────────────────────────────────────────────
+ *  Navipod — Mobile shell
+ *
+ *  Loaded with media="(max-width: 768px)" so every rule here only fires
+ *  on phones / small tablets. The desktop layout (sidebar + topbar +
+ *  player at bottom) is replaced by:
+ *
+ *      ┌───────────────────────────┐
+ *      │  m-topbar                 │  avatar · greeting · actions
+ *      │  ─────────                │  filter pills (when on home/etc)
+ *      ├───────────────────────────┤
+ *      │                           │
+ *      │  view-content             │  scrolls; bottom-padded so it
+ *      │                           │  never sits behind the player
+ *      │                           │
+ *      ├───────────────────────────┤
+ *      │  player-footer (mini)     │  full-width sticky mini player
+ *      ├───────────────────────────┤
+ *      │  m-bottom-nav             │  Home · Search · Your Library
+ *      └───────────────────────────┘
+ *
+ *  Reverting any of this is one revert away — none of the desktop CSS
+ *  knows mobile_shell.css exists.
+ * ───────────────────────────────────────────────────────────────────*/
+
+
+/* ── 1. Reset the desktop chrome ────────────────────────────────────
+ *  Sidebar disappears; top-bar (search pill + history) disappears;
+ *  the layout grid collapses to a single column for the main view. */
+
+.app-layout {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 1fr 0 !important;
+    grid-template-areas: "main" "player" !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    height: 100dvh !important;        /* dynamic viewport — copes with iOS toolbar */
+}
+
+.sidebar,
+.top-bar {
+    display: none !important;
+}
+
+.main-view {
+    grid-area: main;
+    border-radius: 0 !important;
+    overflow: hidden;
+}
+
+
+/* ── 2. Mobile top bar ─────────────────────────────────────────────
+ *  Three slots: avatar · greeting · action icons. Sits at the top
+ *  of every view (no background scroll-shrink for now — we can add
+ *  that later if the user requests). */
+
+.m-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px 8px 16px;
+    background: var(--surface-1);
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+}
+
+.m-topbar-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--surface-3);
+    overflow: hidden;
+    flex-shrink: 0;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.m-topbar-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.m-topbar-title {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--text-main);
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.m-topbar-greeting {
+    font-weight: 700;
+}
+
+.m-topbar-username {
+    display: none;          /* shown via "morning, {user}" pattern only if we want; for now greeting alone keeps it short */
+}
+
+.m-topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.m-icon-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: transparent;
+    border: 0;
+    color: var(--text-sub);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    position: relative;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.m-icon-btn:hover,
+.m-icon-btn:active {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-main);
+}
+
+.m-icon-btn i,
+.m-icon-btn svg {
+    width: 22px;
+    height: 22px;
+}
+
+.m-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--primary);
+    color: #04140a;
+    font-size: 0.65rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+
+/* ── 3. Home tabs pills (All / Public / Discover Radios) ───────────
+ *  We already render these via ui.homeTabsBar() at the top of every
+ *  Browse-level view. On mobile we just polish their layout: no
+ *  bottom margin (the view content already pads), horizontal scroll
+ *  if many pills, smaller chip size. */
+
+.home-tabs {
+    margin: 0 16px 12px 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+}
+
+.home-tab {
+    flex-shrink: 0;
+    padding: 6px 14px;
+    font-size: 0.82rem;
+}
+
+
+/* ── 4. View content — scrollable, bottom-padded ─────────────────── */
+
+.view-content {
+    padding: 0 0 24px 0 !important;
+    overflow-y: auto;
+    height: 100%;
+    /* Reserve space for: mini player (64) + bottom nav (60) + safe area.
+     * Keeps the last items visible above the sticky bottom UI. */
+    padding-bottom: calc(64px + 60px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* Most views render their own outer padding via .hero-section etc. The
+ * stuff we render BEFORE/INSIDE view-container that doesn't already
+ * have horizontal padding gets one here. */
+#view-container > .grid-shelf,
+#view-container > .quick-picks-grid,
+#view-container > .shelf-section,
+#view-container > .empty-state,
+#view-container > .hero-section,
+#view-container > .source-chips,
+#view-container > .saved-radio-list {
+    margin-left: 16px;
+    margin-right: 16px;
+}
+
+
+/* ── 5. Quick-picks grid: 2-col on mobile ──────────────────────── */
+
+.quick-picks-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+}
+
+.quick-pick {
+    height: 56px;
+}
+
+.quick-pick-cover {
+    width: 56px;
+    height: 56px;
+}
+
+.quick-pick-name {
+    font-size: 0.82rem;
+}
+
+
+/* ── 6. Mini player above bottom nav ─────────────────────────────
+ *  The desktop player-footer becomes a slim row pinned just above
+ *  the bottom nav. We keep the existing markup; CSS hides what we
+ *  don't want (controls, progress bar, queue, volume) and shrinks
+ *  the rest. Tap the row to open the fullscreen player (existing
+ *  toggleFullscreenPlayer() wired on the cover image). */
+
+.player-footer {
+    position: fixed !important;
+    left: 8px !important;
+    right: 8px !important;
+    bottom: calc(60px + env(safe-area-inset-bottom, 0px)) !important;
+    width: auto !important;
+    height: 56px !important;
+    border-radius: 8px !important;
+    grid-template-columns: auto 1fr auto !important;
+    grid-template-areas: "left right right" !important;
+    padding: 0 12px !important;
+    background: var(--surface-2, #1d2027) !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    z-index: 50;
+}
+
+.player-left {
+    grid-area: left;
+    gap: 10px !important;
+}
+
+.player-left img {
+    width: 40px !important;
+    height: 40px !important;
+    border-radius: 4px;
+}
+
+.track-info {
+    min-width: 0;
+}
+
+.player-left .track-title {
+    font-size: 0.84rem;
+    line-height: 1.2;
+}
+
+.player-left .track-artist {
+    font-size: 0.72rem;
+    line-height: 1.2;
+}
+
+/* Hide controls + queue + volume — the mini player only shows
+ * cover, info, like, play. Tap the cover to expand to fullscreen. */
+.player-center,
+.player-right .icon-btn-sm:not(#player-like-btn),
+.player-right .volume-bar-bg,
+.player-left .icon-btn-sm:not(#player-like-btn) {
+    display: none !important;
+}
+
+.player-right {
+    grid-area: right;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.player-right .icon-btn-sm,
+#player-like-btn {
+    width: 36px;
+    height: 36px;
+}
+
+/* The play / pause button — promote it from the hidden .player-center.
+ * It already has id="play-pause-btn"; we lift it visually with a
+ * standalone selector so the centre column can stay hidden. */
+#play-pause-btn {
+    display: inline-flex !important;
+    width: 36px !important;
+    height: 36px !important;
+    background: transparent !important;
+    border: 0 !important;
+    color: var(--text-main) !important;
+    align-self: center;
+    justify-self: end;
+    grid-area: right;
+}
+
+
+/* ── 7. Bottom navigation ───────────────────────────────────────── */
+
+.m-bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(60px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    display: flex;
+    align-items: stretch;
+    background: rgba(0, 0, 0, 0.92);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    z-index: 40;
+}
+
+.m-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 6px 4px;
+    background: transparent;
+    border: 0;
+    color: var(--text-faint, #888);
+    font-size: 0.65rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.12s ease;
+}
+
+.m-nav-item i,
+.m-nav-item svg {
+    width: 22px;
+    height: 22px;
+}
+
+.m-nav-item:active {
+    color: var(--text-main);
+}
+
+.m-nav-item.active {
+    color: var(--text-main);
+}
+
+.m-nav-item.active i,
+.m-nav-item.active svg {
+    /* Spotify uses a slightly heavier icon weight on the active tab —
+     * we approximate by stroke-width and a subtle scale. */
+    stroke-width: 2.4;
+    transform: scale(1.05);
+}
+
+
+/* ── 8. Modal full-screen on mobile ─────────────────────────────── */
+
+.modal-overlay:not(.hidden) {
+    align-items: flex-end;     /* slide-up sheet feel */
+}
+
+.modal {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 16px 16px 0 0 !important;
+    margin-bottom: 0 !important;
+    max-height: 88vh;
+    overflow-y: auto;
+}
+
+
+/* ── 9. Hide bits we don't want on mobile ───────────────────────── */
+
+/* Old desktop close button inside the (now-hidden) sidebar */
+.sidebar-close { display: none !important; }
+
+/* The old hamburger (#menu-toggle) is no longer needed — bottom nav
+ * replaces it; if it lingers in markup, hide it too. */
+#menu-toggle { display: none !important; }
+
+/* The fullscreen player (still works on tap-cover) takes the whole
+ * screen on mobile — no override needed beyond what already exists. */

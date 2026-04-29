@@ -30,6 +30,14 @@
     -ms-overflow-style: none;       /* IE / legacy Edge */
 }
 
+/* Mobile-only chrome — hidden on desktop by default. The mobile_shell.css
+ * stylesheet (loaded with media="(max-width: 768px)") overrides these
+ * with `display: flex`. */
+.m-topbar,
+.m-bottom-nav {
+    display: none;
+}
+
 *::-webkit-scrollbar,
 *::-webkit-scrollbar-thumb,
 *::-webkit-scrollbar-track {

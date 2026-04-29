@@ -20,6 +20,10 @@
     <link rel="stylesheet" href="/assets/css/ui_motion.css?v={{ static_v }}">
     <link rel="stylesheet" href="/assets/css/mobile_fixes.css?v={{ static_v }}">
     <link rel="stylesheet" href="/assets/css/admin_system.css?v={{ static_v }}">
+    <!-- Mobile-only stylesheet. Browser still downloads it (media attribute
+         is a hint, not a gate) but only applies its rules when the viewport
+         is <=768px, so desktop layouts stay untouched. -->
+    <link rel="stylesheet" href="/assets/css/mobile_shell.css?v={{ static_v }}" media="(max-width: 768px)">
 
     <!-- PWA & Mobile Meta -->
     <link rel="manifest" href="/assets/site.webmanifest">
@@ -181,10 +185,57 @@
                 </div>
             </header>
 
+            <!-- ─── MOBILE TOP BAR ─────────────────────────────────────
+                 Hidden on desktop via the default .m-topbar { display:none }
+                 rule; mobile_shell.css (loaded only at <=768px) flips it
+                 back on. Tapping the avatar takes the user to their
+                 settings page (where logout / change password live). -->
+            <header class="m-topbar">
+                <a class="m-topbar-avatar" onclick="loadView('settings_user')" title="{{ username }}">
+                    <img src="/user/avatar/{{ username }}" alt="Avatar"
+                         onerror="this.outerHTML='<i data-lucide=\'user\'></i>'">
+                </a>
+                <h1 class="m-topbar-title" id="m-topbar-title">{{ username }}</h1>
+                <div class="m-topbar-actions">
+                    <button class="m-icon-btn" onclick="openDownloadsModal()" title="Downloads">
+                        <i data-lucide="download-cloud"></i>
+                        <span id="m-download-badge" class="m-badge" style="display:none;">0</span>
+                    </button>
+                    <button class="m-icon-btn" onclick="openDeleteResponsesModal()" title="Delete responses">
+                        <i data-lucide="messages-square"></i>
+                        <span id="m-delete-badge" class="m-badge" style="display:none;">0</span>
+                    </button>
+                    {% if is_admin %}
+                    <button class="m-icon-btn" onclick="loadView('settings_admin')" title="Admin">
+                        <i data-lucide="settings"></i>
+                    </button>
+                    {% endif %}
+                </div>
+            </header>
+
             <div class="view-content" id="view-container">
                 {% block content %}{% endblock %}
             </div>
         </main>
+
+        <!-- ─── MOBILE BOTTOM NAV ──────────────────────────────────────
+             Sits above the mini player. Three primary destinations
+             matching Spotify's pattern. Active state is wired by
+             markBottomNavActive() in the inline script below. -->
+        <nav class="m-bottom-nav" id="m-bottom-nav">
+            <button class="m-nav-item" data-view="home" onclick="loadView('home')">
+                <i data-lucide="home"></i>
+                <span>Home</span>
+            </button>
+            <button class="m-nav-item" data-view="search" onclick="loadView('search')">
+                <i data-lucide="search"></i>
+                <span>Search</span>
+            </button>
+            <button class="m-nav-item" data-view="library" onclick="loadView('library')">
+                <i data-lucide="library"></i>
+                <span>Your Library</span>
+            </button>
+        </nav>
 
         <footer class="player-footer player-hidden">
             <div class="player-left">
@@ -384,6 +435,41 @@
             const next = current === 'collapsed' ? 'expanded' : 'collapsed';
             applySidebarMode(next);
             try { localStorage.setItem(SIDEBAR_MODE_KEY, next); } catch (e) {}
+        };
+
+        /* Spotify-style "Good morning/afternoon/evening, {user}" in the
+         * mobile topbar, computed in JS so we don't bother the backend. */
+        function applyMobileGreeting() {
+            const el = document.getElementById('m-topbar-title');
+            if (!el) return;
+            const h = new Date().getHours();
+            const tod = h < 5  ? 'evening'
+                      : h < 12 ? 'morning'
+                      : h < 18 ? 'afternoon'
+                      :          'evening';
+            const u = (window.USER_DATA && window.USER_DATA.username) || 'You';
+            el.textContent = `Good ${tod}, ${u}`;
+        }
+        applyMobileGreeting();
+
+        /* Mobile bottom-nav active-state. Maps a few related views onto the
+         * three primary tabs (Home gets all the home-tab variants, Library
+         * absorbs playlist detail, etc.) so the highlight matches the
+         * user's current location even when they're not on the canonical
+         * top-level view. Called from views.loadView() via window. */
+        window.markBottomNavActive = function (view) {
+            const nav = document.getElementById('m-bottom-nav');
+            if (!nav) return;
+            const homeViews    = new Set(['home', 'public', 'discover_radios', 'mix']);
+            const searchViews  = new Set(['search']);
+            const libraryViews = new Set(['library', 'playlist', 'favorites']);
+            let activeTab = '';
+            if (homeViews.has(view))         activeTab = 'home';
+            else if (searchViews.has(view))  activeTab = 'search';
+            else if (libraryViews.has(view)) activeTab = 'library';
+            nav.querySelectorAll('.m-nav-item').forEach((btn) => {
+                btn.classList.toggle('active', btn.dataset.view === activeTab);
+            });
         };
 
         /**

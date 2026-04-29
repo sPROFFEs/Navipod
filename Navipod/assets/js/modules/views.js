@@ -153,7 +153,12 @@ export async function loadView(view, param = null, options = {}) {
 
   // Active-state highlighting now lives on the home tab pills (which are
   // re-rendered on each view) and on the sidebar's pinned items, both of
-  // which manage their own state. No global .nav-link selector needed.
+  // which manage their own state. The mobile bottom nav still needs an
+  // explicit update because its three tabs map several related views
+  // (mix → home, playlist → library, …) onto a small primary set.
+  if (typeof window.markBottomNavActive === 'function') {
+    window.markBottomNavActive(view);
+  }
 
   try {
     state.setCurrentViewName(view);
