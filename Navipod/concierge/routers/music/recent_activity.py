@@ -28,6 +28,7 @@ class RecentRadioRequest(BaseModel):
 class RecentMixRequest(BaseModel):
     mix_key: str
     title: str = ""
+    thumbnail: str = ""
 
 
 @router.get("/api/recent-activity")
@@ -65,7 +66,7 @@ async def track_recent_mix(req: RecentMixRequest, request: Request, db: Session 
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-    personalization_service.record_recent_mix(user.username, req.mix_key, req.title)
+    personalization_service.record_recent_mix(user.username, req.mix_key, req.title, req.thumbnail)
     return JSONResponse({"status": "ok"})
 
 

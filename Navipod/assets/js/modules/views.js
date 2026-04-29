@@ -1072,16 +1072,36 @@ function _sidebarRadioRow(r) {
 function _sidebarMixRow(m) {
   const name = ui.escHtml(m.title || 'Mix');
   const keyJs = String(m.key || '').replace(/'/g, "\\'");
+  const thumb = m.thumbnail && !m.thumbnail.includes('default') ? m.thumbnail : '';
   return `
     <a class="sidebar-item" onclick="loadView('mix', '${keyJs}')" title="${name}">
         <div class="sidebar-cover sidebar-cover-mix">
-            <i data-lucide="sparkles"></i>
+            ${thumb
+              ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.outerHTML='<i data-lucide=\\'sparkles\\'></i>'">`
+              : `<i data-lucide="sparkles"></i>`}
         </div>
         <div class="sidebar-meta">
             <div class="sidebar-name">${name}</div>
             <div class="sidebar-sub">Mix</div>
         </div>
     </a>`;
+}
+
+function _sidebarCreateButton() {
+  // Always rendered as the last item: lets new users start fast (when the
+  // list above is empty it's the only thing visible) and gives existing
+  // users a 21st affordance after their 20 most recent items.
+  return `
+    <button type="button" class="sidebar-item sidebar-item-create"
+            onclick="showCreatePlaylistModal()" title="Create playlist">
+        <div class="sidebar-cover sidebar-cover-create">
+            <i data-lucide="plus"></i>
+        </div>
+        <div class="sidebar-meta">
+            <div class="sidebar-name">Create playlist</div>
+            <div class="sidebar-sub">New</div>
+        </div>
+    </button>`;
 }
 
 export function renderSidebarRecents() {
@@ -1098,9 +1118,12 @@ export function renderSidebarRecents() {
   state.recentMixes.forEach((m) => rows.push(_sidebarMixRow(m)));
   state.recentRadios.forEach((r) => rows.push(_sidebarRadioRow(r)));
 
-  container.innerHTML = rows.length
-    ? rows.join('')
-    : '<div class="sidebar-empty">No recent activity yet</div>';
+  // Always finish with the create-playlist affordance so it's both the
+  // empty-state CTA for new users and the persistent "new" button for
+  // power users.
+  rows.push(_sidebarCreateButton());
+
+  container.innerHTML = rows.join('');
 
   lucide.createIcons();
 }
@@ -1139,16 +1162,22 @@ export async function trackRecentPlaylist(playlistId) {
 
 export async function trackRecentMix(mixKey) {
   if (!mixKey) return;
-  // Resolve a friendlier title from the freshly-rendered mix view if we can,
-  // otherwise the backend will derive one from the key.
+  // Snapshot the title and cover URL from the freshly-rendered mix view so
+  // the sidebar can show the same artwork the user just saw, without
+  // needing a follow-up /mixes round trip on the next page load.
   let title = '';
+  let thumbnail = '';
   const titleEl = document.querySelector('.playlist-title');
   if (titleEl) title = titleEl.textContent.trim();
+  const coverImg = document.querySelector('.playlist-cover-large img');
+  if (coverImg && coverImg.src && !coverImg.src.includes('default_cover.png')) {
+    thumbnail = coverImg.src;
+  }
   try {
     await fetch(`${state.API}/recent-activity/mix`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mix_key: String(mixKey), title })
+      body: JSON.stringify({ mix_key: String(mixKey), title, thumbnail })
     });
     await refreshRecentActivity();
   } catch (e) {

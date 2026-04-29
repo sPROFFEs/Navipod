@@ -32,10 +32,18 @@
     border: 0;
     border-radius: 10px;
     padding: 0;
-    overflow: hidden;
+    /* The legacy .sidebar rule in style.css sets overflow-y:auto here,
+     * which would cause the whole sidebar (including the header) to
+     * scroll instead of just the items list. Force hidden on both axes
+     * so only .sidebar-list scrolls. */
+    overflow: hidden !important;
+    overflow-x: hidden !important;
+    overflow-y: hidden !important;
     display: flex;
     flex-direction: column;
     scrollbar-color: var(--border-strong) transparent;
+    /* Establish a stacking context so the header z-index works locally. */
+    isolation: isolate;
 }
 
 .sidebar::-webkit-scrollbar-thumb {
@@ -51,8 +59,13 @@
 /* ── Top toggle row ─────────────────────────────────────────────── */
 
 .sidebar-head {
-    padding: 12px 12px 4px 12px;
+    padding: 12px 12px 8px 12px;
     flex-shrink: 0;
+    /* Sit above the scrolling list so when items scroll up they cleanly
+     * disappear behind the header instead of bleeding across it. */
+    position: relative;
+    z-index: 2;
+    background: var(--surface-1);
 }
 
 .sidebar-toggle {
@@ -95,13 +108,16 @@
 /* ── Items list ─────────────────────────────────────────────────── */
 
 .sidebar-list {
-    flex: 1;
+    flex: 1 1 0;
+    min-height: 0;          /* enable internal scrolling inside flex parent */
     overflow-y: auto;
     overflow-x: hidden;
     padding: 4px 8px 12px 8px;
     display: flex;
     flex-direction: column;
     gap: 2px;
+    position: relative;
+    z-index: 1;
 }
 
 .sidebar-item {
@@ -172,6 +188,36 @@
 .sidebar-cover-mix {
     background: linear-gradient(135deg, #14b8a6 0%, #0e7490 100%);
     color: #fff;
+}
+
+/* Create-playlist row: a borderless plus glyph that sits at the bottom
+ * of the list as the last entry. No card background, no border — only
+ * the icon brightens on hover. Sized exactly like a normal cover so
+ * collapsed and expanded modes line up with everything above. */
+.sidebar-item-create {
+    background: transparent;
+    border: 0;
+    width: 100%;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+}
+
+.sidebar-cover-create {
+    background: transparent;
+    color: var(--text-sub);
+    transition: color 0.15s ease;
+}
+
+.sidebar-item-create:hover .sidebar-cover-create {
+    color: var(--text-main);
+}
+
+.sidebar-cover-create i,
+.sidebar-cover-create svg {
+    width: 28px;
+    height: 28px;
+    stroke-width: 2.2;
 }
 
 .sidebar-meta {

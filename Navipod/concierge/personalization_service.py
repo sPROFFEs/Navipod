@@ -332,21 +332,25 @@ def record_recent_radio(username: str, radio_id: str, name: str = "", stream_url
         conn.commit()
 
 
-def record_recent_mix(username: str, mix_key: str, title: str = "") -> None:
+def record_recent_mix(username: str, mix_key: str, title: str = "", thumbnail: str = "") -> None:
     """Track that the user just opened/listened to a system-generated mix.
 
     Mixes don't have DB rows like playlists; they're identified by a string
     key (`repeat`, `deep_cuts`, `favorites`, `rediscovery`, `top_pool_tracks`,
-    `latest_pool_additions`). We persist the title alongside the key so the
-    sidebar can render the row even if the user opens the page before the
-    /mixes endpoint resolves.
+    `latest_pool_additions`). We persist the title and thumbnail URL
+    alongside the key so the sidebar can render the row with the proper
+    cover even before /mixes resolves on the next page load.
     """
     key = (mix_key or "").strip()
     if not key:
         return
     ensure_user_activity_db(username)
     payload = json.dumps(
-        {"key": key, "title": (title or "").strip()},
+        {
+            "key": key,
+            "title": (title or "").strip(),
+            "thumbnail": (thumbnail or "").strip(),
+        },
         ensure_ascii=False,
     )
     with _connect(username) as conn:
@@ -450,8 +454,13 @@ def get_recent_activity_payload(db: Session, user) -> dict[str, Any]:
             payload = {}
         key = str(payload.get("key") or row["item_key"] or "").strip()
         title = str(payload.get("title") or row["item_label"] or "").strip()
+        thumbnail = str(payload.get("thumbnail") or "").strip()
         if key:
-            mixes.append({"key": key, "title": title or key.replace("_", " ").title()})
+            mixes.append({
+                "key": key,
+                "title": title or key.replace("_", " ").title(),
+                "thumbnail": thumbnail,
+            })
         if len(mixes) >= RECENT_ITEMS_LIMIT:
             break
 
