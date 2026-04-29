@@ -279,54 +279,6 @@
     text-align: center;
 }
 
-/* ── Browse fallback (temporary, removed in Phase 3) ─────────────── */
-
-.sidebar-browse {
-    flex-shrink: 0;
-    padding: 8px 8px 4px 8px;
-    border-top: 1px solid var(--border-subtle);
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.sidebar-browse-title {
-    color: var(--text-faint);
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    padding: 6px 12px 4px;
-}
-
-.sidebar-browse-link {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 8px 12px;
-    background: transparent;
-    border: 0;
-    border-radius: 6px;
-    color: var(--text-sub);
-    cursor: pointer;
-    font: inherit;
-    font-size: 0.88rem;
-    text-align: left;
-    transition: background-color 0.12s ease, color 0.12s ease;
-}
-
-.sidebar-browse-link:hover {
-    background: rgba(255, 255, 255, 0.06);
-    color: var(--text-main);
-}
-
-.sidebar-browse-link i,
-.sidebar-browse-link svg {
-    width: 18px;
-    height: 18px;
-    flex-shrink: 0;
-}
-
 /* ── Quota widget at bottom ─────────────────────────────────────── */
 
 .quota-widget {
@@ -378,18 +330,11 @@
  * snap. Reverse on expand. ───────────────────────────────────── */
 
 .sidebar-toggle-label,
-.sidebar-meta,
-.sidebar-browse-link span {
+.sidebar-meta {
     opacity: 1;
     transition: opacity 140ms ease, max-width 200ms ease, margin 200ms ease;
     max-width: 100ch;
     white-space: nowrap;
-    overflow: hidden;
-}
-
-.sidebar-browse-title {
-    opacity: 1;
-    transition: opacity 140ms ease, height 200ms ease, padding 200ms ease;
     overflow: hidden;
 }
 
@@ -401,19 +346,10 @@
 }
 
 :root[data-sidebar-mode="collapsed"] .sidebar-toggle-label,
-:root[data-sidebar-mode="collapsed"] .sidebar-meta,
-:root[data-sidebar-mode="collapsed"] .sidebar-browse-link span {
+:root[data-sidebar-mode="collapsed"] .sidebar-meta {
     opacity: 0;
     max-width: 0;
     margin: 0;
-    pointer-events: none;
-}
-
-:root[data-sidebar-mode="collapsed"] .sidebar-browse-title {
-    opacity: 0;
-    height: 0;
-    padding-top: 0;
-    padding-bottom: 0;
     pointer-events: none;
 }
 
@@ -446,8 +382,7 @@
     transition: gap 200ms ease, padding 200ms ease, background-color 120ms ease;
 }
 
-:root[data-sidebar-mode="collapsed"] .sidebar-item,
-:root[data-sidebar-mode="collapsed"] .sidebar-browse-link {
+:root[data-sidebar-mode="collapsed"] .sidebar-item {
     gap: 0;
     /* Sidebar 72px, list padding 8px each side -> item content area 56px;
      * cover is 48px -> 4px padding each side centres it perfectly. No

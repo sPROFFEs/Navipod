@@ -151,10 +151,9 @@ export async function loadView(view, param = null, options = {}) {
     lucide.createIcons();
   }
 
-  document.querySelectorAll('.nav-link').forEach((l) => l.classList.remove('active'));
-  const navView = view === 'mix' ? 'home' : view;
-  const link = document.querySelector(`.nav-link[onclick*="'${navView}'"]`);
-  if (link) link.classList.add('active');
+  // Active-state highlighting now lives on the home tab pills (which are
+  // re-rendered on each view) and on the sidebar's pinned items, both of
+  // which manage their own state. No global .nav-link selector needed.
 
   try {
     state.setCurrentViewName(view);
