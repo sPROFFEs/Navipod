@@ -1,3 +1,9 @@
+/* ─────────────────────────────────────────────────────────────────────
+ *  Top bar (Spotify-style)
+ *  Layout: 3-column grid
+ *      [history btns]   [home + search pill]   [actions]
+ * ───────────────────────────────────────────────────────────────────*/
+
 .main-view {
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 18%), var(--surface-1);
     border: 0;
@@ -9,12 +15,136 @@
     padding: 0 24px;
     background: rgba(22, 25, 28, 0.92);
     border-bottom: 1px solid var(--border-subtle);
+    display: grid;
+    grid-template-columns: minmax(120px, auto) minmax(0, 1fr) minmax(120px, auto);
+    align-items: center;
+    gap: 16px;
 }
 
 .top-bar-left,
 .header-actions {
     gap: 12px;
 }
+
+/* ── Centre column: home button + search pill ───────────────────── */
+
+.top-bar-center {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 560px;
+    justify-self: center;
+}
+
+.topbar-home-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--surface-2);
+    border: 0;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background-color 0.15s ease, transform 0.1s ease, color 0.15s ease;
+}
+
+.topbar-home-btn:hover {
+    background: var(--surface-3);
+    transform: scale(1.04);
+    color: #fff;
+}
+
+.topbar-home-btn i,
+.topbar-home-btn svg {
+    width: 22px;
+    height: 22px;
+}
+
+.topbar-search {
+    flex: 1;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface-2);
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 0 8px 0 18px;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+    min-width: 0;
+}
+
+.topbar-search:hover {
+    background: var(--surface-3);
+}
+
+.topbar-search:focus-within {
+    background: var(--surface-3);
+    border-color: rgba(255, 255, 255, 0.22);
+}
+
+.topbar-search-icon {
+    color: var(--text-sub);
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+}
+
+.topbar-search-input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: 0;
+    color: var(--text-main);
+    font-size: 0.95rem;
+    font-family: inherit;
+    outline: none;
+    padding: 0;
+}
+
+.topbar-search-input::placeholder {
+    color: var(--text-sub);
+    opacity: 0.85;
+}
+
+.topbar-search-divider {
+    width: 1px;
+    height: 22px;
+    background: rgba(255, 255, 255, 0.12);
+    flex-shrink: 0;
+}
+
+.topbar-search-library {
+    width: 36px;
+    height: 36px;
+    border: 0;
+    background: transparent;
+    color: var(--text-sub);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.topbar-search-library:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.topbar-search-library i,
+.topbar-search-library svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* ── Right-side icon buttons ────────────────────────────────────── */
 
 .circle-btn,
 .btn-icon-circle,
@@ -40,4 +170,17 @@
 
 .view-content {
     padding: 24px;
+}
+
+/* ── Mobile: hide the centre column for now (will be reworked in a
+ * dedicated mobile pass later). Same 768px breakpoint as ui_mobile.css
+ * so the topbar transitions cleanly. The Home + search + library
+ * entrypoints remain reachable from the sidebar nav. ────────────── */
+@media (max-width: 768px) {
+    .top-bar {
+        grid-template-columns: auto 1fr auto;
+    }
+    .top-bar-center {
+        display: none;
+    }
 }

@@ -136,6 +136,30 @@
                     </div>
                 </div>
 
+                <div class="top-bar-center">
+                    <button class="topbar-home-btn" onclick="loadView('home')" title="Home">
+                        <i data-lucide="home"></i>
+                    </button>
+                    <div class="topbar-search">
+                        <i data-lucide="search" class="topbar-search-icon"></i>
+                        <input
+                            type="text"
+                            id="topbar-search-input"
+                            class="topbar-search-input"
+                            placeholder="{{ _('search.placeholder') if _ else 'What do you want to play?' }}"
+                            autocomplete="off"
+                            spellcheck="false"
+                            oninput="handleTopbarSearch(this.value)"
+                            onfocus="handleTopbarSearch(this.value)">
+                        <span class="topbar-search-divider"></span>
+                        <button class="topbar-search-library"
+                                onclick="loadView('library')"
+                                title="{{ _('menu.library') if _ else 'Library' }}">
+                            <i data-lucide="library"></i>
+                        </button>
+                    </div>
+                </div>
+
                 <div class="header-actions">
                     <button class="btn-icon-circle" onclick="openDownloadsModal()" style="position: relative;">
                         <i data-lucide="download-cloud"></i>
@@ -173,6 +197,10 @@
                                 <button type="button" class="user-menu-item" onclick="event.preventDefault(); document.getElementById('user-menu')?.removeAttribute('open'); loadView('settings_user');">
                                     <i data-lucide="user-circle"></i>
                                     <span>Profile</span>
+                                </button>
+                                <button type="button" class="user-menu-item" onclick="event.preventDefault(); document.getElementById('user-menu')?.removeAttribute('open'); loadView('help');">
+                                    <i data-lucide="help-circle"></i>
+                                    <span>{{ _('menu.help') if _ else 'Help' }}</span>
                                 </button>
                                 <form action="/logout" method="post">
                                     <button type="submit" class="user-menu-action user-menu-action-danger">
@@ -367,6 +395,47 @@
     <script>
         window.USER_DATA = {
             username: "{{ username }}"
+        };
+
+        /**
+         * Topbar search input handler.
+         *
+         * The topbar exposes a Spotify-style search pill that's visible from
+         * every view. When the user types or focuses it we forward the query
+         * to the existing in-view search experience: navigate to the search
+         * view (if not already there) and synchronise the value with its
+         * own input so the existing handleSearch() pipeline runs unchanged.
+         */
+        window.handleTopbarSearch = function (value) {
+            const v = value || '';
+            const inViewInput = document.getElementById('search-input');
+
+            if (inViewInput) {
+                // Already on the search view — just sync + trigger
+                if (inViewInput.value !== v) inViewInput.value = v;
+                if (typeof window.handleSearch === 'function') {
+                    window.handleSearch(v);
+                }
+                return;
+            }
+
+            // Not on search view yet — navigate, then sync once it renders
+            if (typeof window.loadView === 'function') {
+                window.loadView('search');
+                let attempts = 0;
+                const sync = () => {
+                    const el = document.getElementById('search-input');
+                    if (el) {
+                        el.value = v;
+                        if (v && typeof window.handleSearch === 'function') {
+                            window.handleSearch(v);
+                        }
+                        return;
+                    }
+                    if (++attempts < 30) setTimeout(sync, 30);
+                };
+                setTimeout(sync, 30);
+            }
         };
     </script>
     <script type="module" src="/assets/js/main.js?v={{ range(1, 99999) | random }}"></script>
