@@ -1394,3 +1394,233 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ *  FLAT REDESIGN  —  System Monitor + Admin Panel
+ *  Inspired by the Spotify settings layout: no card boxes, just sections
+ *  with a heading and a vertical list of "setting rows". Original rules
+ *  above are kept intact; the rules in this block override them where it
+ *  matters. To revert this redesign, delete everything from this banner
+ *  down to the end of file.
+ * ───────────────────────────────────────────────────────────────────────*/
+
+/* Page container — slightly narrower so long lines stay readable */
+.system-monitor,
+.admin-shell {
+    max-width: 1080px;
+    gap: 32px;
+}
+
+/* ── Section panels: no box, just a heading and content ─────────────── */
+.monitor-panel,
+.admin-panel {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    padding: 0;
+}
+.monitor-panel:hover,
+.admin-panel:hover {
+    border-color: transparent;
+}
+
+.monitor-panel-header,
+.admin-panel-header {
+    padding: 0 0 14px 0;
+    border-bottom: 1px solid var(--monitor-border, #2a2e38);
+    margin-bottom: 18px;
+}
+.monitor-panel-header h2,
+.admin-panel-header h2 {
+    font-size: 1.45rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+.monitor-panel-header p,
+.admin-panel-header p {
+    font-size: .9rem;
+    margin-top: 4px;
+}
+.monitor-panel-body,
+.admin-panel-body {
+    padding: 0;
+    gap: 14px;
+}
+
+/* ── Two-column grids stay 2-col on desktop, become 1-col flat below ── */
+.monitor-grid.columns-2,
+.monitor-grid.columns-3 {
+    gap: 48px 32px;
+}
+@media (max-width: 900px) {
+    .monitor-grid.columns-2,
+    .monitor-grid.columns-3 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ── KV "rows": label on the left, value on the right ────────────────── */
+.monitor-kv-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+.monitor-kv {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    padding: 14px 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 16px;
+}
+.monitor-kv + .monitor-kv {
+    border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+.monitor-kv-label {
+    font-size: .95rem;
+    color: var(--monitor-text);
+    font-weight: 500;
+}
+.monitor-kv-value {
+    text-align: right;
+    color: var(--monitor-muted);
+    font-size: .9rem;
+    word-break: break-word;
+    justify-self: end;
+    max-width: 60%;
+}
+.monitor-kv-value strong {
+    color: var(--monitor-text);
+    font-weight: 600;
+}
+
+/* ── KPI stats: keep grid layout, drop the box ───────────────────────── */
+.monitor-card {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    padding: 0;
+    gap: 10px;
+}
+.monitor-card-value strong { font-size: 2.2rem; }
+.monitor-progress { height: 4px; }
+
+/* ── Buttons: ghost style by default, fill on hover ─────────────────── */
+.monitor-button,
+.monitor-form button,
+.monitor-secondary,
+.admin-shell-btn,
+.admin-secondary-btn {
+    background: transparent !important;
+    border-color: rgba(255, 255, 255, 0.14) !important;
+}
+.monitor-secondary:hover,
+.monitor-button:hover,
+.admin-shell-btn:hover,
+.admin-secondary-btn:hover {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border-color: rgba(255, 255, 255, 0.28) !important;
+}
+.monitor-warning,
+.admin-danger-btn.warning {
+    background: transparent !important;
+    border-color: rgba(217, 119, 6, 0.55) !important;
+    color: #fbbf24 !important;
+}
+.monitor-warning:hover,
+.admin-danger-btn.warning:hover {
+    background: rgba(217, 119, 6, 0.12) !important;
+}
+.monitor-danger,
+.admin-danger-btn {
+    background: transparent !important;
+    border-color: rgba(220, 38, 38, 0.55) !important;
+    color: #f87171 !important;
+}
+.monitor-danger:hover,
+.admin-danger-btn:hover {
+    background: rgba(220, 38, 38, 0.12) !important;
+}
+.monitor-primary,
+.admin-submit {
+    background: var(--monitor-green, #2fbf71) !important;
+    border-color: transparent !important;
+    color: #04140a !important;
+    font-weight: 600;
+}
+.monitor-primary:hover,
+.admin-submit:hover {
+    background: #34d07c !important;
+}
+
+/* ── Backup slots: flat rows instead of side-by-side cards ───────────── */
+.monitor-backup-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+.monitor-backup-grid > * {
+    background: transparent !important;
+    border: 0 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+    border-radius: 0 !important;
+    padding: 16px 0 !important;
+}
+.monitor-backup-grid > *:last-child { border-bottom: 0 !important; }
+
+/* ── Job rows ────────────────────────────────────────────────────────── */
+.monitor-job {
+    background: transparent !important;
+    border: 0 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+    border-radius: 0 !important;
+    padding: 12px 0 !important;
+}
+
+/* ── Form inputs in this surface: lighter, less chrome ──────────────── */
+.monitor-input,
+.monitor-select,
+.admin-input-wrap {
+    background: rgba(255, 255, 255, 0.04) !important;
+    border-color: rgba(255, 255, 255, 0.09) !important;
+}
+.monitor-input:focus,
+.monitor-select:focus,
+.admin-input-wrap:focus-within {
+    border-color: var(--monitor-green, #2fbf71) !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* ── User table — strip cardish chrome ──────────────────────────────── */
+.admin-users-table th {
+    color: var(--admin-muted);
+    font-weight: 500;
+    font-size: .82rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+.admin-users-table th,
+.admin-users-table td {
+    padding: 14px 0 !important;
+}
+.admin-users-table th:first-child,
+.admin-users-table td:first-child { padding-left: 0 !important; }
+.admin-users-table th:last-child,
+.admin-users-table td:last-child  { padding-right: 0 !important; }
+
+/* ── Toasts: keep tinted, just lose the heavy border ────────────────── */
+.monitor-toast,
+.admin-toast {
+    background: rgba(255, 255, 255, 0.03);
+    border-width: 0;
+    border-left: 3px solid currentColor;
+    border-radius: 0;
+    padding-left: 14px;
+}
+.monitor-toast.success, .admin-toast.success { color: var(--monitor-green, #2fbf71); }
+.monitor-toast.error,   .admin-toast.error   { color: var(--monitor-red,   #dc2626); }
+.monitor-toast span,
+.admin-toast span { color: var(--monitor-text, #f3f4f6); }
+
