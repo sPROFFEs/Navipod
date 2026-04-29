@@ -1404,10 +1404,11 @@
  *  down to the end of file.
  * ───────────────────────────────────────────────────────────────────────*/
 
-/* Page container — slightly narrower so long lines stay readable */
+/* Page container — fills the available area; no max-width centering */
 .system-monitor,
 .admin-shell {
-    max-width: 1080px;
+    width: 100%;
+    max-width: none;
     gap: 32px;
 }
 
@@ -1428,7 +1429,7 @@
 .admin-panel-header {
     padding: 0 0 14px 0;
     border-bottom: 1px solid var(--monitor-border, #2a2e38);
-    margin-bottom: 18px;
+    margin-bottom: 14px;
 }
 .monitor-panel-header h2,
 .admin-panel-header h2 {
@@ -1447,7 +1448,7 @@
     gap: 14px;
 }
 
-/* ── Two-column grids stay 2-col on desktop, become 1-col flat below ── */
+/* ── Two-column grids stay 2-col on desktop, become 1-col below ────── */
 .monitor-grid.columns-2,
 .monitor-grid.columns-3 {
     gap: 48px 32px;
@@ -1459,44 +1460,53 @@
     }
 }
 
-/* ── KV "rows": label on the left, value on the right ────────────────── */
+/* ── KV "rows": label left, value right (only inside .monitor-kv-grid)
+   We deliberately scope this with the parent so backup slots — which are
+   <article class="monitor-kv"> living inside .monitor-backup-grid with
+   many children — are NOT affected. ────────────────────────────────── */
 .monitor-kv-grid {
     display: flex;
     flex-direction: column;
     gap: 0;
 }
-.monitor-kv {
+.monitor-kv-grid > .monitor-kv {
     background: transparent !important;
     border: 0 !important;
     border-radius: 0 !important;
-    padding: 14px 0;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 16px;
+    padding: 12px 0 !important;
+    display: flex !important;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 24px;
+    min-width: 0;
 }
-.monitor-kv + .monitor-kv {
+.monitor-kv-grid > .monitor-kv + .monitor-kv {
     border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
 }
-.monitor-kv-label {
+.monitor-kv-grid > .monitor-kv > .monitor-kv-label {
+    flex: 0 0 auto;
     font-size: .95rem;
     color: var(--monitor-text);
     font-weight: 500;
+    margin: 0;
 }
-.monitor-kv-value {
+.monitor-kv-grid > .monitor-kv > .monitor-kv-value {
+    flex: 1 1 auto;
     text-align: right;
     color: var(--monitor-muted);
     font-size: .9rem;
-    word-break: break-word;
-    justify-self: end;
-    max-width: 60%;
+    min-width: 0;
+    /* Only break very long unbreakable strings (URLs, hashes, timestamps).
+       'anywhere' is smart: it does NOT split short words like "main". */
+    overflow-wrap: anywhere;
+    word-break: normal;
 }
-.monitor-kv-value strong {
+.monitor-kv-grid > .monitor-kv > .monitor-kv-value strong {
     color: var(--monitor-text);
     font-weight: 600;
 }
 
-/* ── KPI stats: keep grid layout, drop the box ───────────────────────── */
+/* ── KPI stats: keep the grid layout, drop the box ──────────────────── */
 .monitor-card {
     background: transparent !important;
     border: 0 !important;
@@ -1555,20 +1565,57 @@
     background: #34d07c !important;
 }
 
-/* ── Backup slots: flat rows instead of side-by-side cards ───────────── */
+/* ── Backup slots: each <article.monitor-kv> is a self-contained block.
+   We re-style it as a 2-col mini-grid: max-content for labels (Size /
+   Created / Source / Status) + 1fr for values. The slot-head spans both
+   columns at the top so the filename + restore button sit on their own
+   row with full width to breathe. ─────────────────────────────────── */
 .monitor-backup-grid {
     display: flex;
     flex-direction: column;
     gap: 0;
 }
-.monitor-backup-grid > * {
+.monitor-backup-grid > article.monitor-kv {
     background: transparent !important;
     border: 0 !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
     border-radius: 0 !important;
     padding: 16px 0 !important;
+    display: grid !important;
+    grid-template-columns: max-content 1fr;
+    column-gap: 28px;
+    row-gap: 6px;
+    align-items: baseline;
+    min-width: 0;
 }
-.monitor-backup-grid > *:last-child { border-bottom: 0 !important; }
+.monitor-backup-grid > article.monitor-kv:last-child {
+    border-bottom: 0 !important;
+}
+.monitor-backup-grid > article.monitor-kv > .monitor-slot-head {
+    grid-column: 1 / -1;
+    margin-bottom: 8px;
+    align-items: center;
+}
+.monitor-backup-grid > article.monitor-kv > .monitor-kv-label {
+    color: var(--monitor-muted);
+    font-size: .82rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    background: transparent;
+    padding: 0;
+    border: 0;
+}
+.monitor-backup-grid > article.monitor-kv > .monitor-kv-value {
+    color: var(--monitor-text);
+    font-size: .9rem;
+    text-align: left;
+    background: transparent;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
 
 /* ── Job rows ────────────────────────────────────────────────────────── */
 .monitor-job {
@@ -1579,7 +1626,7 @@
     padding: 12px 0 !important;
 }
 
-/* ── Form inputs in this surface: lighter, less chrome ──────────────── */
+/* ── Form inputs: subtler chrome ────────────────────────────────────── */
 .monitor-input,
 .monitor-select,
 .admin-input-wrap {
