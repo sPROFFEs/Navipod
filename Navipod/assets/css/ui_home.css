@@ -102,6 +102,16 @@
     color: #fff;
 }
 
+.quick-pick-cover-favorites {
+    background: linear-gradient(135deg, #4f46e5 0%, #ec4899 100%);
+    color: #fff;
+}
+
+.quick-pick-cover-favorites i,
+.quick-pick-cover-favorites svg {
+    fill: #fff;
+}
+
 .quick-pick-name {
     flex: 1;
     min-width: 0;

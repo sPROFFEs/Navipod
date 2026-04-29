@@ -303,13 +303,26 @@ document.body.addEventListener('htmx:afterSwap', (event) => {
 //   6. Recommendation shelves
 
 function _renderQuickPicksGrid() {
+  // Liked Songs is always pinned as the very first quick-pick tile so
+  // mobile users (who don't have the desktop sidebar with the pinned
+  // entry) still get one-tap access. On desktop the tile shows up too —
+  // the sidebar already pins it, but a second entry-point in the grid
+  // is harmless and matches Spotify's home pattern.
+  const likedTile = `
+    <button class="quick-pick" onclick="loadView('favorites')" title="Liked Songs">
+        <div class="quick-pick-cover quick-pick-cover-favorites">
+            <i data-lucide="heart"></i>
+        </div>
+        <div class="quick-pick-name">Liked Songs</div>
+    </button>`;
+
   const items = [];
   state.recentPlaylists.forEach((pl) => items.push({ kind: 'playlist', data: pl }));
   state.recentMixes.forEach((m) => items.push({ kind: 'mix', data: m }));
   state.recentRadios.forEach((r) => items.push({ kind: 'radio', data: r }));
-  if (items.length === 0) return '';
 
-  const slots = items.slice(0, 8); // 4 cols × 2 rows
+  // 8 total slots in the 4×2 grid; Liked occupies the first one.
+  const slots = items.slice(0, 7);
 
   const tile = ({ kind, data }) => {
     if (kind === 'playlist') {
@@ -354,7 +367,7 @@ function _renderQuickPicksGrid() {
       </button>`;
   };
 
-  return `<div class="quick-picks-grid">${slots.map(tile).join('')}</div>`;
+  return `<div class="quick-picks-grid">${likedTile}${slots.map(tile).join('')}</div>`;
 }
 
 export async function renderHome(container) {

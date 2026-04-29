@@ -315,8 +315,9 @@
         justify-content: flex-end;
     }
 
-    /* Hide all individual action buttons on mobile */
-    .track-list .action-btns > :not(.action-btn-more) {
+    /* Hide all individual action buttons on mobile, EXCEPT the source
+     * mini-icon and the more-vertical menu button. */
+    .track-list .action-btns > :not(.action-btn-more):not(.track-source-mini) {
         display: none !important;
     }
 
