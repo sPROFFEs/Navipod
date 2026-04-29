@@ -189,10 +189,9 @@
     padding: 0 !important;
     overflow-y: auto;
     height: 100%;
-    /* Stack: bottom nav (60) + safe area + mini player (56) sitting on top
-     * of the nav with a 6px breath, plus a comfortable margin so the
-     * last list row never touches the player. */
-    padding-bottom: calc(60px + 56px + 6px + 24px + env(safe-area-inset-bottom, 0px)) !important;
+    /* Stack flushed: bottom nav (60) + mini player (64) + safe area
+     * + 24px comfort margin so the last list row clears the player. */
+    padding-bottom: calc(60px + 64px + 24px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
 /* Most views render their own outer padding via .hero-section etc. The
@@ -279,27 +278,32 @@
  *  the rest. Tap the row to open the fullscreen player (existing
  *  toggleFullscreenPlayer() wired on the cover image). */
 
-/* Mini player — flex pill anchored above the bottom nav. We keep the
- * existing markup (player-left | player-center | player-right) but
- * flatten it into a single flex row, hide the bits we don't want, and
- * leave .player-center VISIBLE so its child #play-pause-btn renders. */
+/* Mini player — full-width row that sits FLUSH on top of the bottom
+ * nav so the two together look like one continuous control surface
+ * (matching Spotify's mobile pattern). Same dark background, a single
+ * hairline between them.
+ *
+ * Tap the cover to open the fullscreen player (existing handler on
+ * #player-cover). */
 .player-footer {
     position: fixed !important;
-    left: 8px !important;
-    right: 8px !important;
-    bottom: calc(60px + env(safe-area-inset-bottom, 0px) + 6px) !important;
-    width: auto !important;
-    height: 56px !important;
-    border-radius: 8px !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: calc(60px + env(safe-area-inset-bottom, 0px)) !important;
+    width: 100% !important;
+    height: 64px !important;
+    border-radius: 0 !important;
     display: flex !important;
     flex-direction: row !important;
     align-items: center !important;
-    gap: 8px !important;
-    padding: 0 8px 0 8px !important;
-    background: var(--surface-2, #1d2027) !important;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    gap: 12px !important;
+    padding: 0 12px !important;
+    background: rgba(15, 15, 15, 0.96) !important;
+    border: 0 !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.04) !important;
+    box-shadow: none !important;
     z-index: 50;
-    /* override any grid-template-* the desktop CSS sets */
+    /* Wipe every grid-template that the desktop / legacy CSS sets */
     grid-template-columns: none !important;
     grid-template-rows: none !important;
     grid-template-areas: none !important;
@@ -307,37 +311,49 @@
 
 /* Left segment: cover + info + like, takes all the available width */
 .player-left {
-    flex: 1 1 auto;
-    min-width: 0;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
     display: flex !important;
-    align-items: center;
-    gap: 10px;
+    align-items: center !important;
+    gap: 10px !important;
     grid-area: auto !important;
+    width: auto !important;
 }
 
+.player-left #player-cover,
 .player-left img {
-    width: 40px !important;
-    height: 40px !important;
-    border-radius: 4px;
-    flex-shrink: 0;
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 4px !important;
+    border: 0 !important;
+    flex-shrink: 0 !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
 }
 
 .track-info {
-    flex: 1 1 auto;
-    min-width: 0;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    margin-right: 0 !important;
+    overflow: hidden;
 }
 
-.track-info .track-title {
-    font-size: 0.84rem;
-    line-height: 1.2;
+.track-info .track-title,
+#player-title {
+    font-size: 0.86rem !important;
+    font-weight: 600 !important;
+    line-height: 1.2 !important;
+    color: var(--text-main) !important;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.track-info .track-artist {
-    font-size: 0.72rem;
-    line-height: 1.2;
+.track-info .track-artist,
+#player-artist {
+    font-size: 0.74rem !important;
+    line-height: 1.2 !important;
+    color: var(--text-sub) !important;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -350,34 +366,45 @@
 }
 
 #player-like-btn {
-    width: 36px;
-    height: 36px;
-    flex-shrink: 0;
+    width: 36px !important;
+    height: 36px !important;
+    flex-shrink: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    padding: 6px !important;
 }
 
-/* Centre segment stays visible so #play-pause-btn renders, but its
- * progress bar and the prev/next/shuffle/repeat siblings of the play
- * button are hidden. */
+/* Centre segment hosts only the play/pause. We override the desktop
+ * rules that make it column-direction + width:100% (which would steal
+ * all the horizontal space and crush track-info to 0px). */
 .player-center {
     display: flex !important;
     flex: 0 0 auto !important;
-    align-items: center;
+    flex-direction: row !important;
+    align-items: center !important;
     grid-area: auto !important;
+    width: auto !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
 }
 
 .player-center .player-controls {
-    display: contents;            /* let #play-pause-btn flow as a flex sibling */
+    display: contents !important;     /* play button flows as a flex sibling */
 }
 
 .player-center .player-controls > .control-btn:not(#play-pause-btn),
-.player-center .playback-bar-container {
+.player-center .playback-bar-container,
+.player-center #time-current,
+.player-center #time-total {
     display: none !important;
 }
 
 #play-pause-btn {
     width: 36px !important;
     height: 36px !important;
-    min-width: 36px;
+    min-width: 36px !important;
     background: transparent !important;
     border: 0 !important;
     color: var(--text-main) !important;
@@ -385,6 +412,11 @@
     align-items: center !important;
     justify-content: center !important;
     flex-shrink: 0 !important;
+    transform: none !important;
+}
+
+#play-pause-btn:hover {
+    transform: none !important;
 }
 
 /* Right segment (queue + volume) hidden in mini-player mode */
@@ -404,10 +436,13 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
     display: flex;
     align-items: stretch;
-    background: rgba(0, 0, 0, 0.92);
+    /* Same surface colour as the mini player above so the two stack
+     * looks like one continuous bottom panel (no visible seam other
+     * than the hairline border the player adds on its top edge). */
+    background: rgba(15, 15, 15, 0.96);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 0;
     z-index: 40;
 }
 
