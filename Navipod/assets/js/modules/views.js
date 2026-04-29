@@ -121,6 +121,18 @@ export async function loadView(view, param = null, options = {}) {
   if (view === 'radio' || view === 'your_radios') view = 'discover_radios';
   const { pushHistory = true, replaceHistory = false } = options;
 
+  // ── Soft cross-fade between views ────────────────────────────────
+  // Fade the current content out, then back in once the new view is in
+  // place. Skipped on the very first load (nothing to fade FROM) and on
+  // search (it has its own near-instant inline transition handled in
+  // handleTopbarSearch). The total perceived added latency is ~120ms.
+  const hasOldContent = container.children.length > 0 && view !== 'search';
+  if (hasOldContent) {
+    container.style.transition = 'opacity 120ms ease';
+    container.style.opacity = '0';
+    await new Promise((r) => setTimeout(r, 120));
+  }
+
   // Skip the music-loader for `search`: the view is synchronous and tiny
   // (chips + empty results area), so flashing a loader between the previous
   // content and the search panel makes the transition feel jarring when the
@@ -178,6 +190,16 @@ export async function loadView(view, param = null, options = {}) {
   } catch (e) {
     console.error(e);
     container.innerHTML = `<div class="empty-state" style="color:#e74c3c;">Error: ${e.message}</div>`;
+  } finally {
+    // Restore opacity. Two rAFs so the new content has been laid out
+    // before the transition kicks in — otherwise the browser may merge
+    // the opacity:0 → 1 change with the innerHTML write and the fade
+    // is skipped.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (container) container.style.opacity = '1';
+      });
+    });
   }
 }
 
@@ -1108,7 +1130,8 @@ function _sidebarPlaylistRow(pl) {
   const fallbackIcon = pl.source_playlist_id ? 'refresh-cw' : pl.is_public ? 'globe' : 'list-music';
   const sub = pl.source_playlist_id ? 'Synced playlist' : (pl.is_public ? 'Public playlist' : 'Playlist');
   return `
-    <a class="sidebar-item" onclick="loadView('playlist', ${pl.id})" title="${name}">
+    <a class="sidebar-item" data-sb-key="playlist-${pl.id}"
+       onclick="loadView('playlist', ${pl.id})" title="${name}">
         <div class="sidebar-cover">
             ${thumb
               ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.outerHTML='<i data-lucide=\\'${fallbackIcon}\\'></i>'">`
@@ -1127,7 +1150,8 @@ function _sidebarRadioRow(r) {
   const idJs = String(r.id || '').replace(/'/g, "\\'");
   const url = encodeURIComponent(r.streamUrl || '');
   return `
-    <a class="sidebar-item" onclick="playSavedRadio('${url}', '${nameJs}', '${idJs}')" title="${name}">
+    <a class="sidebar-item" data-sb-key="radio-${idJs}"
+       onclick="playSavedRadio('${url}', '${nameJs}', '${idJs}')" title="${name}">
         <div class="sidebar-cover sidebar-cover-radio">
             <i data-lucide="radio"></i>
         </div>
@@ -1143,7 +1167,8 @@ function _sidebarMixRow(m) {
   const keyJs = String(m.key || '').replace(/'/g, "\\'");
   const thumb = m.thumbnail && !m.thumbnail.includes('default') ? m.thumbnail : '';
   return `
-    <a class="sidebar-item" onclick="loadView('mix', '${keyJs}')" title="${name}">
+    <a class="sidebar-item" data-sb-key="mix-${keyJs}"
+       onclick="loadView('mix', '${keyJs}')" title="${name}">
         <div class="sidebar-cover sidebar-cover-mix">
             ${thumb
               ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.outerHTML='<i data-lucide=\\'sparkles\\'></i>'">`
@@ -1161,7 +1186,7 @@ function _sidebarCreateButton() {
   // list above is empty it's the only thing visible) and gives existing
   // users a 21st affordance after their 20 most recent items.
   return `
-    <button type="button" class="sidebar-item sidebar-item-create"
+    <button type="button" class="sidebar-item sidebar-item-create" data-sb-key="__create__"
             onclick="showCreatePlaylistModal()" title="Create playlist">
         <div class="sidebar-cover sidebar-cover-create">
             <i data-lucide="plus"></i>
@@ -1177,22 +1202,63 @@ export function renderSidebarRecents() {
   const container = document.getElementById('sidebar-items');
   if (!container) return;
 
+  // FLIP-style reorder animation:
+  //  1. Snapshot the top of every existing item by its data-sb-key.
+  //  2. Re-render the list (innerHTML swap).
+  //  3. For each item that survived: animate from its old top to the
+  //     new one (browser already placed it; we just play it backwards).
+  //  4. For each newly-introduced item: fade in with a tiny upward slide.
+  // The user perceives playlists smoothly settling into a new order
+  // when something is just played, instead of the list snapping.
+  const oldTops = new Map();
+  container.querySelectorAll('[data-sb-key]').forEach((el) => {
+    oldTops.set(el.dataset.sbKey, el.getBoundingClientRect().top);
+  });
+
   const rows = [];
-  // Playlists, mixes and radios — each individually sorted by the
-  // /recent-activity endpoint. We interleave them so all three kinds
-  // appear naturally in the sidebar (mixes show up only after the user
-  // has actually opened one). Playlists first, then mixes, then radios
-  // gives playlist-heavy users the strongest signal at the top.
   state.recentPlaylists.forEach((pl) => rows.push(_sidebarPlaylistRow(pl)));
   state.recentMixes.forEach((m) => rows.push(_sidebarMixRow(m)));
   state.recentRadios.forEach((r) => rows.push(_sidebarRadioRow(r)));
-
   // Always finish with the create-playlist affordance so it's both the
   // empty-state CTA for new users and the persistent "new" button for
   // power users.
   rows.push(_sidebarCreateButton());
 
   container.innerHTML = rows.join('');
+
+  // Schedule the FLIP animations on the next frame so the browser has
+  // already laid out the new positions.
+  const newItems = container.querySelectorAll('[data-sb-key]');
+  newItems.forEach((el) => {
+    const oldTop = oldTops.get(el.dataset.sbKey);
+    const newTop = el.getBoundingClientRect().top;
+
+    if (oldTop === undefined) {
+      // New entry — fade + slide-down 6px into place
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(-6px)';
+      requestAnimationFrame(() => {
+        el.style.transition = 'opacity 220ms ease, transform 220ms ease';
+        el.style.opacity = '1';
+        el.style.transform = '';
+      });
+      return;
+    }
+
+    const dy = oldTop - newTop;
+    if (Math.abs(dy) < 1) return;
+
+    // Existing item — start at old position then animate to current (0)
+    el.style.transition = 'none';
+    el.style.transform = `translateY(${dy}px)`;
+    // Force reflow so the transform takes effect before the transition
+    // is re-enabled in the next frame.
+    void el.offsetHeight;
+    requestAnimationFrame(() => {
+      el.style.transition = 'transform 280ms cubic-bezier(0.2, 0, 0.1, 1)';
+      el.style.transform = '';
+    });
+  });
 
   lucide.createIcons();
 }
