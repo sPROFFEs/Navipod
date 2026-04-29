@@ -117,17 +117,23 @@ export async function loadView(view, param = null, options = {}) {
   if (view === 'radio') view = 'discover_radios';
   const { pushHistory = true, replaceHistory = false } = options;
 
-  container.innerHTML = `
-    <div class="empty-state">
-        <div class="music-loader">
-            <div class="music-bar" style="animation-delay: 0.0s"></div>
-            <div class="music-bar" style="animation-delay: 0.1s"></div>
-            <div class="music-bar" style="animation-delay: 0.2s"></div>
-            <div class="music-bar" style="animation-delay: 0.3s"></div>
-            <div class="music-bar" style="animation-delay: 0.4s"></div>
-        </div>
-    </div>`;
-  lucide.createIcons();
+  // Skip the music-loader for `search`: the view is synchronous and tiny
+  // (chips + empty results area), so flashing a loader between the previous
+  // content and the search panel makes the transition feel jarring when the
+  // user is just typing in the topbar input.
+  if (view !== 'search') {
+    container.innerHTML = `
+      <div class="empty-state">
+          <div class="music-loader">
+              <div class="music-bar" style="animation-delay: 0.0s"></div>
+              <div class="music-bar" style="animation-delay: 0.1s"></div>
+              <div class="music-bar" style="animation-delay: 0.2s"></div>
+              <div class="music-bar" style="animation-delay: 0.3s"></div>
+              <div class="music-bar" style="animation-delay: 0.4s"></div>
+          </div>
+      </div>`;
+    lucide.createIcons();
+  }
 
   document.querySelectorAll('.nav-link').forEach((l) => l.classList.remove('active'));
   const navView = view === 'mix' ? 'home' : view;
@@ -505,13 +511,12 @@ export async function renderWrapped(container, yearParam = null) {
 }
 
 // === SEARCH VIEW ===
+// The canonical search input lives in the top bar (#topbar-search-input).
+// This view only renders the source-filter chips and the results area, so
+// transitioning into search feels like an inline panel rather than a new page.
 
 export function renderSearch(container) {
   container.innerHTML = `
-        <div class="search-input-wrapper glass-panel search-panel">
-            <i data-lucide="search" class="search-icon"></i>
-            <input type="text" id="search-input" placeholder="What do you want to listen to?" oninput="handleSearch(this.value)">
-        </div>
         <div class="source-chips">
             <div class="chip active" onclick="setSource(this, 'all')">All</div>
             <div class="chip spotify" onclick="setSource(this, 'spotify')">Spotify</div>
@@ -522,8 +527,10 @@ export function renderSearch(container) {
         </div>
         <div id="search-results"></div>`;
   lucide.createIcons();
-  document.getElementById('search-input')?.focus();
-  search.executeSearch('');
+  // Seed with the current topbar query (so refresh / direct navigation
+  // still surface results that match what's typed up there).
+  const seed = (document.getElementById('topbar-search-input')?.value || '').trim();
+  search.executeSearch(seed);
 }
 
 export async function renderMix(container, mixKey) {

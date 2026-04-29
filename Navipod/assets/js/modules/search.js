@@ -28,7 +28,13 @@ export function setSource(el, src) {
   state.setCurrentSource(src);
   document.querySelectorAll('.chip').forEach((c) => c.classList.remove('active'));
   el.classList.add('active');
-  const val = document.getElementById('search-input')?.value || '';
+  // The canonical search input lives in the top bar now (the in-view input
+  // was removed). Fall back to legacy #search-input in case any older
+  // layout still injects it.
+  const val =
+    document.getElementById('topbar-search-input')?.value ||
+    document.getElementById('search-input')?.value ||
+    '';
   executeSearch(val.trim());
 }
 

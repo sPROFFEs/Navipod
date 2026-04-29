@@ -146,7 +146,7 @@
                             type="text"
                             id="topbar-search-input"
                             class="topbar-search-input"
-                            placeholder="{{ _('search.placeholder') if _ else 'What do you want to play?' }}"
+                            placeholder="What do you want to play?"
                             autocomplete="off"
                             spellcheck="false"
                             oninput="handleTopbarSearch(this.value)"
@@ -154,7 +154,7 @@
                         <span class="topbar-search-divider"></span>
                         <button class="topbar-search-library"
                                 onclick="loadView('library')"
-                                title="{{ _('menu.library') if _ else 'Library' }}">
+                                title="Library">
                             <i data-lucide="library"></i>
                         </button>
                     </div>
@@ -400,41 +400,38 @@
         /**
          * Topbar search input handler.
          *
-         * The topbar exposes a Spotify-style search pill that's visible from
-         * every view. When the user types or focuses it we forward the query
-         * to the existing in-view search experience: navigate to the search
-         * view (if not already there) and synchronise the value with its
-         * own input so the existing handleSearch() pipeline runs unchanged.
+         * The topbar input is the canonical search input for the whole app.
+         * On focus / typing we render the search view (chips + results) into
+         * the main view container without navigating away with a loader, so
+         * the transition feels inline. The search view itself no longer
+         * carries its own input — it only renders chips and results.
          */
         window.handleTopbarSearch = function (value) {
             const v = value || '';
-            const inViewInput = document.getElementById('search-input');
 
-            if (inViewInput) {
-                // Already on the search view — just sync + trigger
-                if (inViewInput.value !== v) inViewInput.value = v;
+            // Already showing search results → just trigger a new query
+            if (document.getElementById('search-results')) {
                 if (typeof window.handleSearch === 'function') {
                     window.handleSearch(v);
                 }
                 return;
             }
 
-            // Not on search view yet — navigate, then sync once it renders
+            // Not on the search view → swap to it (instantly, no loader)
+            // and trigger the search after the chips/results have rendered.
             if (typeof window.loadView === 'function') {
                 window.loadView('search');
                 let attempts = 0;
-                const sync = () => {
-                    const el = document.getElementById('search-input');
-                    if (el) {
-                        el.value = v;
-                        if (v && typeof window.handleSearch === 'function') {
+                const trigger = () => {
+                    if (document.getElementById('search-results')) {
+                        if (typeof window.handleSearch === 'function') {
                             window.handleSearch(v);
                         }
                         return;
                     }
-                    if (++attempts < 30) setTimeout(sync, 30);
+                    if (++attempts < 30) setTimeout(trigger, 25);
                 };
-                setTimeout(sync, 30);
+                setTimeout(trigger, 25);
             }
         };
     </script>
