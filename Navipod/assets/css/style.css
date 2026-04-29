@@ -3308,3 +3308,278 @@ body {
 
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+ *  FLAT REDESIGN — Modals & Popups
+ *  Same Spotify-style flat language as system_monitor / admin_panel:
+ *  no glassmorphism, solid surface, sharper hierarchy, brand green
+ *  for primary CTAs. Original rules above are kept intact; this block
+ *  overrides them where it matters.
+ * ───────────────────────────────────────────────────────────────────────*/
+
+.modal-overlay {
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.modal {
+    background: #181818 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 12px !important;
+    padding: 24px !important;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6) !important;
+    width: min(100%, 460px) !important;
+}
+
+/* Wider variant for the playlist picker modal which lists many items */
+.modal.modal-playlist {
+    width: min(100%, 560px) !important;
+}
+
+/* Header — clean title + close X separated by a hairline */
+.modal-header {
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.modal-header h2,
+.modal-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: #fff;
+}
+.modal-header h2 i,
+.modal-header h2 svg {
+    width: 18px;
+    height: 18px;
+    color: var(--text-sub);
+}
+.modal-close {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: transparent;
+    border: 0;
+    color: var(--text-sub);
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.modal-close:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+}
+
+/* Inputs — subtle chrome, brand green focus */
+.modal-input {
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.09) !important;
+    border-radius: 6px !important;
+    padding: 12px 14px !important;
+    color: #fff !important;
+    font-size: 0.92rem !important;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.modal-input:focus {
+    border-color: var(--primary) !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+}
+.modal-input::placeholder {
+    color: var(--text-sub);
+    opacity: 0.85;
+}
+.modal-label {
+    color: var(--text-sub) !important;
+    font-size: 0.82rem !important;
+    font-weight: 500 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px !important;
+}
+
+/* List of items inside a modal — flat rows separated by hairlines */
+.modal-list {
+    background: transparent;
+    margin-bottom: 18px;
+    max-height: 360px;
+    gap: 0 !important;
+}
+.modal-list::-webkit-scrollbar {
+    display: none;
+}
+
+.modal-item,
+.modal-playlist-item {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 6px !important;
+    padding: 10px 8px !important;
+    transition: background-color 0.12s ease;
+}
+.modal-item:hover,
+.modal-playlist-item:hover {
+    background: rgba(255, 255, 255, 0.06) !important;
+}
+.modal-playlist-thumb {
+    width: 44px;
+    height: 44px;
+    border-radius: 4px;
+    background: var(--surface-3);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.modal-playlist-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.modal-playlist-name {
+    font-size: 0.92rem;
+    font-weight: 500;
+    color: #fff;
+}
+.modal-playlist-count {
+    font-size: 0.78rem;
+    color: var(--text-sub);
+}
+.modal-playlist-add-icon {
+    color: var(--text-sub);
+    transition: color 0.12s ease, transform 0.12s ease;
+}
+.modal-playlist-item:hover .modal-playlist-add-icon {
+    color: var(--primary);
+}
+
+/* Action buttons — Spotify pattern: ghost cancel + filled green primary */
+.modal-actions {
+    display: flex !important;
+    justify-content: flex-end;
+    gap: 10px;
+}
+.modal-btn-cancel {
+    background: transparent !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    color: var(--text-main) !important;
+    padding: 9px 18px !important;
+    border-radius: 999px !important;
+    font-weight: 500 !important;
+    font-size: 0.88rem !important;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.modal-btn-cancel:hover {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border-color: rgba(255, 255, 255, 0.28) !important;
+    color: #fff !important;
+}
+.modal-btn-primary {
+    background: var(--primary) !important;
+    color: #04140a !important;
+    border: 0 !important;
+    padding: 9px 22px !important;
+    border-radius: 999px !important;
+    font-weight: 700 !important;
+    font-size: 0.88rem !important;
+    box-shadow: none !important;
+    transition: background-color 0.12s ease, transform 0.08s ease;
+}
+.modal-btn-primary:hover {
+    background: var(--primary-hover) !important;
+    box-shadow: none !important;
+    transform: scale(1.02);
+}
+.modal-btn-danger {
+    background: transparent !important;
+    color: #f87171 !important;
+    border: 1px solid rgba(220, 38, 38, 0.55) !important;
+    padding: 9px 22px !important;
+    border-radius: 999px !important;
+    font-weight: 600 !important;
+    font-size: 0.88rem !important;
+    box-shadow: none !important;
+}
+.modal-btn-danger:hover {
+    background: rgba(220, 38, 38, 0.15) !important;
+    box-shadow: none !important;
+}
+
+/* ── Downloads / Delete-responses modal content ──────────────────── */
+
+.downloads-container {
+    background: transparent;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+.downloads-container::-webkit-scrollbar { display: none; }
+
+.job-item {
+    background: transparent !important;
+    border: 0 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+    border-radius: 0 !important;
+    padding: 14px 0 !important;
+    box-shadow: none !important;
+}
+.job-item:last-child {
+    border-bottom: 0 !important;
+}
+.job-item:hover {
+    background: transparent !important;
+    border-color: rgba(255, 255, 255, 0.06) !important;
+}
+.job-header {
+    align-items: flex-start;
+    gap: 12px;
+}
+.job-title {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #fff;
+}
+.job-detail {
+    color: var(--text-sub);
+    font-size: 0.78rem;
+}
+
+/* Status pills — quieter chrome */
+.status-badge {
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: capitalize;
+}
+.status-badge.pending {
+    background: rgba(217, 119, 6, 0.14);
+    color: #fbbf24;
+    border: 1px solid rgba(217, 119, 6, 0.4);
+}
+.status-badge.downloading {
+    background: rgba(59, 130, 246, 0.14);
+    color: #93c5fd;
+    border: 1px solid rgba(59, 130, 246, 0.4);
+}
+.status-badge.finished {
+    background: rgba(47, 191, 113, 0.14);
+    color: #6ee7a7;
+    border: 1px solid rgba(47, 191, 113, 0.4);
+}
+.status-badge.error {
+    background: rgba(220, 38, 38, 0.14);
+    color: #fca5a5;
+    border: 1px solid rgba(220, 38, 38, 0.4);
+}
+
+/* Modal mobile width override gets a quieter rule */
+@media (max-width: 540px) {
+    .modal {
+        width: calc(100vw - 24px) !important;
+        max-width: calc(100vw - 24px) !important;
+        padding: 20px !important;
+    }
+}
+

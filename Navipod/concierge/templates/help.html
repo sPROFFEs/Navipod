@@ -462,6 +462,105 @@
             grid-template-columns: 1fr;
         }
     }
+
+    /* ─── FLAT REDESIGN — overrides for the Spotify-style language ───
+     * Doc cards drop their box chrome and become flat sections separated
+     * by hairlines. Step numbers get larger and bolder. Icon boxes turn
+     * into circular tiles to match the rest of the app. */
+    .docs-grid {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
+    .doc-card {
+        background: transparent !important;
+        border: 0 !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+        border-radius: 0 !important;
+        padding: 28px 0 !important;
+    }
+    .doc-card:last-child {
+        border-bottom: 0 !important;
+    }
+    .doc-card:hover {
+        border-color: rgba(255, 255, 255, 0.06) !important;
+    }
+    .card-header {
+        margin-bottom: 22px;
+    }
+    .card-header h3 {
+        font-size: 1.3rem !important;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+    }
+    .icon-box {
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        font-size: 1.1rem;
+    }
+    .step-num {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        color: var(--text-sub);
+        font-size: 0.78rem;
+        letter-spacing: 0.06em;
+        min-width: 22px;
+    }
+    .step-content strong {
+        font-size: 0.95rem !important;
+        font-weight: 600 !important;
+    }
+    .step-content p {
+        color: var(--text-sub) !important;
+        font-size: 0.88rem !important;
+    }
+    .config-side {
+        background: transparent !important;
+        border: 0 !important;
+        padding: 0 !important;
+    }
+    .config-side label {
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-sub) !important;
+    }
+    .copy-box {
+        background: rgba(255, 255, 255, 0.04) !important;
+        border: 1px solid rgba(255, 255, 255, 0.09) !important;
+        border-radius: 6px;
+    }
+    .copy-box input {
+        color: var(--primary, #1DB954) !important;
+    }
+    .copy-box button {
+        background: transparent !important;
+        color: var(--text-sub);
+        transition: color 0.12s ease;
+    }
+    .copy-box button:hover {
+        background: rgba(255, 255, 255, 0.06) !important;
+        color: #fff;
+    }
+    .static-input {
+        background: rgba(255, 255, 255, 0.04) !important;
+        border-color: rgba(255, 255, 255, 0.09) !important;
+        color: var(--text-main) !important;
+    }
+    .text-link {
+        color: var(--primary, #1DB954) !important;
+    }
+    .text-link:hover {
+        color: var(--primary-hover, #1ed760) !important;
+    }
+    .app-badge {
+        background: rgba(255, 255, 255, 0.04) !important;
+        border: 1px solid rgba(255, 255, 255, 0.09);
+    }
+    .note-box {
+        background: transparent !important;
+        border: 0 !important;
+        color: var(--text-sub) !important;
+        padding: 0 !important;
+    }
 </style>
 
 {% endblock %}

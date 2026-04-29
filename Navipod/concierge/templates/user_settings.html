@@ -350,6 +350,94 @@
                 flex-basis: 34px;
             }
         }
+
+        /* ─── FLAT REDESIGN — overrides for the Spotify-style language ───
+         * Drops the card chrome (border + background + padding) on each
+         * panel; sections are just headings with hairline dividers and
+         * a vertical list of fields. Primary CTA uses brand green. */
+        .user-settings-shell {
+            max-width: none;
+            padding: 0;
+            gap: 36px;
+        }
+        .user-settings-grid {
+            gap: 36px 32px;
+        }
+        .user-settings-panel {
+            background: transparent !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+        }
+        .user-settings-panel-header {
+            padding: 0 0 12px 0 !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+            margin-bottom: 16px !important;
+        }
+        .user-settings-panel-header h2 {
+            font-size: 1.4rem !important;
+            font-weight: 700 !important;
+            letter-spacing: -0.01em !important;
+        }
+        .user-settings-panel-body {
+            padding: 0 !important;
+        }
+        .user-settings-input,
+        .user-settings-select,
+        .user-settings-file {
+            background: rgba(255, 255, 255, 0.04) !important;
+            border-color: rgba(255, 255, 255, 0.09) !important;
+            border-radius: 6px !important;
+        }
+        .user-settings-input:focus,
+        .user-settings-select:focus,
+        .user-settings-file:focus {
+            background: rgba(255, 255, 255, 0.06) !important;
+            border-color: var(--primary, #1DB954) !important;
+        }
+        .user-settings-button {
+            background: var(--primary, #1DB954) !important;
+            color: #04140a !important;
+            border: 0 !important;
+            border-radius: 999px !important;
+            padding: 0 22px !important;
+            font-weight: 700 !important;
+        }
+        .user-settings-button:hover {
+            background: var(--primary-hover, #1ed760) !important;
+        }
+        .user-settings-button-secondary {
+            background: transparent !important;
+            border-color: rgba(255, 255, 255, 0.14) !important;
+            border-radius: 999px !important;
+            padding: 0 18px !important;
+        }
+        .user-settings-button-secondary:hover {
+            background: rgba(255, 255, 255, 0.06) !important;
+            border-color: rgba(255, 255, 255, 0.28) !important;
+        }
+        .user-settings-button-danger {
+            background: transparent !important;
+            border-color: rgba(220, 38, 38, 0.55) !important;
+            color: #f87171 !important;
+            border-radius: 999px !important;
+        }
+        .user-settings-button-danger:hover {
+            background: rgba(220, 38, 38, 0.12) !important;
+            border-color: rgba(220, 38, 38, 0.75) !important;
+        }
+        .user-settings-toggle-secret {
+            background: transparent !important;
+            border-color: rgba(255, 255, 255, 0.09) !important;
+        }
+        .user-settings-toggle-secret:hover {
+            background: rgba(255, 255, 255, 0.06) !important;
+        }
+        .user-settings-field label {
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-size: 0.78rem !important;
+            font-weight: 500 !important;
+        }
     </style>
 
     <section class="user-settings-header">
