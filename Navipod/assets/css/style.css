@@ -25,6 +25,19 @@
     box-sizing: border-box;
     font-family: "IBM Plex Sans", sans-serif;
     -webkit-font-smoothing: antialiased;
+    /* Hide scrollbars app-wide while keeping wheel/touch scrolling. */
+    scrollbar-width: none;          /* Firefox */
+    -ms-overflow-style: none;       /* IE / legacy Edge */
+}
+
+*::-webkit-scrollbar,
+*::-webkit-scrollbar-thumb,
+*::-webkit-scrollbar-track {
+    /* Chromium / WebKit — fully invisible track + thumb */
+    width: 0;
+    height: 0;
+    background: transparent;
+    display: none;
 }
 
 body {

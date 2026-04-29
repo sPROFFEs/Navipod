@@ -133,6 +133,10 @@
                 padding 200ms ease;
     min-width: 0;
     overflow: hidden;
+    /* Critical: keep each row's natural height even when the parent flex
+     * column gets short. Without this, on shorter viewports the rows
+     * compress and the cover image collapses to a sliver. */
+    flex-shrink: 0;
 }
 
 .sidebar-item:hover {
@@ -147,6 +151,8 @@
 .sidebar-cover {
     width: 48px;
     height: 48px;
+    min-width: 48px;     /* defend against ancestral flex squishing */
+    min-height: 48px;
     border-radius: 4px;
     background: var(--surface-3);
     flex-shrink: 0;
@@ -173,6 +179,21 @@
 .sidebar-cover-favorites {
     background: linear-gradient(135deg, #4f46e5 0%, #ec4899 100%);
     color: #fff;
+}
+
+/* Liked Songs is pinned at the top of the scrolling list — it's the user's
+ * primary entry point and Spotify keeps it visible always. We use sticky
+ * with a solid sidebar-coloured background so dynamic items below scroll
+ * cleanly behind it instead of being clipped half-way. */
+.sidebar-item-favorites {
+    position: sticky;
+    top: -4px;                         /* offset .sidebar-list's padding-top:4px */
+    z-index: 2;
+    background: var(--surface-1);
+    /* Extend background to the inner edge of the list padding so scrolled
+     * items aren't visible underneath while passing by. */
+    margin: -4px -8px 4px -8px;
+    padding: 10px 8px 6px 8px;
 }
 
 .sidebar-cover-favorites i,
