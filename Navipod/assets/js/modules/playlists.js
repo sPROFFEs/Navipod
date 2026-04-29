@@ -350,24 +350,27 @@ export async function resetPlaylistCover(playlistId) {
 
 export async function renderPublicPlaylists(container) {
   let publicPlaylists = [];
+  let fetchError = false;
   try {
     const res = await fetch(`${state.API}/public/playlists`);
     publicPlaylists = await res.json();
     if (!res.ok) throw new Error(publicPlaylists.error || `HTTP ${res.status}`);
   } catch (e) {
-    container.innerHTML = `<div class="empty-state glass-panel"><p>Failed to load public playlists.</p></div>`;
-    return;
+    fetchError = true;
   }
 
   container.innerHTML = `
+        ${ui.homeTabsBar('public')}
         <div class="hero-section">
             <h1 class="hero-greeting">Public Playlists</h1>
             <p class="playlist-stats">Browse read-only playlists shared by other users and create your own synced copy.</p>
         </div>
         ${
-          publicPlaylists.length > 0
-            ? `<div class="grid-shelf playlist-mobile-list">${publicPlaylists.map(window.createPlaylistCard).join('')}</div>`
-            : '<div class="empty-state glass-panel"><p>No public playlists yet.</p></div>'
+          fetchError
+            ? '<div class="empty-state glass-panel"><p>Failed to load public playlists.</p></div>'
+            : publicPlaylists.length > 0
+              ? `<div class="grid-shelf playlist-mobile-list">${publicPlaylists.map(window.createPlaylistCard).join('')}</div>`
+              : '<div class="empty-state glass-panel"><p>No public playlists yet.</p></div>'
         }`;
   lucide.createIcons();
 }

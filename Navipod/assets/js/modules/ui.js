@@ -23,6 +23,31 @@ export function escHtml(str) {
   return str ? str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') : '';
 }
 
+/**
+ * Spotify-style tab bar shown at the top of `home`, `public` and
+ * `discover_radios` so users can flip between the three Browse surfaces
+ * without leaving the visual context. Each chip just calls loadView()
+ * with the corresponding canonical view name; the active one is
+ * highlighted based on the argument.
+ */
+export function homeTabsBar(activeTab) {
+  const tabs = [
+    { key: 'all',             label: 'All',             view: 'home' },
+    { key: 'public',          label: 'Public',          view: 'public' },
+    { key: 'discover_radios', label: 'Discover Radios', view: 'discover_radios' }
+  ];
+  return `
+    <div class="home-tabs">
+        ${tabs
+          .map(
+            (t) =>
+              `<button class="home-tab${t.key === activeTab ? ' active' : ''}"
+                       onclick="loadView('${t.view}')">${t.label}</button>`
+          )
+          .join('')}
+    </div>`;
+}
+
 // === TOAST NOTIFICATIONS ===
 
 export function showToast(msg, type = 'info') {

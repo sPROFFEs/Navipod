@@ -1,3 +1,119 @@
+/* ── Home / Browse tab pills (All / Public / Discover Radios) ──────
+ * Spotify-style filter chips that appear at the top of the home,
+ * public-playlists and discover-radios views. Clicking them swaps
+ * the underlying view via loadView(). The active chip flips to
+ * inverted colours.                                                  */
+
+.home-tabs {
+    display: flex;
+    gap: 8px;
+    margin: 4px 0 22px;
+    flex-wrap: wrap;
+}
+
+.home-tab {
+    padding: 7px 16px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 0;
+    color: var(--text-main);
+    font: inherit;
+    font-size: 0.86rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.home-tab:hover {
+    background: var(--surface-3);
+}
+
+.home-tab.active {
+    background: var(--text-main);
+    color: var(--surface-0);
+}
+
+/* ── Quick picks 4×2 grid ──────────────────────────────────────────
+ * Compact horizontal cards (cover + title) showing recently played
+ * playlists / mixes / radios. Sits at the top of the home view, just
+ * after the hero greeting. Mirrors Spotify's "your top stuff" grid. */
+
+.quick-picks-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin: 8px 0 32px;
+}
+
+@media (max-width: 1100px) {
+    .quick-picks-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+    .quick-picks-grid { grid-template-columns: 1fr; }
+}
+
+.quick-pick {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 14px 0 0;
+    background: rgba(255, 255, 255, 0.06);
+    border: 0;
+    border-radius: 6px;
+    color: var(--text-main);
+    cursor: pointer;
+    overflow: hidden;
+    height: 64px;
+    text-align: left;
+    font: inherit;
+    transition: background-color 0.12s ease;
+}
+
+.quick-pick:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.quick-pick-cover {
+    width: 64px;
+    height: 64px;
+    flex-shrink: 0;
+    background: var(--surface-3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    color: var(--text-sub);
+}
+
+.quick-pick-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.quick-pick-cover-mix {
+    background: linear-gradient(135deg, #14b8a6 0%, #0e7490 100%);
+    color: #fff;
+}
+
+.quick-pick-cover-radio {
+    background: linear-gradient(135deg, #f97316 0%, #b91c1c 100%);
+    color: #fff;
+}
+
+.quick-pick-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.92rem;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ── Hero section (existing) ─────────────────────────────────────── */
+
 .hero-section {
     padding: 18px 20px 22px;
     margin: -6px 0 20px;

@@ -12,6 +12,7 @@ import * as player from './player.js';
 
 export async function renderRadio(container) {
   container.innerHTML = `
+        ${ui.homeTabsBar('discover_radios')}
         <section class="collection-shell">
         <div class="collection-header collection-header-stack">
             <div>
@@ -36,13 +37,26 @@ export async function renderRadio(container) {
         </div>
 
         <div id="radio-results" style="margin-top: 24px;"></div>
+
+        <h2 class="shelf-title radio-shelf-title" style="margin: 40px 0 16px 0;">Your Saved Radios</h2>
+        <div id="radio-saved-section"></div>
         </section>`;
   lucide.createIcons();
 
   loadRadioPlaylists();
   executeRadioSearch();
+  // Append the user's saved radios at the bottom of the same view —
+  // 'Your Radios' is no longer a separate top-level destination.
+  const savedSection = document.getElementById('radio-saved-section');
+  if (savedSection) renderSavedRadios(savedSection);
 }
 
+/**
+ * Renders just the user's saved radios list (no header / shell). Now
+ * always called as an embedded section inside renderRadio() — the
+ * standalone 'Your Radios' top-level view has been folded into the
+ * Discover Radios surface so radio management lives in one place.
+ */
 export async function renderSavedRadios(container) {
   let radios = [];
   try {
@@ -54,40 +68,30 @@ export async function renderSavedRadios(container) {
     return;
   }
 
-  container.innerHTML = `
-        <section class="collection-shell">
-            <div class="collection-header collection-header-stack">
-                <div>
-                    <h1 class="section-title">Your Radios</h1>
-                </div>
-            </div>
-            ${
-              radios.length > 0
-                ? `<div class="saved-radio-list">
-                    ${radios
-                      .map((r) => {
-                        const radioName = ui.escHtml(r.name || 'Saved Radio');
-                        const radioNameJs = String(r.name || 'Saved Radio').replace(/'/g, "\\'");
-                        const radioIdJs = String(r.id || '').replace(/'/g, "\\'");
-                        return `
-                            <div class="saved-radio-row">
-                                <button class="saved-radio-main" onclick="playSavedRadio('${encodeURIComponent(r.streamUrl || '')}', '${radioNameJs}', '${radioIdJs}')">
-                                    <span class="saved-radio-icon"><i data-lucide="radio"></i></span>
-                                    <span class="saved-radio-copy">
-                                        <span class="saved-radio-name">${radioName}</span>
-                                        <span class="saved-radio-meta">Saved station</span>
-                                    </span>
-                                </button>
-                                <button class="action-btn-danger" onclick="showDeleteRadioModal('${radioIdJs}', '${radioNameJs}')" title="Remove radio">
-                                    <i data-lucide="trash-2"></i>
-                                </button>
-                            </div>`;
-                      })
-                      .join('')}
-                </div>`
-                : `<div class="empty-state glass-panel"><p>No saved radios yet. Use Discover Radios and keep only the stations worth keeping.</p></div>`
-            }
-        </section>`;
+  container.innerHTML = radios.length > 0
+    ? `<div class="saved-radio-list">
+        ${radios
+          .map((r) => {
+            const radioName = ui.escHtml(r.name || 'Saved Radio');
+            const radioNameJs = String(r.name || 'Saved Radio').replace(/'/g, "\\'");
+            const radioIdJs = String(r.id || '').replace(/'/g, "\\'");
+            return `
+                <div class="saved-radio-row">
+                    <button class="saved-radio-main" onclick="playSavedRadio('${encodeURIComponent(r.streamUrl || '')}', '${radioNameJs}', '${radioIdJs}')">
+                        <span class="saved-radio-icon"><i data-lucide="radio"></i></span>
+                        <span class="saved-radio-copy">
+                            <span class="saved-radio-name">${radioName}</span>
+                            <span class="saved-radio-meta">Saved station</span>
+                        </span>
+                    </button>
+                    <button class="action-btn-danger" onclick="showDeleteRadioModal('${radioIdJs}', '${radioNameJs}')" title="Remove radio">
+                        <i data-lucide="trash-2"></i>
+                    </button>
+                </div>`;
+          })
+          .join('')}
+      </div>`
+    : `<div class="empty-state glass-panel"><p>No saved radios yet. Save stations from the search results above.</p></div>`;
   lucide.createIcons();
 }
 
@@ -290,9 +294,11 @@ export async function injectRadioToNavidrome(id, name) {
     if (data.status === 'success') {
       ui.showToast(`${name} added to Navidrome!`, 'success');
       if (window.refreshRecentActivity) window.refreshRecentActivity();
-      if (state.currentViewName === 'your_radios') {
-        const container = document.getElementById('view-container');
-        if (container) renderSavedRadios(container);
+      // Saved radios now live as a section inside the Discover Radios view.
+      // Refresh the embedded list rather than the whole view container.
+      if (state.currentViewName === 'discover_radios') {
+        const savedSection = document.getElementById('radio-saved-section');
+        if (savedSection) renderSavedRadios(savedSection);
       }
     } else {
       ui.showToast(data.error || 'Failed to add radio', 'error');
@@ -377,9 +383,9 @@ export async function deleteSavedRadio(id, name) {
       );
       ui.showToast('Radio removed', 'success');
       if (window.refreshRecentActivity) window.refreshRecentActivity();
-      if (state.currentViewName === 'your_radios') {
-        const container = document.getElementById('view-container');
-        if (container) renderSavedRadios(container);
+      if (state.currentViewName === 'discover_radios') {
+        const savedSection = document.getElementById('radio-saved-section');
+        if (savedSection) renderSavedRadios(savedSection);
       }
     } else {
       const err = await res.json();

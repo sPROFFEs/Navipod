@@ -114,7 +114,11 @@ function _pushSpaHistory(view, param = null, replace = false) {
 export async function loadView(view, param = null, options = {}) {
   const container = document.getElementById('view-container');
   if (!container) return;
-  if (view === 'radio') view = 'discover_radios';
+  // Legacy aliases — both 'radio' and 'your_radios' now resolve to the
+  // unified Discover Radios surface (which renders saved radios at the
+  // bottom of the same view). Old bookmarks / sidebar entries keep
+  // working without 404s.
+  if (view === 'radio' || view === 'your_radios') view = 'discover_radios';
   const { pushHistory = true, replaceHistory = false } = options;
 
   // Skip the music-loader for `search`: the view is synchronous and tiny
@@ -157,7 +161,6 @@ export async function loadView(view, param = null, options = {}) {
     else if (view === 'search') renderSearch(container);
     else if (view === 'public') await playlists.renderPublicPlaylists(container);
     else if (view === 'discover_radios') await radio.renderRadio(container);
-    else if (view === 'your_radios') await radio.renderSavedRadios(container);
     else if (view === 'favorites') await favorites.renderFavorites(container);
     else if (view === 'playlist') {
       await playlists.renderPlaylist(container, param);
@@ -264,6 +267,69 @@ document.body.addEventListener('htmx:afterSwap', (event) => {
 });
 
 // === HOME VIEW ===
+// Layout follows the Spotify Browse pattern:
+//   1. Tab bar (All / Public / Discover Radios)
+//   2. Hero greeting
+//   3. Quick picks — compact 4×2 grid of recently-played items
+//      (playlists + mixes + radios mixed together)
+//   4. Wrapped card (optional)
+//   5. Your Mixes shelf
+//   6. Recommendation shelves
+
+function _renderQuickPicksGrid() {
+  const items = [];
+  state.recentPlaylists.forEach((pl) => items.push({ kind: 'playlist', data: pl }));
+  state.recentMixes.forEach((m) => items.push({ kind: 'mix', data: m }));
+  state.recentRadios.forEach((r) => items.push({ kind: 'radio', data: r }));
+  if (items.length === 0) return '';
+
+  const slots = items.slice(0, 8); // 4 cols × 2 rows
+
+  const tile = ({ kind, data }) => {
+    if (kind === 'playlist') {
+      const name = ui.escHtml(data.name || 'Playlist');
+      const thumb = data.thumbnail && !data.thumbnail.includes('default') ? data.thumbnail : '';
+      const fallback = data.source_playlist_id ? 'refresh-cw' : data.is_public ? 'globe' : 'list-music';
+      return `
+        <button class="quick-pick" onclick="loadView('playlist', ${data.id})" title="${name}">
+            <div class="quick-pick-cover">
+                ${thumb
+                  ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.outerHTML='<i data-lucide=\\'${fallback}\\'></i>'">`
+                  : `<i data-lucide="${fallback}"></i>`}
+            </div>
+            <div class="quick-pick-name">${name}</div>
+        </button>`;
+    }
+    if (kind === 'mix') {
+      const name = ui.escHtml(data.title || 'Mix');
+      const keyJs = String(data.key || '').replace(/'/g, "\\'");
+      const thumb = data.thumbnail && !data.thumbnail.includes('default') ? data.thumbnail : '';
+      return `
+        <button class="quick-pick" onclick="loadView('mix', '${keyJs}')" title="${name}">
+            <div class="quick-pick-cover quick-pick-cover-mix">
+                ${thumb
+                  ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.outerHTML='<i data-lucide=\\'sparkles\\'></i>'">`
+                  : `<i data-lucide="sparkles"></i>`}
+            </div>
+            <div class="quick-pick-name">${name}</div>
+        </button>`;
+    }
+    // radio
+    const name = ui.escHtml(data.name || 'Saved Radio');
+    const nameJs = String(data.name || 'Saved Radio').replace(/'/g, "\\'");
+    const idJs = String(data.id || '').replace(/'/g, "\\'");
+    const url = encodeURIComponent(data.streamUrl || '');
+    return `
+      <button class="quick-pick" onclick="playSavedRadio('${url}', '${nameJs}', '${idJs}')" title="${name}">
+          <div class="quick-pick-cover quick-pick-cover-radio">
+              <i data-lucide="radio"></i>
+          </div>
+          <div class="quick-pick-name">${name}</div>
+      </button>`;
+  };
+
+  return `<div class="quick-picks-grid">${slots.map(tile).join('')}</div>`;
+}
 
 export async function renderHome(container) {
   let sections = [];
@@ -286,10 +352,13 @@ export async function renderHome(container) {
   }
 
   const username = ui.escHtml(window.USER_DATA?.username || 'User');
-  let html = `<section class="hero-section">
+  let html = `${ui.homeTabsBar('all')}
+    <section class="hero-section">
         <div class="hero-kicker">Your library, tuned for right now</div>
         <h1 class="hero-greeting">Good ${ui.getGreeting()}, <span class="hero-username">${username}</span></h1>
     </section>`;
+
+  html += _renderQuickPicksGrid();
 
   if (wrapped) {
     html += createWrappedHomeCard(wrapped);
@@ -315,7 +384,7 @@ export async function renderHome(container) {
                 <div class="grid-shelf">${s.items.map(createCard).join('')}</div>
             </div>`;
     });
-  } else {
+  } else if (!_renderQuickPicksGrid() && !mixes?.length) {
     html += `<div class="empty-state glass-panel">
             <i data-lucide="music" class="empty-icon"></i>
             <p>Welcome! Explore the <strong>Search</strong> tab to find music.</p>
