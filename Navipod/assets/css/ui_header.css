@@ -144,28 +144,58 @@
     height: 20px;
 }
 
-/* ── Right-side icon buttons ────────────────────────────────────── */
+/* ── Top bar icon buttons (history arrows + right-side actions) ─────
+ * Spotify-style: bare icon, no box, no border. The hover state is just
+ * a soft circular tint and the icon brightening. Scoped under .top-bar
+ * so the same classes used elsewhere (player, modals…) keep their own
+ * styling. ─────────────────────────────────────────────────────── */
 
-.circle-btn,
-.btn-icon-circle,
-.icon-btn-sm,
-.menu-toggle,
-.sidebar-close {
-    background: var(--surface-2);
-    border: 1px solid var(--border-subtle);
+.top-bar .circle-btn,
+.top-bar .btn-icon-circle {
+    background: transparent;
+    border: 0;
     color: var(--text-sub);
-    border-radius: var(--radius-sm);
-    box-shadow: none;
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    transition: color 0.15s ease, background-color 0.15s ease;
 }
 
-.circle-btn:hover,
-.btn-icon-circle:hover,
-.icon-btn-sm:hover,
-.menu-toggle:hover,
-.sidebar-close:hover {
-    background: var(--surface-3);
-    border-color: var(--border-strong);
+.top-bar .circle-btn:hover,
+.top-bar .btn-icon-circle:hover {
+    background: rgba(255, 255, 255, 0.08);
     color: var(--text-main);
+    border-color: transparent;
+}
+
+/* The legacy menu-toggle and sidebar-close are still used on mobile;
+ * keep their original chrome (defined in style.css) untouched. */
+
+/* ── User menu — show only the avatar ─────────────────────────────── */
+
+.top-bar .user-menu-trigger {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    border-radius: 50%;
+    transition: background-color 0.15s ease;
+}
+
+.top-bar .user-menu-trigger:hover,
+.top-bar .user-menu[open] .user-menu-trigger {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* Hide the username label and the chevron — the avatar alone is enough,
+ * matches Spotify's compact profile pill. */
+.top-bar .user-menu-trigger .user-name,
+.top-bar .user-menu-trigger .user-menu-chevron {
+    display: none;
+}
+
+.top-bar .avatar-circle {
+    width: 32px;
+    height: 32px;
 }
 
 .view-content {

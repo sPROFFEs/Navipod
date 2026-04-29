@@ -45,17 +45,33 @@ export async function executeSearch(query) {
   const results = document.getElementById('search-results');
   if (!results) return;
 
-  results.innerHTML = `
-    <div class="empty-state">
-        <div class="music-loader">
-            <div class="music-bar" style="animation-delay: 0.0s"></div>
-            <div class="music-bar" style="animation-delay: 0.1s"></div>
-            <div class="music-bar" style="animation-delay: 0.2s"></div>
-            <div class="music-bar" style="animation-delay: 0.3s"></div>
-            <div class="music-bar" style="animation-delay: 0.4s"></div>
-        </div>
-    </div>`;
-  lucide.createIcons();
+  // Only show the music-loader on the first search (empty container), or
+  // when explicitly resetting from an empty/no-results state. Once we have
+  // real content, keep it on screen while the next request is in-flight —
+  // otherwise every keystroke wipes the panel and produces a visible flash.
+  const hasContent =
+    results.children.length > 0 &&
+    !results.querySelector('.music-loader') &&
+    !results.querySelector('.search-empty-placeholder');
+
+  if (!hasContent) {
+    results.innerHTML = `
+      <div class="empty-state">
+          <div class="music-loader">
+              <div class="music-bar" style="animation-delay: 0.0s"></div>
+              <div class="music-bar" style="animation-delay: 0.1s"></div>
+              <div class="music-bar" style="animation-delay: 0.2s"></div>
+              <div class="music-bar" style="animation-delay: 0.3s"></div>
+              <div class="music-bar" style="animation-delay: 0.4s"></div>
+          </div>
+      </div>`;
+    lucide.createIcons();
+  } else {
+    // Stale-while-revalidate: dim the panel slightly so it's clear that
+    // the user's latest keystroke is being processed, without wiping the
+    // last good results.
+    results.classList.add('search-results-fetching');
+  }
 
   try {
     const url = `${state.API}/search?q=${encodeURIComponent(query)}&source=${state.currentSource}`;
@@ -96,6 +112,9 @@ export async function executeSearch(query) {
   } catch (e) {
     console.error('[SEARCH] Error:', e);
     results.innerHTML = `<div class="empty-state" style="color:#e74c3c;">Error: ${e.message}</div>`;
+  } finally {
+    // Always clear the stale-while-revalidate dimmer
+    results.classList.remove('search-results-fetching');
   }
 }
 
