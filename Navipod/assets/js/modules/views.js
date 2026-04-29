@@ -609,12 +609,29 @@ export async function renderWrapped(container, yearParam = null) {
 }
 
 // === SEARCH VIEW ===
-// The canonical search input lives in the top bar (#topbar-search-input).
-// This view only renders the source-filter chips and the results area, so
-// transitioning into search feels like an inline panel rather than a new page.
+// On desktop the canonical search input lives in the top bar; the view
+// only renders chips + results so transitioning into search feels like an
+// inline panel. On mobile the desktop top bar is hidden, so we ALSO
+// render a mobile-only search pill at the top of this view (only visible
+// at <=768px, controlled by mobile_shell.css). The mobile input mirrors
+// the topbar one — typing in either fires handleTopbarSearch which
+// forwards to the shared handleSearch pipeline.
 
 export function renderSearch(container) {
+  const seedQuery = (document.getElementById('topbar-search-input')?.value || '').trim();
   container.innerHTML = `
+        <div class="m-search-pill">
+            <i data-lucide="search" class="m-search-pill-icon"></i>
+            <input
+                type="text"
+                id="m-search-input"
+                class="m-search-pill-input"
+                placeholder="Artists, songs, or playlists"
+                autocomplete="off"
+                spellcheck="false"
+                value="${ui.escHtml(seedQuery)}"
+                oninput="handleTopbarSearch(this.value)">
+        </div>
         <div class="source-chips">
             <div class="chip active" onclick="setSource(this, 'all')">All</div>
             <div class="chip spotify" onclick="setSource(this, 'spotify')">Spotify</div>
@@ -627,8 +644,7 @@ export function renderSearch(container) {
   lucide.createIcons();
   // Seed with the current topbar query (so refresh / direct navigation
   // still surface results that match what's typed up there).
-  const seed = (document.getElementById('topbar-search-input')?.value || '').trim();
-  search.executeSearch(seed);
+  search.executeSearch(seedQuery);
 }
 
 export async function renderMix(container, mixKey) {

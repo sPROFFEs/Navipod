@@ -28,11 +28,15 @@ export function setSource(el, src) {
   state.setCurrentSource(src);
   document.querySelectorAll('.chip').forEach((c) => c.classList.remove('active'));
   el.classList.add('active');
-  // The canonical search input lives in the top bar now (the in-view input
-  // was removed). Fall back to legacy #search-input in case any older
-  // layout still injects it.
+  // The search query can come from any of (in priority order):
+  //   - the desktop topbar pill        (#topbar-search-input)
+  //   - the mobile in-view search pill (#m-search-input)
+  //   - the legacy in-view input       (#search-input, no longer rendered)
+  // We pick the first non-empty value so a chip click after typing on
+  // mobile re-runs the search with the right query.
   const val =
     document.getElementById('topbar-search-input')?.value ||
+    document.getElementById('m-search-input')?.value ||
     document.getElementById('search-input')?.value ||
     '';
   executeSearch(val.trim());

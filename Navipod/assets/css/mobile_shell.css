@@ -167,7 +167,9 @@
  *  if many pills, smaller chip size. */
 
 .home-tabs {
-    margin: 0 16px 12px 16px;
+    /* generous top margin so the pills feel separated from the topbar
+     * greeting; horizontal scroll if they ever overflow. */
+    margin: 14px 16px 16px 16px;
     overflow-x: auto;
     scrollbar-width: none;
     flex-wrap: nowrap;
@@ -184,12 +186,13 @@
 /* ── 4. View content — scrollable, bottom-padded ─────────────────── */
 
 .view-content {
-    padding: 0 0 24px 0 !important;
+    padding: 0 !important;
     overflow-y: auto;
     height: 100%;
-    /* Reserve space for: mini player (64) + bottom nav (60) + safe area.
-     * Keeps the last items visible above the sticky bottom UI. */
-    padding-bottom: calc(64px + 60px + env(safe-area-inset-bottom, 0px)) !important;
+    /* Stack: bottom nav (60) + safe area + mini player (56) sitting on top
+     * of the nav with a 6px breath, plus a comfortable margin so the
+     * last list row never touches the player. */
+    padding-bottom: calc(60px + 56px + 6px + 24px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
 /* Most views render their own outer padding via .hero-section etc. The
@@ -204,6 +207,47 @@
 #view-container > .saved-radio-list {
     margin-left: 16px;
     margin-right: 16px;
+}
+
+
+/* ── 4b. Mobile search pill ─────────────────────────────────────────
+ *  Rendered inside the search view (visible only at <=768px because the
+ *  default rule in style.css hides it). Same flat language as the
+ *  desktop topbar search bar. */
+
+.m-search-pill {
+    display: flex !important;
+    align-items: center;
+    gap: 12px;
+    margin: 4px 16px 16px 16px;
+    padding: 0 14px;
+    height: 44px;
+    background: var(--surface-2);
+    border-radius: 6px;
+}
+
+.m-search-pill-icon {
+    color: var(--text-sub);
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+}
+
+.m-search-pill-input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: 0;
+    outline: none;
+    color: var(--text-main);
+    font-size: 0.95rem;
+    font-family: inherit;
+    padding: 0;
+}
+
+.m-search-pill-input::placeholder {
+    color: var(--text-sub);
+    opacity: 0.85;
 }
 
 
@@ -235,81 +279,117 @@
  *  the rest. Tap the row to open the fullscreen player (existing
  *  toggleFullscreenPlayer() wired on the cover image). */
 
+/* Mini player — flex pill anchored above the bottom nav. We keep the
+ * existing markup (player-left | player-center | player-right) but
+ * flatten it into a single flex row, hide the bits we don't want, and
+ * leave .player-center VISIBLE so its child #play-pause-btn renders. */
 .player-footer {
     position: fixed !important;
     left: 8px !important;
     right: 8px !important;
-    bottom: calc(60px + env(safe-area-inset-bottom, 0px)) !important;
+    bottom: calc(60px + env(safe-area-inset-bottom, 0px) + 6px) !important;
     width: auto !important;
     height: 56px !important;
     border-radius: 8px !important;
-    grid-template-columns: auto 1fr auto !important;
-    grid-template-areas: "left right right" !important;
-    padding: 0 12px !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding: 0 8px 0 8px !important;
     background: var(--surface-2, #1d2027) !important;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     z-index: 50;
+    /* override any grid-template-* the desktop CSS sets */
+    grid-template-columns: none !important;
+    grid-template-rows: none !important;
+    grid-template-areas: none !important;
 }
 
+/* Left segment: cover + info + like, takes all the available width */
 .player-left {
-    grid-area: left;
-    gap: 10px !important;
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex !important;
+    align-items: center;
+    gap: 10px;
+    grid-area: auto !important;
 }
 
 .player-left img {
     width: 40px !important;
     height: 40px !important;
     border-radius: 4px;
+    flex-shrink: 0;
 }
 
 .track-info {
+    flex: 1 1 auto;
     min-width: 0;
 }
 
-.player-left .track-title {
+.track-info .track-title {
     font-size: 0.84rem;
     line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.player-left .track-artist {
+.track-info .track-artist {
     font-size: 0.72rem;
     line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-/* Hide controls + queue + volume — the mini player only shows
- * cover, info, like, play. Tap the cover to expand to fullscreen. */
-.player-center,
-.player-right .icon-btn-sm:not(#player-like-btn),
-.player-right .volume-bar-bg,
-.player-left .icon-btn-sm:not(#player-like-btn) {
+/* Hide the secondary action button (add-to-playlist) inside player-left.
+ * The like button (#player-like-btn) stays visible. */
+.player-left .icon-btn-sm[onclick*="addToPlaylistCurrent"] {
     display: none !important;
 }
 
-.player-right {
-    grid-area: right;
-    justify-content: flex-end;
-    gap: 8px;
-}
-
-.player-right .icon-btn-sm,
 #player-like-btn {
     width: 36px;
     height: 36px;
+    flex-shrink: 0;
 }
 
-/* The play / pause button — promote it from the hidden .player-center.
- * It already has id="play-pause-btn"; we lift it visually with a
- * standalone selector so the centre column can stay hidden. */
+/* Centre segment stays visible so #play-pause-btn renders, but its
+ * progress bar and the prev/next/shuffle/repeat siblings of the play
+ * button are hidden. */
+.player-center {
+    display: flex !important;
+    flex: 0 0 auto !important;
+    align-items: center;
+    grid-area: auto !important;
+}
+
+.player-center .player-controls {
+    display: contents;            /* let #play-pause-btn flow as a flex sibling */
+}
+
+.player-center .player-controls > .control-btn:not(#play-pause-btn),
+.player-center .playback-bar-container {
+    display: none !important;
+}
+
 #play-pause-btn {
-    display: inline-flex !important;
     width: 36px !important;
     height: 36px !important;
+    min-width: 36px;
     background: transparent !important;
     border: 0 !important;
     color: var(--text-main) !important;
-    align-self: center;
-    justify-self: end;
-    grid-area: right;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+}
+
+/* Right segment (queue + volume) hidden in mini-player mode */
+.player-right {
+    display: none !important;
 }
 
 
@@ -384,6 +464,171 @@
     margin-bottom: 0 !important;
     max-height: 88vh;
     overflow-y: auto;
+}
+
+
+/* ── 8b. Library view — Spotify-style row list ───────────────────
+ *  Replaces the bordered playlist cards with compact rows: cover on
+ *  the left, name + meta on the right, no card chrome. The "New
+ *  playlist" button shrinks from a big banner into a compact pill at
+ *  the top right of the section header. */
+
+.collection-shell {
+    margin: 0;
+    padding: 0 16px;
+}
+
+.collection-header {
+    margin: 12px 0 4px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.collection-header .section-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.collection-header .btn-primary {
+    width: auto;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    border-radius: 999px;
+    background: var(--surface-3, #1f242a) !important;
+    color: var(--text-main) !important;
+    border: 0;
+    flex-shrink: 0;
+}
+
+.collection-header .btn-primary i {
+    width: 16px;
+    height: 16px;
+}
+
+/* Each card -> compact row */
+.playlist-mobile-list {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0 !important;
+    margin-top: 8px;
+}
+
+.playlist-mobile-list > .card {
+    display: grid !important;
+    grid-template-columns: 56px 1fr auto !important;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 4px !important;
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.playlist-mobile-list > .card:hover,
+.playlist-mobile-list > .card:active {
+    background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.playlist-mobile-list > .card .card-img-container,
+.playlist-mobile-list > .card .playlist-card-bg {
+    width: 56px;
+    height: 56px;
+    border-radius: 4px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: var(--surface-3);
+    margin: 0 !important;
+    aspect-ratio: 1 / 1;
+}
+
+.playlist-mobile-list > .card .card-img-container img,
+.playlist-mobile-list > .card .playlist-card-bg img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.playlist-mobile-list > .card .playlist-card-copy {
+    min-width: 0;
+    padding: 0 !important;
+}
+
+.playlist-mobile-list > .card .card-title {
+    font-size: 0.92rem;
+    font-weight: 500;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin: 0 0 2px 0;
+}
+
+.playlist-mobile-list > .card .card-subtitle {
+    font-size: 0.78rem;
+    color: var(--text-sub);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin: 0;
+}
+
+
+/* ── 8c. Playlist detail — Spotify-style header ─────────────────
+ *  Stack the cover (centred, larger) above the info on mobile so it
+ *  uses the full width. Action buttons become an inline row. */
+
+.playlist-header-section {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    text-align: left;
+    gap: 14px;
+    padding: 16px;
+    margin: 0 !important;
+    border-bottom: 0 !important;
+}
+
+.playlist-cover-large {
+    width: 100%;
+    max-width: 320px;
+    aspect-ratio: 1 / 1;
+    height: auto !important;
+    margin: 4px auto 8px auto !important;
+    border-radius: 6px;
+}
+
+.playlist-info {
+    padding: 0;
+    text-align: left;
+}
+
+.playlist-info .playlist-title {
+    font-size: 1.85rem !important;
+    line-height: 1.05 !important;
+    margin-bottom: 6px;
+}
+
+.playlist-info .playlist-stats,
+.playlist-info .playlist-type {
+    font-size: 0.84rem;
+}
+
+.playlist-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.playlist-actions .playlist-action-btn .playlist-btn-label {
+    display: inline;
+}
+
+/* Tracks list takes the full remaining width inside the view */
+#view-container .track-list {
+    margin: 0 4px;
 }
 
 

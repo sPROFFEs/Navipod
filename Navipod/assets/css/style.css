@@ -34,7 +34,8 @@
  * stylesheet (loaded with media="(max-width: 768px)") overrides these
  * with `display: flex`. */
 .m-topbar,
-.m-bottom-nav {
+.m-bottom-nav,
+.m-search-pill {
     display: none;
 }
 
