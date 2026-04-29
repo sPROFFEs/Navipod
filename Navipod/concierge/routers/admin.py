@@ -1045,6 +1045,7 @@ def _query_tracks_with_fts(db, raw_query: str, limit: int):
 
 def _delete_track_from_library(db: Session, track_id: int):
     from database import Track
+    import cover_cache
 
     track = db.query(Track).filter(Track.id == track_id).first()
     if not track:
@@ -1053,6 +1054,15 @@ def _delete_track_from_library(db: Session, track_id: int):
     filepath = track.filepath
     db.delete(track)
     db.commit()
+
+    # Drop the cover_cache file for this id. SQLite reuses rowids for the
+    # next inserted row when the deleted row had the highest id, so leaving
+    # this file behind would cause the next track sharing the id to display
+    # the previous track's artwork.
+    try:
+        cover_cache.delete_cached_cover(track_id)
+    except Exception as e:
+        logger.warning("Could not delete cached cover for track %s: %s", track_id, e)
 
     safe_filepath = None
     if filepath:

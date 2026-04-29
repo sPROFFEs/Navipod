@@ -132,42 +132,83 @@ def _pick_random_track(db: Session):
     return db.query(database.Track).filter(database.Track.id < pivot).order_by(database.Track.id.asc()).first()
 
 
+def _extract_embedded_cover(audio) -> bytes | None:
+    """Extract embedded cover art from any supported container.
+
+    Handles:
+      - MP3 / ID3 (APIC frames)         — yt-dlp + most tagged MP3s
+      - FLAC pictures                   — SpotiFLAC primary output
+      - MP4 / M4A 'covr' atom           — alternative SpotiFLAC output
+    Returns the raw image bytes, or None if no embedded picture exists.
+    """
+    if not audio:
+        return None
+
+    # MP3 / ID3 — APIC frames
+    try:
+        if "APIC:" in audio:
+            return audio["APIC:"].data
+        for key in audio.keys():
+            if key.startswith("APIC"):
+                return audio[key].data
+    except Exception:
+        pass
+
+    # FLAC — Picture blocks
+    try:
+        pictures = getattr(audio, "pictures", None)
+        if pictures:
+            return pictures[0].data
+    except Exception:
+        pass
+
+    # MP4 / M4A — 'covr' atom
+    try:
+        tags = getattr(audio, "tags", None)
+        if tags is not None and hasattr(tags, "get"):
+            covr = tags.get("covr")
+            if covr:
+                return bytes(covr[0])
+    except Exception:
+        pass
+
+    return None
+
+
 @router.get("/api/cover/{track_id:int}")
 async def get_cover(track_id: int, db: Session = Depends(get_db)):
-    """Extract cover art from ID3 tags with disk caching"""
-    # 1. Check Cache First (using cover_cache module)
+    """Extract cover art from the audio file's embedded picture, with disk caching.
+
+    Note: a cached file at /saas-data/cover_cache/{track_id}.jpg is only trusted
+    if a Track with that id currently exists in the DB — otherwise it is a stale
+    leftover from a previously-deleted track whose rowid was reused, and we drop
+    it before re-extracting from the new file.
+    """
+    track = db.query(database.Track).filter(database.Track.id == track_id).first()
+
     cached = cover_cache.get_cached_cover(track_id)
     cached = _resolve_allowed_cache_path(cached)
     if cached:
-        return FileResponse(str(cached))
+        if track:
+            return FileResponse(str(cached))
+        # Stale cache for a deleted track — clean it up so the next request
+        # for this id (potentially a different track that reused the rowid)
+        # extracts fresh artwork instead of returning the previous cover.
+        cover_cache.delete_cached_cover(track_id)
 
-    # 2. Extract if not cached
-    track = db.query(database.Track).filter(database.Track.id == track_id).first()
     media_path = _resolve_allowed_media_path(track.filepath if track else None)
     if not track or not media_path:
         return RedirectResponse("/static/img/default_cover.png")
 
     try:
         audio = mutagen.File(str(media_path))
-        cover_data = None
-
-        # ID3 v2.3+
-        if audio and "APIC:" in audio:
-            cover_data = audio["APIC:"].data
-        else:
-            # Fallback scan
-            for key in audio.keys():
-                if key.startswith("APIC"):
-                    cover_data = audio[key].data
-                    break
+        cover_data = _extract_embedded_cover(audio)
 
         if cover_data:
-            # Resize and optimize
             img = Image.open(io.BytesIO(cover_data))
-            img.thumbnail((400, 400))  # Reasonable size for web
+            img.thumbnail((400, 400))
             img = img.convert("RGB")
 
-            # Save to cache using cover_cache module
             img_bytes = io.BytesIO()
             img.save(img_bytes, "JPEG", quality=80)
             cache_path = cover_cache.cache_cover(track_id, img_bytes.getvalue())
@@ -176,7 +217,6 @@ async def get_cover(track_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         logger.warning("Error extracting cover for %s: %s", track_id, e)
 
-    # Redirect to default
     return RedirectResponse("/static/img/default_cover.png")
 
 
