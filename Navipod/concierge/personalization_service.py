@@ -23,8 +23,8 @@ TOP_POOL_CACHE_NAME = "top_pool_tracks.json"
 MIX_CACHE_VERSION = 4
 TOP_POOL_CACHE_VERSION = 3
 MIX_CACHE_TTL_SECONDS = 12 * 3600
-RECENT_ITEMS_LIMIT = 3
-RECENT_HISTORY_LIMIT = 12
+RECENT_ITEMS_LIMIT = 20
+RECENT_HISTORY_LIMIT = 50
 MIN_TRACK_PLAY_SECONDS = 8
 COMPLETION_RATIO = 0.85
 EARLY_SKIP_SECONDS = 30
@@ -332,6 +332,34 @@ def record_recent_radio(username: str, radio_id: str, name: str = "", stream_url
         conn.commit()
 
 
+def record_recent_mix(username: str, mix_key: str, title: str = "") -> None:
+    """Track that the user just opened/listened to a system-generated mix.
+
+    Mixes don't have DB rows like playlists; they're identified by a string
+    key (`repeat`, `deep_cuts`, `favorites`, `rediscovery`, `top_pool_tracks`,
+    `latest_pool_additions`). We persist the title alongside the key so the
+    sidebar can render the row even if the user opens the page before the
+    /mixes endpoint resolves.
+    """
+    key = (mix_key or "").strip()
+    if not key:
+        return
+    ensure_user_activity_db(username)
+    payload = json.dumps(
+        {"key": key, "title": (title or "").strip()},
+        ensure_ascii=False,
+    )
+    with _connect(username) as conn:
+        _upsert_recent_item(
+            conn,
+            item_type="mix",
+            item_key=key,
+            item_label=(title or "").strip(),
+            item_data_json=payload,
+        )
+        conn.commit()
+
+
 def remove_recent_playlist(username: str, playlist_id: int) -> None:
     ensure_user_activity_db(username)
     with _connect(username) as conn:
@@ -343,6 +371,13 @@ def remove_recent_radio(username: str, radio_id: str) -> None:
     ensure_user_activity_db(username)
     with _connect(username) as conn:
         conn.execute("DELETE FROM recent_items WHERE item_type = 'radio' AND item_key = ?", (str(radio_id).strip(),))
+        conn.commit()
+
+
+def remove_recent_mix(username: str, mix_key: str) -> None:
+    ensure_user_activity_db(username)
+    with _connect(username) as conn:
+        conn.execute("DELETE FROM recent_items WHERE item_type = 'mix' AND item_key = ?", (str(mix_key).strip(),))
         conn.commit()
 
 
@@ -373,6 +408,15 @@ def get_recent_activity_payload(db: Session, user) -> dict[str, Any]:
             """,
             (RECENT_HISTORY_LIMIT,),
         ).fetchall()
+        mix_rows = conn.execute(
+            """
+            SELECT item_key, item_label, item_data_json FROM recent_items
+            WHERE item_type = 'mix'
+            ORDER BY last_accessed_at DESC, id DESC
+            LIMIT ?
+            """,
+            (RECENT_HISTORY_LIMIT,),
+        ).fetchall()
 
     playlist_summaries = fetch_playlist_summaries(db, viewer_id=user.id, owner_id=user.id)
     playlist_lookup = {int(item["id"]): item for item in playlist_summaries}
@@ -398,7 +442,20 @@ def get_recent_activity_payload(db: Session, user) -> dict[str, Any]:
         if len(radios) >= RECENT_ITEMS_LIMIT:
             break
 
-    return {"playlists": playlists, "radios": radios}
+    mixes = []
+    for row in mix_rows:
+        try:
+            payload = json.loads(row["item_data_json"] or "{}")
+        except Exception:
+            payload = {}
+        key = str(payload.get("key") or row["item_key"] or "").strip()
+        title = str(payload.get("title") or row["item_label"] or "").strip()
+        if key:
+            mixes.append({"key": key, "title": title or key.replace("_", " ").title()})
+        if len(mixes) >= RECENT_ITEMS_LIMIT:
+            break
+
+    return {"playlists": playlists, "radios": radios, "mixes": mixes}
 
 
 def _normalize_tracking_event_type(value: str | None) -> str:

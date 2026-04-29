@@ -113,8 +113,10 @@
     color: var(--text-sub);
     cursor: pointer;
     text-decoration: none;
-    transition: background-color 0.12s ease, color 0.12s ease;
+    transition: background-color 0.12s ease, color 0.12s ease, gap 200ms ease,
+                padding 200ms ease;
     min-width: 0;
+    overflow: hidden;
 }
 
 .sidebar-item:hover {
@@ -164,6 +166,11 @@
 
 .sidebar-cover-radio {
     background: linear-gradient(135deg, #f97316 0%, #b91c1c 100%);
+    color: #fff;
+}
+
+.sidebar-cover-mix {
+    background: linear-gradient(135deg, #14b8a6 0%, #0e7490 100%);
     color: #fff;
 }
 
@@ -280,35 +287,84 @@
     border-radius: inherit;
 }
 
-/* ── Collapsed-mode rules: hide labels + secondary text ─────────── */
+/* ── Smooth collapse / expand ─────────────────────────────────────
+ *
+ * Key trick: never use `display: none` for things that should
+ * transition — `display` is not animatable, so labels would snap in/out
+ * and the cover would reflow. Instead:
+ *   - Labels (sidebar-meta, toggle-label, browse-title, browse-link
+ *     span): fade their opacity AND collapse their column to 0 width
+ *     so the cover ends up visually centred without jumping.
+ *   - The sidebar itself uses `overflow: hidden` so anything that
+ *     hasn't faded out yet gets cleanly clipped while the panel
+ *     shrinks.
+ *   - --sidebar-width animates the layout grid (set in main rule
+ *     above).
+ *
+ * Result: text fades out softly, covers slide gently to centre, no
+ * snap. Reverse on expand. ───────────────────────────────────── */
+
+.sidebar-toggle-label,
+.sidebar-meta,
+.sidebar-browse-link span {
+    opacity: 1;
+    transition: opacity 140ms ease, max-width 200ms ease, margin 200ms ease;
+    max-width: 100ch;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.sidebar-browse-title {
+    opacity: 1;
+    transition: opacity 140ms ease, height 200ms ease, padding 200ms ease;
+    overflow: hidden;
+}
+
+.quota-widget {
+    opacity: 1;
+    transition: opacity 140ms ease, height 200ms ease, padding 200ms ease,
+                margin 200ms ease, border-color 200ms ease;
+    overflow: hidden;
+}
 
 :root[data-sidebar-mode="collapsed"] .sidebar-toggle-label,
 :root[data-sidebar-mode="collapsed"] .sidebar-meta,
-:root[data-sidebar-mode="collapsed"] .sidebar-browse-title,
-:root[data-sidebar-mode="collapsed"] .sidebar-browse-link span,
-:root[data-sidebar-mode="collapsed"] .quota-widget {
-    display: none;
+:root[data-sidebar-mode="collapsed"] .sidebar-browse-link span {
+    opacity: 0;
+    max-width: 0;
+    margin: 0;
+    pointer-events: none;
 }
 
+:root[data-sidebar-mode="collapsed"] .sidebar-browse-title {
+    opacity: 0;
+    height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    pointer-events: none;
+}
+
+:root[data-sidebar-mode="collapsed"] .quota-widget {
+    opacity: 0;
+    height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin: 0;
+    border-top-color: transparent;
+    pointer-events: none;
+}
+
+/* In collapsed mode the cover should sit centred. We collapse the gap
+ * (the 12px between cover and meta) so the meta truly takes 0 width
+ * and the row centres around the cover with the natural flex centering. */
 :root[data-sidebar-mode="collapsed"] .sidebar-toggle,
 :root[data-sidebar-mode="collapsed"] .sidebar-item,
 :root[data-sidebar-mode="collapsed"] .sidebar-browse-link {
+    gap: 0;
     justify-content: center;
-    padding: 8px;
-}
-
-:root[data-sidebar-mode="collapsed"] .sidebar-head {
-    padding: 12px 8px 4px 8px;
-}
-
-:root[data-sidebar-mode="collapsed"] .sidebar-list {
-    padding: 4px 8px 12px 8px;
-    align-items: center;
-}
-
-:root[data-sidebar-mode="collapsed"] .sidebar-cover {
-    width: 48px;
-    height: 48px;
+    padding-left: 0;
+    padding-right: 0;
+    transition: gap 200ms ease, padding 200ms ease, background-color 120ms ease;
 }
 
 /* ── Mobile (<= 768px) keeps the sidebar in its existing slide-in

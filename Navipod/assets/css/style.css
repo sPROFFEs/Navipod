@@ -2448,6 +2448,19 @@ body {
     opacity: 0.3;
 }
 
+/* Liked Songs — same purple→pink gradient + big white heart that the
+ * sidebar uses, for consistent identity across views. */
+.playlist-cover-favorites {
+    background: linear-gradient(135deg, #4f46e5 0%, #ec4899 100%);
+}
+.playlist-cover-favorites i {
+    width: 96px;
+    height: 96px;
+    color: #fff;
+    opacity: 1;
+    fill: #fff;
+}
+
 .playlist-info {
     display: flex;
     flex-direction: column;

@@ -149,7 +149,10 @@ export async function loadView(view, param = null, options = {}) {
 
     if (view === 'home') await renderHome(container);
     else if (view === 'library') await renderLibrary(container);
-    else if (view === 'mix') await renderMix(container, param);
+    else if (view === 'mix') {
+      await renderMix(container, param);
+      await trackRecentMix(param);
+    }
     else if (view === 'wrapped') await renderWrapped(container, param);
     else if (view === 'search') renderSearch(container);
     else if (view === 'public') await playlists.renderPublicPlaylists(container);
@@ -1066,16 +1069,33 @@ function _sidebarRadioRow(r) {
     </a>`;
 }
 
+function _sidebarMixRow(m) {
+  const name = ui.escHtml(m.title || 'Mix');
+  const keyJs = String(m.key || '').replace(/'/g, "\\'");
+  return `
+    <a class="sidebar-item" onclick="loadView('mix', '${keyJs}')" title="${name}">
+        <div class="sidebar-cover sidebar-cover-mix">
+            <i data-lucide="sparkles"></i>
+        </div>
+        <div class="sidebar-meta">
+            <div class="sidebar-name">${name}</div>
+            <div class="sidebar-sub">Mix</div>
+        </div>
+    </a>`;
+}
+
 export function renderSidebarRecents() {
   const container = document.getElementById('sidebar-items');
   if (!container) return;
 
   const rows = [];
-  // Playlists then radios — each list arrives already sorted by the
-  // /recent-activity endpoint, so concatenation preserves that ordering
-  // without an explicit cross-type sort. This roughly matches Spotify's
-  // ordering where pinned + recently-played items rise to the top.
+  // Playlists, mixes and radios — each individually sorted by the
+  // /recent-activity endpoint. We interleave them so all three kinds
+  // appear naturally in the sidebar (mixes show up only after the user
+  // has actually opened one). Playlists first, then mixes, then radios
+  // gives playlist-heavy users the strongest signal at the top.
   state.recentPlaylists.forEach((pl) => rows.push(_sidebarPlaylistRow(pl)));
+  state.recentMixes.forEach((m) => rows.push(_sidebarMixRow(m)));
   state.recentRadios.forEach((r) => rows.push(_sidebarRadioRow(r)));
 
   container.innerHTML = rows.length
@@ -1096,6 +1116,7 @@ export async function refreshRecentActivity() {
     const data = await res.json();
     state.setRecentPlaylists(Array.isArray(data.playlists) ? data.playlists : []);
     state.setRecentRadios(Array.isArray(data.radios) ? data.radios : []);
+    state.setRecentMixes(Array.isArray(data.mixes) ? data.mixes : []);
     renderSidebarRecents();
   } catch (e) {
     console.error('Failed to refresh recent activity:', e);
@@ -1116,6 +1137,25 @@ export async function trackRecentPlaylist(playlistId) {
   }
 }
 
+export async function trackRecentMix(mixKey) {
+  if (!mixKey) return;
+  // Resolve a friendlier title from the freshly-rendered mix view if we can,
+  // otherwise the backend will derive one from the key.
+  let title = '';
+  const titleEl = document.querySelector('.playlist-title');
+  if (titleEl) title = titleEl.textContent.trim();
+  try {
+    await fetch(`${state.API}/recent-activity/mix`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mix_key: String(mixKey), title })
+    });
+    await refreshRecentActivity();
+  } catch (e) {
+    console.error('Failed to track recent mix:', e);
+  }
+}
+
 // === LOAD USER DATA ===
 
 export async function loadUserData() {
@@ -1133,6 +1173,7 @@ export async function loadUserData() {
     state.setUserPlaylists(pls);
     state.setRecentPlaylists(Array.isArray(recents.playlists) ? recents.playlists : []);
     state.setRecentRadios(Array.isArray(recents.radios) ? recents.radios : []);
+    state.setRecentMixes(Array.isArray(recents.mixes) ? recents.mixes : []);
 
     renderSidebarRecents();
 

@@ -22,6 +22,7 @@ export let userFavorites = new Set();
 export let userPlaylists = [];
 export let recentPlaylists = [];
 export let recentRadios = [];
+export let recentMixes = [];
 
 // === QUEUE SYSTEM ===
 export let userQueue = []; // Explicitly queued by user (High Priority)
@@ -82,6 +83,9 @@ export function setRecentPlaylists(val) {
 }
 export function setRecentRadios(val) {
   recentRadios = val;
+}
+export function setRecentMixes(val) {
+  recentMixes = val;
 }
 export function setUserQueue(val) {
   userQueue = val;

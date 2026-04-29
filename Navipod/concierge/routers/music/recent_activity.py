@@ -25,6 +25,11 @@ class RecentRadioRequest(BaseModel):
     stream_url: str = ""
 
 
+class RecentMixRequest(BaseModel):
+    mix_key: str
+    title: str = ""
+
+
 @router.get("/api/recent-activity")
 async def get_recent_activity(request: Request, db: Session = Depends(get_db)):
     user = get_current_user_safe(db, request)
@@ -51,6 +56,26 @@ async def track_recent_radio(req: RecentRadioRequest, request: Request, db: Sess
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
     personalization_service.record_recent_radio(user.username, req.radio_id, req.name.strip(), req.stream_url.strip())
+    return JSONResponse({"status": "ok"})
+
+
+@router.post("/api/recent-activity/mix")
+async def track_recent_mix(req: RecentMixRequest, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    personalization_service.record_recent_mix(user.username, req.mix_key, req.title)
+    return JSONResponse({"status": "ok"})
+
+
+@router.delete("/api/recent-activity/mix/{mix_key}")
+async def remove_recent_mix(mix_key: str, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    personalization_service.remove_recent_mix(user.username, mix_key)
     return JSONResponse({"status": "ok"})
 
 

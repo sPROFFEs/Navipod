@@ -132,21 +132,64 @@ export async function toggleFavorite(trackId, btn) {
 }
 
 // === RENDER FAVORITES VIEW ===
-
+//
+// Treat Liked Songs as a special, immutable playlist:
+//   - Shares the playlist-style header (large cover + title + Play / Shuffle).
+//   - The cover is the same purple→pink gradient with a big white heart that
+//     the sidebar uses, so the visual identity is consistent everywhere.
+//   - No rename / delete / publish / share controls — favorites are managed
+//     per-track via the heart icon, never as a whole playlist.
 export async function renderFavorites(container) {
   let favs = [];
   try {
     favs = await (await fetch(`${state.API}/favorites`)).json();
+    favs = Array.isArray(favs) ? favs : [];
     state.setCurrentViewList(favs);
-  } catch (e) {}
+  } catch (e) {
+    favs = [];
+  }
+
+  const trackCount = favs.length;
+  const subtitle = trackCount === 1 ? '1 song' : `${trackCount} songs`;
 
   container.innerHTML = `
-        <h1 class="section-title">Liked Songs</h1>
-        <p class="section-subtitle">${favs.length} songs</p>
-        ${
-          favs.length > 0
-            ? `<div class="track-list">${favs.map((t, i) => (window.createTrackRow ? window.createTrackRow({ ...t, is_local: true, source: 'local', db_id: t.id }, i) : '')).join('')}</div>`
-            : '<div class="empty-state glass-panel"><i data-lucide="heart" class="empty-icon"></i><p>Like some tracks to see them here!</p></div>'
-        }`;
+    <div class="playlist-header-section">
+        <div class="playlist-cover-large playlist-cover-favorites">
+            <i data-lucide="heart"></i>
+        </div>
+        <div class="playlist-info">
+            <p class="playlist-type">Playlist</p>
+            <div class="playlist-title-row">
+                <h1 class="playlist-title">Liked Songs</h1>
+            </div>
+            <p class="playlist-stats">${subtitle}</p>
+            <div class="playlist-actions">
+                ${trackCount > 0 ? `
+                <button onclick="playPlaylistInOrder()" class="btn-primary-lg playlist-action-btn"
+                        title="Play" aria-label="Play">
+                    <i data-lucide="play" width="20" height="20"></i>
+                    <span class="playlist-btn-label">Play</span>
+                </button>
+                <button onclick="playPlaylistShuffle()" class="btn-secondary-lg playlist-action-btn"
+                        title="Shuffle" aria-label="Shuffle">
+                    <i data-lucide="shuffle" width="20" height="20"></i>
+                    <span class="playlist-btn-label">Shuffle</span>
+                </button>` : ''}
+            </div>
+        </div>
+    </div>
+    ${trackCount > 0
+      ? `<div class="track-list">${favs
+            .map((t, i) =>
+              window.createTrackRow
+                ? window.createTrackRow({ ...t, is_local: true, source: 'local', db_id: t.id }, i)
+                : ''
+            )
+            .join('')}</div>`
+      : `<div class="empty-state glass-panel">
+            <i data-lucide="heart" class="empty-icon"></i>
+            <p>Like some tracks to see them here!</p>
+         </div>`}
+  `;
   lucide.createIcons();
 }
