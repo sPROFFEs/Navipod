@@ -38,73 +38,56 @@
 <body>
     <div class="app-layout">
         <aside class="sidebar" id="sidebar">
-            <div class="brand">
-                <a href="/" class="brand-group">
-                    <img src="/assets/icon.png" alt="Navipod">
-                    <span>Navipod</span>
-                </a>
-                <button class="sidebar-close" id="sidebar-close" onclick="toggleSidebar()">
-                    <i data-lucide="x"></i>
+            <button class="sidebar-close" id="sidebar-close" onclick="toggleSidebar()" aria-label="Close sidebar">
+                <i data-lucide="x"></i>
+            </button>
+
+            <!-- Top toggle row: switches between collapsed / expanded modes.
+                 Click the icon = toggle. The label is only visible in expanded
+                 mode and acts as a secondary affordance (also clickable). -->
+            <div class="sidebar-head">
+                <button class="sidebar-toggle" id="sidebar-toggle"
+                        onclick="toggleSidebarMode()" title="Your Library">
+                    <i data-lucide="library"></i>
+                    <span class="sidebar-toggle-label">Your Library</span>
                 </button>
             </div>
 
-            <nav class="nav-menu">
-                <div class="nav-link active" onclick="loadView('home')">
-                    <i data-lucide="home"></i> {{ _('menu.home') }}
-                </div>
-                <div class="nav-link" onclick="loadView('search')">
-                    <i data-lucide="search"></i> {{ _('menu.search') }}
-                </div>
-                <div class="nav-link" onclick="loadView('library')">
-                    <i data-lucide="list-music"></i> Library
-                </div>
-                <div class="nav-link" onclick="loadView('favorites')">
-                    <i data-lucide="heart"></i> {{ _('menu.liked') }}
-                </div>
-                <div class="nav-link" onclick="loadView('public')">
-                    <i data-lucide="globe"></i> Public
-                </div>
-                <div class="nav-link" onclick="loadView('discover_radios')">
-                    <i data-lucide="radio"></i> Discover Radios
-                </div>
-                <div class="nav-link" onclick="loadView('your_radios')">
-                    <i data-lucide="radio"></i> Your Radios
+            <!-- Library list. JS keeps it sorted by last activity.            -->
+            <!-- Favorites is pinned and always rendered first as a static row,-->
+            <!-- then #sidebar-items receives the dynamic playlists + radios.  -->
+            <nav class="sidebar-list" id="sidebar-list">
+                <a class="sidebar-item sidebar-item-favorites"
+                   onclick="loadView('favorites')"
+                   title="Liked Songs">
+                    <div class="sidebar-cover sidebar-cover-favorites">
+                        <i data-lucide="heart"></i>
+                    </div>
+                    <div class="sidebar-meta">
+                        <div class="sidebar-name">Liked Songs</div>
+                        <div class="sidebar-sub">Playlist</div>
+                    </div>
+                </a>
+
+                <div id="sidebar-items">
+                    <!-- Playlists + radios injected by views.renderSidebarItems() -->
                 </div>
             </nav>
 
-            <div class="nav-divider"></div>
-
-            <nav class="nav-menu">
-                <div class="nav-section-header">
-                    <span class="nav-section-title">Recently Opened</span>
-                </div>
-                <div class="recent-sidebar-group">
-                    <div class="recent-sidebar-label">Playlists</div>
-                    <div id="sidebar-recent-playlists">
-                        <!-- Recent playlists injected by JS -->
-                    </div>
-                </div>
-                <div class="recent-sidebar-group">
-                    <div class="recent-sidebar-label">Radios</div>
-                    <div id="sidebar-recent-radios">
-                        <!-- Recent radios injected by JS -->
-                    </div>
-                </div>
-            </nav>
-
-            <div class="nav-divider"></div>
-
-            <nav class="nav-menu">
-                <div class="nav-section-title">System</div>
-                <!-- Using direct hrefs for system pages to ensure full page load if needed -->
-                {% if is_admin %}
-                <div class="nav-link" onclick="loadView('settings_admin')">
-                    <i data-lucide="settings"></i> {{ _('menu.settings') }}
-                </div>
-                {% endif %}
-                <div class="nav-link" onclick="loadView('help')">
-                    <i data-lucide="help-circle"></i> {{ _('menu.help') }}
-                </div>
+            <!-- Browse fallback: temporary entry points for views that will
+                 move to home tabs in Phase 3. Hidden in collapsed mode to
+                 keep the icon strip clean. TODO(phase3): remove. -->
+            <nav class="sidebar-browse">
+                <div class="sidebar-browse-title">Browse</div>
+                <button class="sidebar-browse-link" onclick="loadView('public')">
+                    <i data-lucide="globe"></i><span>Public</span>
+                </button>
+                <button class="sidebar-browse-link" onclick="loadView('discover_radios')">
+                    <i data-lucide="radio"></i><span>Discover Radios</span>
+                </button>
+                <button class="sidebar-browse-link" onclick="loadView('your_radios')">
+                    <i data-lucide="bookmark"></i><span>Your Radios</span>
+                </button>
             </nav>
 
             <div class="quota-widget">
@@ -395,6 +378,28 @@
     <script>
         window.USER_DATA = {
             username: "{{ username }}"
+        };
+
+        /* ── Sidebar two-mode toggle ───────────────────────────────────────
+         * Spotify-style: a narrow icon strip (collapsed) or a wide panel
+         * with names + meta (expanded). The state lives on <html> as a data
+         * attribute so the CSS variable --sidebar-width can pick it up and
+         * the layout grid re-sizes the column. Persists across reloads via
+         * localStorage. */
+        const SIDEBAR_MODE_KEY = 'navipod_sidebar_mode';
+        function applySidebarMode(mode) {
+            const m = mode === 'expanded' ? 'expanded' : 'collapsed';
+            document.documentElement.setAttribute('data-sidebar-mode', m);
+        }
+        // Apply saved preference as early as possible to avoid a flash.
+        // Default = collapsed (icon strip) to match the Spotify-style first
+        // impression; user-toggled state is then persisted per browser.
+        applySidebarMode(localStorage.getItem(SIDEBAR_MODE_KEY) || 'collapsed');
+        window.toggleSidebarMode = function () {
+            const current = document.documentElement.getAttribute('data-sidebar-mode') || 'expanded';
+            const next = current === 'collapsed' ? 'expanded' : 'collapsed';
+            applySidebarMode(next);
+            try { localStorage.setItem(SIDEBAR_MODE_KEY, next); } catch (e) {}
         };
 
         /**

@@ -1014,54 +1014,73 @@ export function restorePlayerUIForLocal() {
 }
 
 // === SIDEBAR RENDERING ===
+//
+// New Spotify-style sidebar markup:
+//   <nav id="sidebar-list">
+//     <a class="sidebar-item sidebar-item-favorites">…</a>     ← pinned static row
+//     <div id="sidebar-items">                                  ← dynamic slot
+//       <a class="sidebar-item">cover + meta</a>                ← per item
+//       …
+//     </div>
+//   </nav>
+//
+// Both playlists and radios now share a single ordered list, sorted by the
+// most-recent activity timestamp the API exposes. We call this from the same
+// places `renderSidebarRecents()` was previously invoked, so existing
+// triggers (after a track plays, after a playlist is opened, after sync ticks)
+// keep wiring up unchanged.
+
+function _sidebarPlaylistRow(pl) {
+  const name = ui.escHtml(pl.name || 'Playlist');
+  const thumb = pl.thumbnail && !pl.thumbnail.includes('default') ? pl.thumbnail : '';
+  const fallbackIcon = pl.source_playlist_id ? 'refresh-cw' : pl.is_public ? 'globe' : 'list-music';
+  const sub = pl.source_playlist_id ? 'Synced playlist' : (pl.is_public ? 'Public playlist' : 'Playlist');
+  return `
+    <a class="sidebar-item" onclick="loadView('playlist', ${pl.id})" title="${name}">
+        <div class="sidebar-cover">
+            ${thumb
+              ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.outerHTML='<i data-lucide=\\'${fallbackIcon}\\'></i>'">`
+              : `<i data-lucide="${fallbackIcon}"></i>`}
+        </div>
+        <div class="sidebar-meta">
+            <div class="sidebar-name">${name}</div>
+            <div class="sidebar-sub">${sub}</div>
+        </div>
+    </a>`;
+}
+
+function _sidebarRadioRow(r) {
+  const name = ui.escHtml(r.name || 'Saved Radio');
+  const nameJs = String(r.name || 'Saved Radio').replace(/'/g, "\\'");
+  const idJs = String(r.id || '').replace(/'/g, "\\'");
+  const url = encodeURIComponent(r.streamUrl || '');
+  return `
+    <a class="sidebar-item" onclick="playSavedRadio('${url}', '${nameJs}', '${idJs}')" title="${name}">
+        <div class="sidebar-cover sidebar-cover-radio">
+            <i data-lucide="radio"></i>
+        </div>
+        <div class="sidebar-meta">
+            <div class="sidebar-name">${name}</div>
+            <div class="sidebar-sub">Radio</div>
+        </div>
+    </a>`;
+}
 
 export function renderSidebarRecents() {
-  const playlistContainer = document.getElementById('sidebar-recent-playlists');
-  const radioContainer = document.getElementById('sidebar-recent-radios');
+  const container = document.getElementById('sidebar-items');
+  if (!container) return;
 
-  if (playlistContainer) {
-    playlistContainer.innerHTML =
-      state.recentPlaylists.length > 0
-        ? state.recentPlaylists
-            .map((pl) => {
-              const thumb = pl.thumbnail || '/static/img/default_cover.png';
-              const hasThumb = pl.thumbnail && !pl.thumbnail.includes('default');
-              const playlistIcon = pl.source_playlist_id ? 'refresh-cw' : pl.is_public ? 'globe' : 'list-music';
-              return `
-                    <div class="playlist-item" onclick="loadView('playlist', ${pl.id})">
-                        <div class="sidebar-playlist-thumb">
-                            ${
-                              hasThumb
-                                ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">`
-                                : `<i data-lucide="${playlistIcon}"></i>`
-                            }
-                        </div>
-                        <span class="truncate">${ui.escHtml(pl.name)}</span>
-                    </div>`;
-            })
-            .join('')
-        : '<div class="playlist-item empty recent-empty">No recent playlists</div>';
-  }
+  const rows = [];
+  // Playlists then radios — each list arrives already sorted by the
+  // /recent-activity endpoint, so concatenation preserves that ordering
+  // without an explicit cross-type sort. This roughly matches Spotify's
+  // ordering where pinned + recently-played items rise to the top.
+  state.recentPlaylists.forEach((pl) => rows.push(_sidebarPlaylistRow(pl)));
+  state.recentRadios.forEach((r) => rows.push(_sidebarRadioRow(r)));
 
-  if (radioContainer) {
-    radioContainer.innerHTML =
-      state.recentRadios.length > 0
-        ? state.recentRadios
-            .map((radioItem) => {
-              const radioName = ui.escHtml(radioItem.name || 'Saved Radio');
-              const radioNameJs = String(radioItem.name || 'Saved Radio').replace(/'/g, "\\'");
-              const radioIdJs = String(radioItem.id || '').replace(/'/g, "\\'");
-              return `
-                    <div class="playlist-item radio-item" onclick="playSavedRadio('${encodeURIComponent(radioItem.streamUrl || '')}', '${radioNameJs}', '${radioIdJs}')">
-                        <div class="sidebar-playlist-thumb">
-                            <i data-lucide="radio"></i>
-                        </div>
-                        <span class="truncate">${radioName}</span>
-                    </div>`;
-            })
-            .join('')
-        : '<div class="playlist-item empty recent-empty">No recent radios</div>';
-  }
+  container.innerHTML = rows.length
+    ? rows.join('')
+    : '<div class="sidebar-empty">No recent activity yet</div>';
 
   lucide.createIcons();
 }

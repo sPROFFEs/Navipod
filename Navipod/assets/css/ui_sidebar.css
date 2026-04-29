@@ -1,15 +1,40 @@
+/* ─────────────────────────────────────────────────────────────────────
+ *  Sidebar — Spotify-style two-mode panel
+ *
+ *  The current mode is stored on <html data-sidebar-mode="…"> so that
+ *  --sidebar-width (consumed by .app-layout's grid-template-columns)
+ *  can flip between collapsed and expanded values.
+ *
+ *  collapsed  →  72px wide, only cover thumbnails visible
+ *  expanded   → 320px wide, covers + name + sub label visible
+ * ───────────────────────────────────────────────────────────────────*/
+
+:root {
+    --sidebar-width: 320px;
+}
+
+:root[data-sidebar-mode="collapsed"] {
+    --sidebar-width: 72px;
+}
+
 .app-layout {
-    gap: 0;
-    padding: 0;
+    transition: grid-template-columns 0.2s ease;
+}
+
+.app-layout {
+    gap: 8px;
+    padding: 8px 8px 0 8px;
     background: transparent;
 }
 
 .sidebar {
-    background: var(--surface-0);
+    background: var(--surface-1);
     border: 0;
-    border-right: 1px solid var(--border-subtle);
-    border-radius: 0;
-    padding: 18px 14px 14px;
+    border-radius: 10px;
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
     scrollbar-color: var(--border-strong) transparent;
 }
 
@@ -18,115 +43,274 @@
     border-radius: 999px;
 }
 
-.brand {
-    padding: 8px 10px 18px;
-    margin-bottom: 12px;
+/* Hide the floating mobile-close button on desktop */
+.sidebar-close {
+    display: none;
 }
 
-.brand-group {
+/* ── Top toggle row ─────────────────────────────────────────────── */
+
+.sidebar-head {
+    padding: 12px 12px 4px 12px;
+    flex-shrink: 0;
+}
+
+.sidebar-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 12px;
+    background: transparent;
+    border: 0;
+    color: var(--text-sub);
+    cursor: pointer;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.sidebar-toggle:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.sidebar-toggle i,
+.sidebar-toggle svg {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+}
+
+.sidebar-toggle-label {
+    flex: 1;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ── Items list ─────────────────────────────────────────────────── */
+
+.sidebar-list {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 4px 8px 12px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sidebar-item {
+    display: flex;
+    align-items: center;
     gap: 12px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    color: var(--text-sub);
+    cursor: pointer;
+    text-decoration: none;
+    transition: background-color 0.12s ease, color 0.12s ease;
+    min-width: 0;
 }
 
-.brand img {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    box-shadow: none;
+.sidebar-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-main);
 }
 
-.brand span {
-    font-size: 1.1rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
+.sidebar-item.active {
+    background: rgba(255, 255, 255, 0.08);
 }
 
-.nav-divider {
-    height: 1px;
-    margin: 14px 10px;
-    background: var(--border-subtle);
+.sidebar-cover {
+    width: 48px;
+    height: 48px;
+    border-radius: 4px;
+    background: var(--surface-3);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    color: var(--text-sub);
 }
 
-.nav-link,
-.playlist-item,
-.radio-item {
-    border-radius: var(--radius-sm);
-    min-height: 40px;
+.sidebar-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
 }
 
-.nav-link {
-    gap: 12px;
-    padding: 10px 12px;
+.sidebar-cover i,
+.sidebar-cover svg {
+    width: 22px;
+    height: 22px;
+}
+
+.sidebar-cover-favorites {
+    background: linear-gradient(135deg, #4f46e5 0%, #ec4899 100%);
+    color: #fff;
+}
+
+.sidebar-cover-favorites i,
+.sidebar-cover-favorites svg {
+    fill: #fff;
+}
+
+.sidebar-cover-radio {
+    background: linear-gradient(135deg, #f97316 0%, #b91c1c 100%);
+    color: #fff;
+}
+
+.sidebar-meta {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sidebar-name {
+    color: var(--text-main);
     font-size: 0.92rem;
     font-weight: 500;
-    color: var(--text-sub);
-    border: 1px solid transparent;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.nav-link:hover,
-.playlist-item:hover,
-.radio-item:hover {
-    background: var(--surface-2);
-    color: var(--text-main);
-}
-
-.nav-link.active {
-    background: var(--surface-2);
-    border: 1px solid var(--border-strong);
-    color: var(--text-main);
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
-}
-
-.nav-link.active i {
-    color: var(--text-main);
-}
-
-.nav-section-header,
-.nav-section-title {
+.sidebar-sub {
     color: var(--text-faint);
+    font-size: 0.78rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.nav-section-title {
-    font-size: 0.72rem;
+.sidebar-empty {
+    padding: 20px 12px;
+    color: var(--text-faint);
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+/* ── Browse fallback (temporary, removed in Phase 3) ─────────────── */
+
+.sidebar-browse {
+    flex-shrink: 0;
+    padding: 8px 8px 4px 8px;
+    border-top: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sidebar-browse-title {
+    color: var(--text-faint);
+    font-size: 0.7rem;
+    font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    font-weight: 600;
+    padding: 6px 12px 4px;
 }
 
-.recent-sidebar-group + .recent-sidebar-group {
-    margin-top: 12px;
+.sidebar-browse-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    color: var(--text-sub);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.88rem;
+    text-align: left;
+    transition: background-color 0.12s ease, color 0.12s ease;
 }
 
-.recent-sidebar-label {
-    margin: 0 0 6px 12px;
-    color: var(--text-faint);
-    font-size: 0.76rem;
-    font-weight: 600;
+.sidebar-browse-link:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-main);
 }
 
-#sidebar-recent-playlists,
-#sidebar-recent-radios {
-    display: grid;
-    gap: 4px;
+.sidebar-browse-link i,
+.sidebar-browse-link svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
 }
 
-.recent-empty {
-    padding: 9px 12px;
-    color: var(--text-faint);
-    font-size: 0.8rem;
-}
+/* ── Quota widget at bottom ─────────────────────────────────────── */
 
 .quota-widget {
-    margin-top: auto;
-    margin-bottom: 10px;
-    padding: 14px 12px 0;
+    flex-shrink: 0;
+    padding: 12px;
     border-top: 1px solid var(--border-subtle);
 }
 
 .quota-label,
 .quota-stats {
     color: var(--text-sub);
+    font-size: 0.78rem;
+}
+
+.quota-label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
 }
 
 .quota-bar-bg {
+    height: 4px;
     background: var(--surface-3);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 6px;
 }
+
+.quota-bar-fill {
+    height: 100%;
+    border-radius: inherit;
+}
+
+/* ── Collapsed-mode rules: hide labels + secondary text ─────────── */
+
+:root[data-sidebar-mode="collapsed"] .sidebar-toggle-label,
+:root[data-sidebar-mode="collapsed"] .sidebar-meta,
+:root[data-sidebar-mode="collapsed"] .sidebar-browse-title,
+:root[data-sidebar-mode="collapsed"] .sidebar-browse-link span,
+:root[data-sidebar-mode="collapsed"] .quota-widget {
+    display: none;
+}
+
+:root[data-sidebar-mode="collapsed"] .sidebar-toggle,
+:root[data-sidebar-mode="collapsed"] .sidebar-item,
+:root[data-sidebar-mode="collapsed"] .sidebar-browse-link {
+    justify-content: center;
+    padding: 8px;
+}
+
+:root[data-sidebar-mode="collapsed"] .sidebar-head {
+    padding: 12px 8px 4px 8px;
+}
+
+:root[data-sidebar-mode="collapsed"] .sidebar-list {
+    padding: 4px 8px 12px 8px;
+    align-items: center;
+}
+
+:root[data-sidebar-mode="collapsed"] .sidebar-cover {
+    width: 48px;
+    height: 48px;
+}
+
+/* ── Mobile (<= 768px) keeps the sidebar in its existing slide-in
+ * behaviour controlled by toggleSidebar(). The two-mode logic is a
+ * desktop affordance only. ─────────────────────────────────────── */
