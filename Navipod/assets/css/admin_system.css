@@ -1404,12 +1404,18 @@
  *  down to the end of file.
  * ───────────────────────────────────────────────────────────────────────*/
 
-/* Page container — fills the available area; no max-width centering */
+/* Page container — fills the available area; no max-width centering.
+ * Both shells use display:grid so the section gap actually applies — the
+ * original .admin-shell had no display rule so its children stacked flush
+ * against each other regardless of any 'gap' value. */
 .system-monitor,
-.admin-shell {
+.admin-shell,
+.update-shell {
     width: 100%;
     max-width: none;
-    gap: 32px;
+    margin: 0;
+    display: grid;
+    gap: 40px;
 }
 
 /* ── Section panels: no box, just a heading and content ─────────────── */
@@ -1670,4 +1676,133 @@
 .monitor-toast.error,   .admin-toast.error   { color: var(--monitor-red,   #dc2626); }
 .monitor-toast span,
 .admin-toast span { color: var(--monitor-text, #f3f4f6); }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ *  FLAT REDESIGN — Update / Job progress page
+ *  Same flat treatment as system_monitor + admin_panel: no card boxes,
+ *  just sections separated by hairlines and plenty of whitespace.
+ * ───────────────────────────────────────────────────────────────────────*/
+
+/* Panel: drop the box */
+.update-panel {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    padding: 0;
+}
+.update-panel-body {
+    padding: 0;
+    gap: 24px;
+}
+
+/* Header: bigger title, ghost back button */
+.update-header h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.01em; }
+.update-back {
+    background: transparent !important;
+    border-color: rgba(255, 255, 255, 0.14) !important;
+}
+.update-back:hover {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border-color: rgba(255, 255, 255, 0.28) !important;
+}
+
+/* Top metadata: flat 3-col tiles like the KPI row, no card chrome */
+.update-meta-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 32px;
+}
+.update-meta {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    gap: 8px;
+}
+.update-meta-label {
+    color: var(--muted, #9aa3b2);
+    font-size: .82rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    font-weight: 500;
+}
+.update-meta-value {
+    color: var(--text, #f3f4f6);
+    font-size: 1.1rem;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+/* Progress bar — thinner, matches KPI bars */
+.update-progress-track { height: 4px; }
+.update-progress-head .update-meta-label { text-transform: uppercase; }
+
+/* Current phase + latest message: 2-col flat */
+.update-phase {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 32px;
+    padding-top: 4px;
+}
+@media (max-width: 760px) {
+    .update-phase { grid-template-columns: 1fr; }
+}
+.update-phase strong {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text, #f3f4f6);
+}
+
+/* Status pill — slightly bolder and quieter chrome */
+.update-status-pill {
+    border-width: 1px;
+    background: rgba(255, 255, 255, 0.04) !important;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: .78rem;
+    font-weight: 600;
+    padding: 0 12px;
+    min-height: 26px;
+}
+.update-status-pill.completed {
+    background: rgba(47, 191, 113, 0.12) !important;
+    border-color: rgba(47, 191, 113, 0.45) !important;
+}
+.update-status-pill.failed {
+    background: rgba(220, 38, 38, 0.12) !important;
+    border-color: rgba(220, 38, 38, 0.45) !important;
+}
+.update-status-pill.running,
+.update-status-pill.queued {
+    background: rgba(217, 119, 6, 0.12) !important;
+    border-color: rgba(217, 119, 6, 0.45) !important;
+}
+
+/* Activity log — promote the "Activity log" label to a section heading,
+ * then flatten the log items to rows separated by hairlines (Spotify-y).
+ * The HTML uses a generic .update-meta-label for the heading, so we use
+ * a structural selector to target it without needing a template change. */
+.update-panel .update-panel-body > .update-meta-label {
+    font-size: 1.45rem;
+    font-weight: 700;
+    color: var(--text, #f3f4f6);
+    text-transform: none;
+    letter-spacing: -0.01em;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border, #2a2e38);
+    margin-bottom: 6px;
+}
+
+.update-log { gap: 0; }
+.update-log-item {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    padding: 12px 0 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+.update-log-item:last-child { border-bottom: 0 !important; }
+.update-log-item time {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .75rem;
+}
 
