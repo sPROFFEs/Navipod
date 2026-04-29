@@ -427,17 +427,44 @@
     pointer-events: none;
 }
 
-/* In collapsed mode the cover should sit centred. We collapse the gap
- * (the 12px between cover and meta) so the meta truly takes 0 width
- * and the row centres around the cover with the natural flex centering. */
-:root[data-sidebar-mode="collapsed"] .sidebar-toggle,
-:root[data-sidebar-mode="collapsed"] .sidebar-item,
-:root[data-sidebar-mode="collapsed"] .sidebar-browse-link {
+/* In collapsed mode the cover should sit centred. KEY DETAIL: avoid
+ * `justify-content: center` on the rows because that property is not
+ * animatable — it snaps the moment data-sidebar-mode flips, so during
+ * the 200ms width transition the cover jumps to the centre of the
+ * still-wide row and then slides back, producing a visible jiggle.
+ *
+ * Instead we use SYMMETRIC horizontal padding to centre the cover.
+ * The toggle row keeps justify-content:center because its icon (22px)
+ * is much smaller than the row's content area, so symmetric padding
+ * alone wouldn't reach centre. */
+
+:root[data-sidebar-mode="collapsed"] .sidebar-toggle {
     gap: 0;
     justify-content: center;
     padding-left: 0;
     padding-right: 0;
     transition: gap 200ms ease, padding 200ms ease, background-color 120ms ease;
+}
+
+:root[data-sidebar-mode="collapsed"] .sidebar-item,
+:root[data-sidebar-mode="collapsed"] .sidebar-browse-link {
+    gap: 0;
+    /* Sidebar 72px, list padding 8px each side -> item content area 56px;
+     * cover is 48px -> 4px padding each side centres it perfectly. No
+     * justify-content change, so the cover slides smoothly with the
+     * width transition instead of snapping. */
+    padding-left: 4px;
+    padding-right: 4px;
+    transition: gap 200ms ease, padding 200ms ease, background-color 120ms ease;
+}
+
+/* Pinned Liked Songs row uses negative margins to bleed across the list
+ * padding, so its content area is the full 72px sidebar. To match the
+ * other rows visually, the symmetric collapsed padding becomes 12px
+ * (cover 48 + 24 padding = 72). */
+:root[data-sidebar-mode="collapsed"] .sidebar-item-favorites {
+    padding-left: 12px;
+    padding-right: 12px;
 }
 
 /* ── Mobile (<= 768px) keeps the sidebar in its existing slide-in
