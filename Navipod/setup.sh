@@ -142,10 +142,19 @@ if [[ "$IMPORT_MUSIC" == "y" || "$IMPORT_MUSIC" == "Y" ]]; then
             echo "Moving music to staging area ($IMPORT_STAGE)..."
             mv "$SRC_PATH"/* "$IMPORT_STAGE/" 2>/dev/null || mv "$SRC_PATH"/.[!.]* "$IMPORT_STAGE/" 2>/dev/null
 
+            read -p "Use remote APIs to download missing covers + enrich metadata? (y/N): " ENRICH_ANS
+            ENRICH_FLAG=""
+            if [[ "$ENRICH_ANS" == "y" || "$ENRICH_ANS" == "Y" ]]; then
+                ENRICH_FLAG="--enrich"
+            fi
+
             echo "Running Importer Engine..."
-            docker compose --env-file "$CONFIG_ENV" exec -T concierge python importer.py /saas-data/import_stage
+            docker compose --env-file "$CONFIG_ENV" exec -T concierge python importer.py \
+                --source /saas-data/import_stage $ENRICH_FLAG
 
             echo "Import process finished. Check logs for details."
+            echo "Tip: from now on you can run './import_music.sh /path/to/music [--enrich]'"
+            echo "     from the repository root for further bulk imports."
         else
             echo "Import cancelled."
         fi

@@ -93,6 +93,25 @@ In `Settings > Engine`:
 
 Provider credentials are encrypted at rest using `SECRET_KEY`. Don't rotate `SECRET_KEY` after users have saved credentials, or those credentials won't decrypt.
 
+## Bulk Music Import
+
+To import an existing music collection from a host folder into the shared pool, run from the repo root:
+
+```bash
+./import_music.sh /path/to/your/music [--enrich]
+```
+
+What it does:
+- Recursively scans the source folder for audio files (`mp3`, `m4a`, `flac`, `wav`, `ogg`, `opus`, `aac`, `wma`)
+- Moves them into `/opt/saas-data/pool/{Artist}/{Album}/` (the source is emptied)
+- Reads tags via `mutagen` and registers each track in the DB
+- Saves embedded cover art to the cover cache
+- With `--enrich`, fills missing covers via Spotify/Last.fm/MusicBrainz (requires API keys configured in `Settings > Engine`)
+- Detects duplicates by hash + fingerprint and skips them
+- Creates a playlist named after the source folder for the new tracks (use `--no-playlist` to skip)
+
+Other flags: `--user USERNAME`, `--dry-run`, `--workers N`, `--verbose`. Run `./import_music.sh --help` for the full list.
+
 ## Android App
 
 Each GitHub [release](https://github.com/sPROFFEs/Navipod/releases) ships two extra artifacts alongside the source code:
