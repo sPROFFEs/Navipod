@@ -184,16 +184,22 @@
 /* Liked Songs is pinned at the top of the scrolling list — it's the user's
  * primary entry point and Spotify keeps it visible always. We use sticky
  * with a solid sidebar-coloured background so dynamic items below scroll
- * cleanly behind it instead of being clipped half-way. */
+ * cleanly behind it instead of being clipped half-way.
+ *
+ * Cover-alignment trick: the negative horizontal margin extends the
+ * background to the inner edge of the .sidebar-list padding (8px each
+ * side); we then compensate with extra horizontal padding (16px) so the
+ * cover thumbnail lands at the SAME x-coordinate as every other row's
+ * cover (which is at list-padding-left + item-padding-left = 8 + 8 = 16
+ * from the sidebar edge). Without the compensation the pinned cover sat
+ * 8px further left than the rest, looking off-axis. */
 .sidebar-item-favorites {
     position: sticky;
     top: -4px;                         /* offset .sidebar-list's padding-top:4px */
     z-index: 2;
     background: var(--surface-1);
-    /* Extend background to the inner edge of the list padding so scrolled
-     * items aren't visible underneath while passing by. */
     margin: -4px -8px 4px -8px;
-    padding: 10px 8px 6px 8px;
+    padding: 10px 16px 6px 16px;
 }
 
 .sidebar-cover-favorites i,
