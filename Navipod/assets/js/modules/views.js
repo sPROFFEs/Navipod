@@ -720,21 +720,67 @@ export async function renderLibrary(container) {
     return;
   }
 
-  container.innerHTML = `
-        <section class="collection-shell">
-            <div class="collection-header">
-                <div>
-                    <h1 class="section-title">Library</h1>
-                </div>
-                <button class="btn-primary" onclick="showCreatePlaylistModal()">
-                    <i data-lucide="plus"></i>
-                    <span>New Playlist</span>
-                </button>
+  // Spotify-style "Your Library" surface:
+  //   - Header row: title (left) + circular search + add buttons (right)
+  //   - Filter pills (single chip set for now: Playlists; future-proofed
+  //     to add Albums / Artists / Synced as our model grows)
+  //   - "Recently played" sort label
+  //   - Compact rows: cover + name + meta (no card chrome)
+  // The username avatar at the very left of Spotify's header is omitted
+  // because the mobile topbar already shows it.
+  const rowHtml = (pl) => {
+    const name = ui.escHtml(pl.name || 'Playlist');
+    const thumb = pl.thumbnail || '/static/img/default_cover.png';
+    const hasThumb = pl.thumbnail && !pl.thumbnail.includes('default');
+    const fallback = pl.source_playlist_id ? 'refresh-cw' : pl.is_public ? 'globe' : 'list-music';
+    const tracks = Number(pl.track_count || 0);
+    const trackLabel = tracks === 1 ? '1 song' : `${tracks} songs`;
+    const visibility = pl.source_playlist_id
+      ? 'Synced'
+      : pl.is_public
+        ? 'Public'
+        : 'Private';
+    return `
+        <div class="library-row" onclick="loadView('playlist', ${pl.id})">
+            <div class="library-row-cover">
+                ${hasThumb
+                  ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.outerHTML='<i data-lucide=\\'${fallback}\\'></i>'">`
+                  : `<i data-lucide="${fallback}"></i>`}
             </div>
+            <div class="library-row-meta">
+                <div class="library-row-name">${name}</div>
+                <div class="library-row-sub">Playlist · ${trackLabel} · ${visibility}</div>
+            </div>
+        </div>`;
+  };
+
+  container.innerHTML = `
+        <section class="library-shell">
+            <header class="library-head">
+                <h1 class="library-title">Your Library</h1>
+                <div class="library-head-actions">
+                    <button class="library-icon-btn" onclick="loadView('search')" title="Search">
+                        <i data-lucide="search"></i>
+                    </button>
+                    <button class="library-icon-btn" onclick="showCreatePlaylistModal()" title="New playlist">
+                        <i data-lucide="plus"></i>
+                    </button>
+                </div>
+            </header>
+
+            <div class="library-filters">
+                <button class="library-filter active">Playlists</button>
+            </div>
+
+            <div class="library-sort">
+                <i data-lucide="arrow-down-up" width="14" height="14"></i>
+                <span>Recently played</span>
+            </div>
+
             ${
               playlistList.length > 0
-                ? `<div class="grid-shelf playlist-mobile-list">${playlistList.map(createPlaylistCard).join('')}</div>`
-                : `<div class="empty-state glass-panel"><p>No playlists yet. Create one and stop hiding your library in the sidebar.</p></div>`
+                ? `<div class="library-list">${playlistList.map(rowHtml).join('')}</div>`
+                : `<div class="empty-state"><p>No playlists yet. Tap the + above to create your first one.</p></div>`
             }
         </section>`;
   lucide.createIcons();

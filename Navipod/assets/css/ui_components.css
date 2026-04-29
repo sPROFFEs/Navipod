@@ -213,6 +213,179 @@
     box-shadow: var(--shadow-md);
 }
 
+/* ── Library surface (Spotify-style) ────────────────────────────────
+ * Used by renderLibrary. Header row + filter chips + sort indicator
+ * + compact rows. Same flat language as the sidebar items so they
+ * feel like the same family of objects. */
+
+.library-shell {
+    padding: 0 16px;
+    max-width: 720px;
+}
+
+.library-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 0 12px 0;
+}
+
+.library-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0;
+}
+
+.library-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.library-icon-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: transparent;
+    border: 0;
+    color: var(--text-sub);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.library-icon-btn:hover,
+.library-icon-btn:active {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-main);
+}
+
+.library-icon-btn i,
+.library-icon-btn svg {
+    width: 22px;
+    height: 22px;
+}
+
+.library-filters {
+    display: flex;
+    gap: 8px;
+    margin: 4px 0 12px 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.library-filters::-webkit-scrollbar { display: none; }
+
+.library-filter {
+    flex-shrink: 0;
+    padding: 6px 14px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 0;
+    color: var(--text-main);
+    cursor: pointer;
+    font-family: inherit;
+    transition: background-color 0.12s ease;
+}
+
+.library-filter:hover {
+    background: var(--surface-3);
+}
+
+.library-filter.active {
+    background: rgba(47, 191, 113, 0.18);
+    color: #6ee7a7;
+}
+
+.library-sort {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-sub);
+    font-size: 0.82rem;
+    font-weight: 500;
+    margin: 8px 0 4px 4px;
+}
+
+.library-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.library-row {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 4px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.12s ease;
+}
+
+.library-row:hover,
+.library-row:active {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.library-row-cover {
+    width: 56px;
+    height: 56px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--surface-3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-sub);
+    flex-shrink: 0;
+}
+
+.library-row-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.library-row-cover i,
+.library-row-cover svg {
+    width: 22px;
+    height: 22px;
+}
+
+.library-row-meta {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.library-row-name {
+    color: var(--text-main);
+    font-size: 0.95rem;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.library-row-sub {
+    color: var(--text-sub);
+    font-size: 0.78rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+
 .collection-shell {
     display: grid;
     gap: 24px;
