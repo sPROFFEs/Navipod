@@ -217,8 +217,19 @@ def _verify_federation_token(db: Session, request: Request, authorization: str |
     last_write = _last_seen_writes.get(matched.id, 0.0)
     if now_ts - last_write >= LAST_SEEN_WRITE_INTERVAL_S:
         _last_seen_writes[matched.id] = now_ts
-        fwd = request.headers.get("x-forwarded-for")
-        ip = (fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else None))
+        # X-Forwarded-For is trusted ONLY when the deployment is
+        # actually behind a reverse proxy that strips/replaces it
+        # (cloudflared, nginx with the right headers). In a direct-
+        # exposure setup any client can spoof it and pollute the audit
+        # trail. Gate on the existing TRUST_PROXY_HEADERS setting.
+        from navipod_config import settings as _settings
+        ip = None
+        if getattr(_settings, "TRUST_PROXY_HEADERS", False):
+            fwd = request.headers.get("x-forwarded-for")
+            if fwd:
+                ip = fwd.split(",")[0].strip()
+        if not ip:
+            ip = request.client.host if request.client else None
         matched.last_seen_at = datetime.now(timezone.utc)
         matched.last_seen_ip = ip
         matched.last_seen_user_agent = (request.headers.get("user-agent") or "")[:240]

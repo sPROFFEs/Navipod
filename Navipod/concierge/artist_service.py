@@ -131,7 +131,19 @@ async def get_artist_view(
         except Exception as e:
             logger.warning("spotify discography failed for %s: %s", artist_name, e)
 
-    metadata_cache.set(cache_key, _now_payload(out))
+    # Don't cache an artist whose remote fetches all came back empty —
+    # the user is one outage away from getting served a 7-day-stale
+    # blank shell. Caching is best-effort: if at least ONE source
+    # produced data, we keep it (next visitor benefits); otherwise we
+    # skip the write so the next request retries.
+    has_real_data = bool(
+        out.get("info") or out.get("similar") or out.get("top_tracks")
+        or out.get("albums") or out.get("spotify")
+    )
+    if has_real_data:
+        metadata_cache.set(cache_key, _now_payload(out))
+    else:
+        logger.info("artist_view skipped caching empty result for %s", artist_name)
     return out
 
 

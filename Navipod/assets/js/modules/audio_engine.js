@@ -76,9 +76,15 @@ export function ensureInitialized() {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) {
       _initFailed = true;
+      _notifyInitFailure('No Web Audio support in this browser.');
       return false;
     }
     _ctx = new Ctx();
+    // createMediaElementSource is one-shot per element. If the audio
+    // element has been replaced (some flows do `state.setAudio(...)`)
+    // this throws "HTMLMediaElement already connected". The catch
+    // surfaces a clear toast instead of silently disabling the
+    // feature, so the user knows their toggle didn't take effect.
     _source = _ctx.createMediaElementSource(state.audio);
     _gainReplay = _ctx.createGain();
     _gainFade = _ctx.createGain();
@@ -92,7 +98,22 @@ export function ensureInitialized() {
   } catch (e) {
     console.warn('[AUDIO_ENGINE] Init failed, falling back to direct playback', e);
     _initFailed = true;
+    _notifyInitFailure(
+      'ReplayGain / Crossfade not available — this browser refused the audio routing setup. Playback continues unaffected.'
+    );
     return false;
+  }
+}
+
+// Show the user a toast ONCE when init fails so they understand why
+// the playback toggles they enabled aren't taking effect. Subsequent
+// calls are no-ops.
+let _initFailureNotified = false;
+function _notifyInitFailure(msg) {
+  if (_initFailureNotified) return;
+  _initFailureNotified = true;
+  if (typeof window.showToast === 'function') {
+    try { window.showToast(msg, 'error'); } catch {}
   }
 }
 
@@ -131,7 +152,10 @@ export async function applyReplayGain(trackId) {
     }
 
     // Smooth ramp so the gain change isn't audible as a click when a
-    // track is already mid-playback.
+    // track is already mid-playback. Re-check `_ctx` because Safari
+    // can close it on visibility change between the fetch await and
+    // here.
+    if (!_ctx || !_gainReplay) return;
     const now = _ctx.currentTime;
     _gainReplay.gain.cancelScheduledValues(now);
     _gainReplay.gain.linearRampToValueAtTime(linear, now + 0.05);
@@ -152,10 +176,10 @@ export async function applyReplayGain(trackId) {
 // handler and fadeIn() at the start of the next track's playback.
 
 export function fadeIn(seconds = null) {
-  if (!ensureInitialized()) return;
+  if (!ensureInitialized() || !_ctx || !_gainFade) return;
   const dur = seconds ?? getCrossfadeSeconds();
   if (dur <= 0) {
-    if (_gainFade) _gainFade.gain.value = 1.0;
+    _gainFade.gain.value = 1.0;
     return;
   }
   const now = _ctx.currentTime;
@@ -165,7 +189,7 @@ export function fadeIn(seconds = null) {
 }
 
 export function fadeOut(seconds = null) {
-  if (!ensureInitialized()) return;
+  if (!ensureInitialized() || !_ctx || !_gainFade) return;
   const dur = seconds ?? getCrossfadeSeconds();
   if (dur <= 0) return;
   const now = _ctx.currentTime;
@@ -181,7 +205,10 @@ export function fadeOut(seconds = null) {
 // Reset envelopes to neutral. Called by player.js when seeking or
 // switching to a non-faded path so we never leave the gain stuck low.
 export function resetFade() {
-  if (!_gainFade) return;
+  // Both nullable: _ctx (context creation failed or was closed) and
+  // _gainFade (chain never built). Without these guards a player.js
+  // call after init failure would throw and bubble to the user.
+  if (!_ctx || !_gainFade) return;
   const now = _ctx.currentTime;
   _gainFade.gain.cancelScheduledValues(now);
   _gainFade.gain.setValueAtTime(1.0, now);

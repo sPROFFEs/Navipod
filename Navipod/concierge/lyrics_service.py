@@ -101,9 +101,15 @@ async def get_lyrics(
     instrumental = False
     found = False
 
-    async with httpx.AsyncClient(timeout=8.0) as client:
+    # Per-call timeouts (4s each) instead of a single 8s pool timeout.
+    # The previous shape let a slow /get burn most of the budget,
+    # leaving /search with no headroom and the worker effectively
+    # blocked the full 8s on a hung peer.
+    PER_CALL_TIMEOUT = 4.0
+
+    async with httpx.AsyncClient(timeout=httpx.Timeout(PER_CALL_TIMEOUT)) as client:
         try:
-            resp = await client.get(url, params=params, headers=headers)
+            resp = await client.get(url, params=params, headers=headers, timeout=PER_CALL_TIMEOUT)
             if resp.status_code == 200:
                 data = resp.json()
                 synced = data.get("syncedLyrics") or ""
@@ -115,16 +121,20 @@ async def get_lyrics(
         except Exception as e:
             logger.warning("lrclib /get failed for %s — %s: %s", artist, title, e)
 
-        # If the exact-match endpoint missed, try the search endpoint —
-        # lrclib's /get demands tight metadata; /search is fuzzy. We only
-        # accept the first result if its title+artist match (case-insensitive)
-        # to avoid serving the wrong track's lyrics.
-        if not found:
+        # Short-circuit on instrumental: /get already told us the track
+        # has no lyrics; running /search would just confirm that and
+        # waste a network round trip + worker time.
+        # If the exact-match endpoint missed otherwise, try the search
+        # endpoint — lrclib's /get demands tight metadata; /search is
+        # fuzzy. We only accept the first result if its title+artist
+        # match (case-insensitive) to avoid serving wrong-track lyrics.
+        if not found and not instrumental:
             try:
                 s_resp = await client.get(
                     f"{LRCLIB_BASE}/search",
                     params={"track_name": title, "artist_name": artist},
                     headers=headers,
+                    timeout=PER_CALL_TIMEOUT,
                 )
                 if s_resp.status_code == 200:
                     results = s_resp.json() or []

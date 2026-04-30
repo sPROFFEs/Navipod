@@ -245,8 +245,14 @@ async def sync_instance(db, instance: database.FederatedInstance) -> dict:
 
                     # Heartbeat the connection — long syncs would
                     # otherwise look offline to the health checker.
+                    # NOTE: we touch ONLY last_seen_at here, not status.
+                    # The health checker is the authority on status; if
+                    # a network blip mid-sync makes the peer briefly
+                    # unreachable, letting sync overwrite status to
+                    # "healthy" would mask that. Letting health own it
+                    # also avoids two writers fighting over the same
+                    # column.
                     instance.last_seen_at = _now()
-                    instance.status = "healthy"
                     db.commit()
 
                     if len(items) < SYNC_PAGE_SIZE:

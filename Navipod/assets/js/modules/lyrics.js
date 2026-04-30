@@ -82,7 +82,19 @@ export async function loadLyricsFor(track) {
     return;
   }
 
-  const tid = track.db_id || track.id || `${track.artist}|${track.title}`;
+  // Build an identity that's stable per-track but collision-safe across
+  // sources. Without `track.source` in the key, two federated tracks
+  // with the same metadata (or a federated + local track sharing
+  // title+artist) would dedupe to the same id and the cache key check
+  // below would skip a real track change. Including db_id keeps the
+  // fast path for purely local tracks.
+  const sourceTag = track.source || (track.is_local ? 'local' : 'remote');
+  const tid =
+    track.db_id != null
+      ? `local:${track.db_id}`
+      : track.id
+        ? `${sourceTag}:${track.id}`
+        : `${sourceTag}:${track.artist || ''}|${track.title || ''}`;
   if (tid === _currentTrackId) return;
   _currentTrackId = tid;
 
@@ -94,11 +106,20 @@ export async function loadLyricsFor(track) {
 
   _renderLoading();
 
+  // `state.audio.duration` is NaN until metadata loads; Math.floor(NaN)
+  // is NaN, String(NaN) is "NaN" — which fails the backend's
+  // `duration: float` validation with 422 and the user sees "Could
+  // not load lyrics." Coerce to 0 unless we have a real number.
+  const rawDur = state.audio?.duration;
+  const duration = Number.isFinite(rawDur) && rawDur > 0
+    ? Math.floor(rawDur)
+    : (Number.isFinite(track.duration) && track.duration > 0 ? Math.floor(track.duration) : 0);
+
   const params = new URLSearchParams({
     title: track.title || '',
     artist: track.artist || '',
     album: track.album || '',
-    duration: String(Math.floor(state.audio?.duration || track.duration || 0)),
+    duration: String(duration),
   });
 
   try {

@@ -389,8 +389,21 @@ async def login(
     # 2. VERIFICATION
     # Service accounts are federation-only — they authenticate via API
     # token through /api/federation/* and must NEVER reach the web UI.
-    # Reject as if the account didn't exist (don't leak its presence).
+    # Reject as if the account didn't exist.
+    #
+    # Run a dummy verify_password BEFORE returning so the request takes
+    # the same wall-clock time as a normal credential check. Otherwise
+    # an attacker can probe usernames: a missing user is fast (~1ms),
+    # a real password verify is slow (~100ms bcrypt) — and an early-
+    # return service-account branch would be fast too, distinguishable
+    # from real accounts.
     if user and user.is_service_account:
+        # Burn the same ~100ms a real bcrypt verification would take.
+        # Hash is arbitrary; result is discarded.
+        try:
+            auth.verify_password(password, user.hashed_password)
+        except Exception:
+            pass
         is_blocked = security.register_failed_attempt(request)
         msg = "Invalid credentials"
         if is_blocked:
