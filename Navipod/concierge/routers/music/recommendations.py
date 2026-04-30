@@ -264,20 +264,34 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
     # --- 48h CACHE CHECK ---
     os.makedirs(RECS_CACHE_DIR, exist_ok=True)
     cache_file = os.path.join(RECS_CACHE_DIR, f"recs_{user.username}.json")
+    # Library-driven shelves are titled here so we know which sections
+    # in the cache to drop on each refresh (always recomputed live).
+    LIVE_SHELF_TITLES = {
+        "Recently Added to Library",
+        "On repeat lately",
+        "Rediscover",
+        "From artists you used to play",
+    }
     try:
         if os.path.exists(cache_file):
             with open(cache_file, "r") as f:
                 cached = json.load(f)
             if cached.get("expires_at", 0) > time.time():
                 logger.info("Recommendations cache hit for %s", user.username)
-                # Always refresh local section (cheap DB query)
+                sections = [s for s in cached.get("sections", []) if s.get("title") not in LIVE_SHELF_TITLES]
+
+                # Library-driven shelves first, then the cached remote
+                # recommendations, then the always-on "Recently Added"
+                # section. Order chosen so the user sees their own
+                # library context before remote suggestions.
+                from personalization_service import get_library_shelves
+                lib_shelves = get_library_shelves(db, user)
                 local_section = _get_local_section(db)
-                sections = cached.get("sections", [])
-                # Replace or append local section
-                sections = [s for s in sections if s.get("title") != "Recently Added to Library"]
+
+                merged = list(lib_shelves) + sections
                 if local_section:
-                    sections.append(local_section)
-                return JSONResponse(sections)
+                    merged.append(local_section)
+                return JSONResponse(merged)
     except Exception as e:
         logger.warning("Recommendations cache read error: %s", e)
 
@@ -469,12 +483,30 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
 
     # --- SAVE TO CACHE (only remote sections) ---
     try:
-        remote_sections = [s for s in sections if s.get("title") != "Recently Added to Library"]
+        # Library-driven shelves are always live, never cached.
+        live_titles = {
+            "Recently Added to Library",
+            "On repeat lately",
+            "Rediscover",
+            "From artists you used to play",
+        }
+        remote_sections = [s for s in sections if s.get("title") not in live_titles]
         with open(cache_file, "w") as f:
             json.dump({"sections": remote_sections, "expires_at": time.time() + RECS_CACHE_TTL}, f)
         logger.info("Recommendations cache saved for %s with %s remote sections", user.username, len(remote_sections))
     except Exception as e:
         logger.warning("Recommendations cache write error: %s", e)
+
+    # Inject the live library shelves at the TOP so the response reads
+    # [library context] [remote shelves] [recently added] — same order
+    # the cache-hit branch produces.
+    try:
+        from personalization_service import get_library_shelves
+        lib_shelves = get_library_shelves(db, user)
+        if lib_shelves:
+            sections = list(lib_shelves) + sections
+    except Exception as e:
+        logger.warning("Library shelves injection failed: %s", e)
 
     return JSONResponse(sections)
 

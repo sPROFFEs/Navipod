@@ -5,7 +5,7 @@ import logging
 import os
 import sqlite3
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +20,7 @@ USER_ACTIVITY_DB_NAME = "user_activity.db"
 MIX_CACHE_NAME = "personalized_mixes.json"
 LEGACY_RECENT_CACHE_NAME = "recent_activity.json"
 TOP_POOL_CACHE_NAME = "top_pool_tracks.json"
-MIX_CACHE_VERSION = 4
+MIX_CACHE_VERSION = 5    # bumped: daily decade mixes added to the payload
 TOP_POOL_CACHE_VERSION = 3
 MIX_CACHE_TTL_SECONDS = 12 * 3600
 RECENT_ITEMS_LIMIT = 20
@@ -167,6 +167,13 @@ def ensure_user_activity_db(username: str) -> Path:
                 item_data_json TEXT,
                 last_accessed_at TEXT NOT NULL,
                 UNIQUE(item_type, item_key)
+            );
+
+            CREATE TABLE IF NOT EXISTS track_metadata_cache (
+                track_id INTEGER PRIMARY KEY,
+                year INTEGER,
+                genre TEXT,
+                last_updated_at TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS user_tracking_raw (
@@ -383,6 +390,167 @@ def remove_recent_mix(username: str, mix_key: str) -> None:
     with _connect(username) as conn:
         conn.execute("DELETE FROM recent_items WHERE item_type = 'mix' AND item_key = ?", (str(mix_key).strip(),))
         conn.commit()
+
+
+def get_library_shelves(db: Session, user, limit_per_shelf: int = 12) -> list[dict[str, Any]]:
+    """
+    Build a small set of "From your library" home shelves driven entirely by
+    user_activity.db (no remote metadata calls). Each shelf is the same
+    `{title, items}` shape `/api/recommendations` already returns, with
+    items shaped as local tracks (is_local: True, source: "local") so
+    the existing track-row renderer handles them unchanged.
+
+    Three shelves, all skipped silently when there isn't enough signal:
+
+      - "On repeat lately": tracks played most in the last 30 days.
+      - "Rediscover": tracks the user used to love (>= 5 historical plays)
+        but hasn't touched in 60+ days.
+      - "From artists you used to play": tracks from local artists who
+        ranked in the user's top-played but have gone quiet for 60+ days.
+
+    These complement the always-on "Recently Added to Library" shelf
+    that lives in recommendations.py.
+    """
+    ensure_user_activity_db(user.username)
+    from database import Track   # local import — avoid cycles at module load
+
+    shelves: list[dict[str, Any]] = []
+
+    def _hydrate_local(track_ids: list[int]) -> list[dict[str, Any]]:
+        if not track_ids:
+            return []
+        rows = (
+            db.query(Track)
+            .filter(Track.id.in_(track_ids))
+            .all()
+        )
+        # Preserve the order the IDs came in (SQLite's IN() doesn't guarantee it)
+        by_id = {t.id: t for t in rows}
+        ordered = [by_id[i] for i in track_ids if i in by_id]
+        return [
+            {
+                "id": t.source_id or f"local:{t.id}",
+                "db_id": t.id,
+                "title": t.title,
+                "artist": t.artist,
+                "album": t.album,
+                "thumbnail": f"/api/cover/{t.id}",
+                "is_local": True,
+                "source": "local",
+            }
+            for t in ordered
+        ]
+
+    cutoff_30d = (utcnow() - timedelta(days=30)).isoformat()
+    cutoff_60d = (utcnow() - timedelta(days=60)).isoformat()
+
+    try:
+        with _connect(user.username) as conn:
+            # 1. "On repeat lately": top-played in last 30d.
+            on_repeat_ids = [
+                int(row["track_id"])
+                for row in conn.execute(
+                    """
+                    SELECT track_id, COUNT(*) AS plays
+                    FROM listen_events
+                    WHERE recorded_at >= ?
+                      AND played_seconds >= 20
+                    GROUP BY track_id
+                    HAVING plays >= 2
+                    ORDER BY plays DESC, MAX(recorded_at) DESC
+                    LIMIT ?
+                    """,
+                    (cutoff_30d, limit_per_shelf),
+                ).fetchall()
+            ]
+
+            # 2. "Rediscover": cumulative plays >= 5 historically, but
+            #    nothing in the last 60d. Surfaces tracks worth a revisit.
+            rediscover_ids = [
+                int(row["track_id"])
+                for row in conn.execute(
+                    """
+                    SELECT track_id
+                    FROM track_stats
+                    WHERE play_count >= 5
+                      AND (last_played_at IS NULL OR last_played_at < ?)
+                    ORDER BY play_count DESC, last_played_at ASC
+                    LIMIT ?
+                    """,
+                    (cutoff_60d, limit_per_shelf),
+                ).fetchall()
+            ]
+
+            # 3. Artists you used to play: pick top-played artists
+            #    that have gone silent for 60d+, then surface their
+            #    tracks from the user's library (a couple per artist).
+            quiet_artists = [
+                row["artist_name"]
+                for row in conn.execute(
+                    """
+                    SELECT artist_name
+                    FROM artist_stats
+                    WHERE play_count >= 10
+                      AND (last_played_at IS NULL OR last_played_at < ?)
+                    ORDER BY play_count DESC
+                    LIMIT 6
+                    """,
+                    (cutoff_60d,),
+                ).fetchall()
+                if row["artist_name"]
+            ]
+    except Exception as e:
+        logger.warning("Library shelves query failed for %s: %s", user.username, e)
+        return []
+
+    on_repeat = _hydrate_local(on_repeat_ids)
+    if on_repeat:
+        shelves.append({"title": "On repeat lately", "items": on_repeat})
+
+    rediscover = _hydrate_local(rediscover_ids)
+    if rediscover:
+        shelves.append({"title": "Rediscover", "items": rediscover})
+
+    if quiet_artists:
+        try:
+            artist_tracks = (
+                db.query(Track)
+                .filter(Track.artist.in_(quiet_artists))
+                .order_by(Track.created_at.desc())
+                .limit(limit_per_shelf * 2)
+                .all()
+            )
+            # Two tracks per artist max so a single noisy artist doesn't
+            # dominate the shelf.
+            picked: list[Track] = []
+            per_artist: dict[str, int] = {}
+            for t in artist_tracks:
+                k = (t.artist or "").lower()
+                if per_artist.get(k, 0) >= 2:
+                    continue
+                picked.append(t)
+                per_artist[k] = per_artist.get(k, 0) + 1
+                if len(picked) >= limit_per_shelf:
+                    break
+            items = [
+                {
+                    "id": t.source_id or f"local:{t.id}",
+                    "db_id": t.id,
+                    "title": t.title,
+                    "artist": t.artist,
+                    "album": t.album,
+                    "thumbnail": f"/api/cover/{t.id}",
+                    "is_local": True,
+                    "source": "local",
+                }
+                for t in picked
+            ]
+            if items:
+                shelves.append({"title": "From artists you used to play", "items": items})
+        except Exception as e:
+            logger.warning("Quiet-artists shelf hydration failed: %s", e)
+
+    return shelves
 
 
 def get_recent_activity_payload(db: Session, user) -> dict[str, Any]:
@@ -1193,6 +1361,151 @@ def get_latest_pool_additions_mix(db: Session) -> dict[str, Any]:
     return _assemble_track_item_mix("latest_pool_additions", "Latest Pool Additions", items)
 
 
+def _track_year_from_file(filepath: str | None) -> int | None:
+    """Best-effort year extraction from an audio file via mutagen.
+    Returns the 4-digit year as int or None if the file is missing /
+    has no recognisable date tag. Common containers covered:
+      - MP3 / ID3 (TYER, TDRC)
+      - FLAC / OGG (DATE, YEAR Vorbis comments)
+      - MP4 / M4A (\\xa9day or year)
+    """
+    if not filepath:
+        return None
+    try:
+        import mutagen
+        audio = mutagen.File(filepath, easy=True)
+        if not audio:
+            return None
+        # Easy mode normalises across formats — both "date" and "year"
+        # show up here depending on the source library.
+        for key in ("date", "year", "originaldate"):
+            val = audio.get(key)
+            if not val:
+                continue
+            raw = str(val[0] if isinstance(val, list) else val).strip()
+            if not raw:
+                continue
+            # Tags often look like '2014-03-21', '2014/03', '2014' — first
+            # 4 digits is enough.
+            digits = "".join(ch for ch in raw[:4] if ch.isdigit())
+            if len(digits) == 4:
+                year_int = int(digits)
+                if 1900 <= year_int <= 2100:
+                    return year_int
+    except Exception:
+        return None
+    return None
+
+
+def _get_track_year_cached(
+    conn: sqlite3.Connection,
+    track_id: int,
+    filepath: str | None,
+) -> int | None:
+    """Lookup or compute-and-store the release year for a track. The
+    cache survives across mix regenerations so we only pay the mutagen
+    cost once per track per user activity DB."""
+    row = conn.execute(
+        "SELECT year FROM track_metadata_cache WHERE track_id = ?",
+        (int(track_id),),
+    ).fetchone()
+    if row is not None:
+        return int(row["year"]) if row["year"] is not None else None
+
+    year = _track_year_from_file(filepath)
+    conn.execute(
+        """
+        INSERT INTO track_metadata_cache (track_id, year, last_updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(track_id) DO UPDATE SET
+            year = excluded.year,
+            last_updated_at = excluded.last_updated_at
+        """,
+        (int(track_id), year, _iso_now()),
+    )
+    return year
+
+
+# Stable ordering for decade buckets so the home shelves don't shuffle
+# between cache regenerations.
+_DECADE_LABEL = lambda y: f"{(y // 10) * 10}s"
+
+
+def _build_daily_decade_mixes(
+    candidates: list[dict[str, Any]],
+    conn: sqlite3.Connection,
+    max_mixes: int = 3,
+    min_tracks_per_decade: int = 12,
+    items_per_mix: int = 30,
+) -> list[dict[str, Any]]:
+    """
+    Cluster the user's PLAYED tracks (play_count >= 1) into decade
+    buckets and surface up to `max_mixes` daily mixes for the most
+    densely-populated ones. Returns a list of payloads ready for
+    _assemble_track_item_mix() so the existing front-end mix-rendering
+    code handles them with no special case.
+    """
+    if not candidates:
+        return []
+
+    # Index candidates by id for O(1) lookup
+    by_id: dict[int, dict[str, Any]] = {int(c["track"]["id"]): c for c in candidates if c.get("track")}
+
+    # Pull played-track IDs with their play count (most-played first)
+    rows = conn.execute(
+        """
+        SELECT track_id, play_count, last_played_at
+        FROM track_stats
+        WHERE play_count >= 1
+        ORDER BY play_count DESC, last_played_at DESC
+        LIMIT 600
+        """
+    ).fetchall()
+
+    # Group by decade
+    decade_buckets: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        tid = int(row["track_id"])
+        cand = by_id.get(tid)
+        if not cand:
+            continue
+        track = cand["track"]
+        year = _get_track_year_cached(conn, tid, track.get("filepath"))
+        if year is None:
+            continue
+        label = _DECADE_LABEL(year)
+        decade_buckets.setdefault(label, []).append(cand)
+
+    conn.commit()       # persist any newly-cached years
+
+    # Pick the top-N decades by member count
+    top_decades = sorted(
+        decade_buckets.items(),
+        key=lambda kv: (-len(kv[1]), kv[0]),
+    )
+
+    mixes: list[dict[str, Any]] = []
+    for label, bucket in top_decades:
+        if len(bucket) < min_tracks_per_decade:
+            continue
+        # Already ordered by play_count DESC because we iterated rows
+        # in that order. Cap to items_per_mix.
+        chosen = bucket[:items_per_mix]
+        items = [_track_to_item(c["track"]) for c in chosen]
+        if not items:
+            continue
+        mixes.append({
+            "key": f"daily_decade_{label}",
+            "title": f"{label} Mix",
+            "track_count": len(items),
+            "thumbnail": items[0]["thumbnail"] if items else "/static/img/default_cover.png",
+            "items": items,
+        })
+        if len(mixes) >= max_mixes:
+            break
+    return mixes
+
+
 def _generate_mixes(db: Session, user) -> dict[str, Any]:
     ensure_user_activity_db(user.username)
     with _connect(user.username) as conn:
@@ -1231,6 +1544,7 @@ def _generate_mixes(db: Session, user) -> dict[str, Any]:
                 "artist": track.artist,
                 "album": track.album,
                 "duration": track.duration,
+                "filepath": track.filepath,         # used by _build_daily_decade_mixes
                 "created_at": track.created_at.isoformat() if getattr(track, "created_at", None) else "",
             },
             stats_lookup.get(int(track.id), {}),
@@ -1267,6 +1581,19 @@ def _generate_mixes(db: Session, user) -> dict[str, Any]:
         _assemble_mix("favorites", "Favorites Mix", favorites_mix),
         _assemble_mix("rediscovery", "Rediscovery Mix", rediscovery_mix),
     ]
+
+    # Daily mixes — clustered by decade from played tracks. Reuses the
+    # connection that's already open higher in this function so we get
+    # the same view of track_stats that fed the candidate list. The
+    # builder writes back any newly-discovered years into
+    # track_metadata_cache for next time.
+    try:
+        with _connect(user.username) as decade_conn:
+            decade_mixes = _build_daily_decade_mixes(candidates, decade_conn)
+        mixes.extend(decade_mixes)
+    except Exception as e:
+        logger.warning("Daily decade mixes generation failed for %s: %s", user.username, e)
+
     now_ts = time.time()
     return {
         "version": MIX_CACHE_VERSION,
