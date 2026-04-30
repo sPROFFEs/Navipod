@@ -76,6 +76,76 @@ def _spawn(coro):
     return task
 
 
+# === SSRF GUARD =============================================================
+#
+# The admin can register a remote `base_url` and the federation worker
+# will issue authenticated GETs against it (forwarding the bearer token
+# to the URL). Without a guard, `http://127.0.0.1:6379/`, AWS metadata
+# (`http://169.254.169.254/...`), or other internal hosts could be
+# probed via Navipod, leaking the federation token to those services.
+#
+# We resolve the URL's host to one or more IPs and block any of:
+#   - loopback (127/8, ::1)
+#   - link-local (169.254/16, fe80::/10)
+#   - private RFC1918 + ULA (10/8, 172.16/12, 192.168/16, fc00::/7)
+#   - 0.0.0.0 / unspecified
+#
+# An admin who genuinely needs to federate against a private network
+# (homelab over Tailscale, dev) can opt in via env var.
+import ipaddress
+import os
+import socket
+from urllib.parse import urlparse
+
+_FEDERATION_ALLOW_PRIVATE = os.getenv("FEDERATION_ALLOW_PRIVATE_HOSTS", "").lower() in ("1", "true", "yes")
+
+
+def _validate_federation_base_url(url: str) -> str:
+    """Returns a normalized URL, or raises HTTPException with a
+    user-readable message. Idempotent on already-validated URLs."""
+    if not url:
+        raise HTTPException(status_code=400, detail="base_url is required")
+    url = url.strip().rstrip("/")
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(status_code=400, detail="base_url must be http(s)://")
+
+    parsed = urlparse(url)
+    host = parsed.hostname
+    if not host:
+        raise HTTPException(status_code=400, detail="base_url has no host")
+
+    if _FEDERATION_ALLOW_PRIVATE:
+        return url
+
+    # Resolve and inspect every address — `getaddrinfo` returns AAAA
+    # and A records, so a hostname that resolves to BOTH a public IPv4
+    # and a private IPv6 (or vice versa) is rejected.
+    try:
+        addrinfos = socket.getaddrinfo(host, None)
+    except socket.gaierror as e:
+        raise HTTPException(status_code=400, detail=f"Could not resolve host: {e}")
+
+    for af, _, _, _, sockaddr in addrinfos:
+        ip_str = sockaddr[0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue
+        if (
+            ip.is_loopback or ip.is_link_local or ip.is_private
+            or ip.is_unspecified or ip.is_multicast or ip.is_reserved
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Refusing to federate against {host} ({ip_str}): private/loopback/"
+                    "link-local addresses are blocked. Set FEDERATION_ALLOW_PRIVATE_HOSTS=1 "
+                    "in the env file if you really mean this (e.g. Tailscale homelab)."
+                ),
+            )
+    return url
+
+
 # ============================================================================
 # AUTH HELPERS
 # ============================================================================
@@ -282,14 +352,15 @@ async def admin_create_instance(request: Request, db: Session = Depends(get_db))
 
     payload = await request.json()
     name = (payload.get("name") or "").strip()
-    base_url = (payload.get("base_url") or "").strip().rstrip("/")
+    base_url_raw = (payload.get("base_url") or "").strip()
     api_token = (payload.get("api_token") or "").strip()
     enabled = bool(payload.get("enabled", True))
 
-    if not name or not base_url:
+    if not name or not base_url_raw:
         raise HTTPException(status_code=400, detail="name and base_url are required")
-    if not (base_url.startswith("http://") or base_url.startswith("https://")):
-        raise HTTPException(status_code=400, detail="base_url must be http(s)://")
+    # SSRF guard: rejects loopback / private / link-local hosts unless
+    # FEDERATION_ALLOW_PRIVATE_HOSTS=1 is set.
+    base_url = _validate_federation_base_url(base_url_raw)
 
     inst = database.FederatedInstance(
         name=name,
@@ -317,10 +388,9 @@ async def admin_update_instance(instance_id: int, request: Request, db: Session 
     if "name" in payload:
         inst.name = (payload["name"] or "").strip() or inst.name
     if "base_url" in payload:
-        new_url = (payload["base_url"] or "").strip().rstrip("/")
-        if not (new_url.startswith("http://") or new_url.startswith("https://")):
-            raise HTTPException(status_code=400, detail="base_url must be http(s)://")
-        inst.base_url = new_url
+        # Same SSRF guard as create — admin can't sneak a private
+        # address in via PATCH after creation.
+        inst.base_url = _validate_federation_base_url(payload["base_url"] or "")
     if "enabled" in payload:
         inst.enabled = bool(payload["enabled"])
     if "api_token" in payload and payload["api_token"]:

@@ -205,37 +205,66 @@ async def smart_radio(
         queue.append(_track_to_dict(t))
         return True
 
-    # 1. A few more tracks from the seed artist itself — keeps the
-    # opening tracks tonally consistent with what the user clicked.
-    if artist:
-        own = (
-            db.query(database.Track)
-            .filter(database.Track.artist.ilike(artist))
-            .order_by(func.random())
-            .limit(6)
-            .all()
-        )
-        for t in own:
-            _add_track(t)
+    # NOTE on `func.random()`: SQLite implements ORDER BY random() as
+    # a full-table sort. On a 100k+ track library that's a multi-
+    # hundred-ms scan. Below we collapse the previous N+3 separate
+    # scans (one per neighbor + seed + random fill) into AT MOST 2:
+    #   (a) one bulk query covering seed artist + every neighbor
+    #   (b) one random-fill query (only if (a) didn't reach `limit`)
+    # The neighbor-similarity ORDER from Last.fm is preserved by
+    # bucketing results in Python after the fetch.
 
-    # 2. Neighbor artists, in Last.fm-similarity order.
+    # Build a single set of artist names to match against. The seed
+    # artist gets a higher per-artist quota (6) than each neighbor (4)
+    # so the radio still opens close to the click. We over-fetch by
+    # 4× per artist to let the Python-side dedupe + per-artist cap
+    # have headroom; SQLite still scans once but sort happens once
+    # rather than per-artist.
+    PER_NEIGHBOR_LIMIT = 4
+    PER_SEED_LIMIT = 6
+
+    artist_targets: list[str] = []
+    if artist:
+        artist_targets.append(artist)
     for name in neighbor_artists:
-        if len(queue) >= limit:
-            break
-        rows = (
+        if name and name not in artist_targets:
+            artist_targets.append(name)
+
+    if artist_targets:
+        # Case-insensitive match via lower(artist) IN (lower-set). We
+        # fetch up to limit*4 candidates total; the per-artist quota
+        # is enforced in Python.
+        targets_lower = [t.lower() for t in artist_targets]
+        bulk = (
             db.query(database.Track)
-            .filter(database.Track.artist.ilike(name))
+            .filter(func.lower(database.Track.artist).in_(targets_lower))
             .order_by(func.random())
-            .limit(4)
+            .limit(limit * 4)
             .all()
         )
-        for t in rows:
+
+        per_artist_count: dict[str, int] = {}
+        # Walk in seed-then-neighbor order: emit up to the per-artist
+        # quota for each name in `artist_targets`, in order. This
+        # preserves Last.fm's similarity ranking even though the
+        # underlying query had no ORDER BY artist.
+        by_artist: dict[str, list[database.Track]] = {}
+        for t in bulk:
+            key = (t.artist or "").lower()
+            by_artist.setdefault(key, []).append(t)
+
+        for idx, name in enumerate(artist_targets):
             if len(queue) >= limit:
                 break
-            _add_track(t)
+            quota = PER_SEED_LIMIT if idx == 0 and artist else PER_NEIGHBOR_LIMIT
+            tracks_for_artist = by_artist.get(name.lower(), [])
+            for t in tracks_for_artist[:quota]:
+                if len(queue) >= limit:
+                    break
+                _add_track(t)
 
-    # 3. Top-up: random library tracks. Guarantees a non-empty queue
-    # for libraries with no metadata overlap with Last.fm's corpus.
+    # Top-up: random library tracks. Guarantees a non-empty queue for
+    # libraries with no metadata overlap with Last.fm's corpus.
     if len(queue) < limit:
         needed = limit - len(queue)
         # Heuristic over-fetch — random() doesn't guarantee uniqueness

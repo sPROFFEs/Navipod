@@ -52,6 +52,13 @@ DEGRADED_WINDOW_S = 15 * 60     # 60s..15min = degraded; >15min = offline
 CONNECT_TIMEOUT_S = 5.0
 READ_TIMEOUT_S = 15.0
 
+# Max bytes we'll buffer from a federation peer's HTTP response.
+# Sized to comfortably hold a single SYNC_PAGE_SIZE catalog page
+# (~80–100 KB for 100 tracks of typical metadata) plus headroom.
+# A misbehaving or compromised peer streaming an unbounded body
+# would otherwise OOM the worker — httpx has no default cap.
+MAX_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MiB
+
 
 # Set of instance ids currently being synced. Single-threaded asyncio
 # guarantees that the `add` after the membership check is atomic
@@ -79,6 +86,40 @@ def _client(token: Optional[str]) -> httpx.AsyncClient:
         timeout=httpx.Timeout(connect=CONNECT_TIMEOUT_S, read=READ_TIMEOUT_S, write=READ_TIMEOUT_S, pool=READ_TIMEOUT_S),
         headers=headers,
     )
+
+
+async def _fetch_json_bounded(client: httpx.AsyncClient, url: str, *, params: Optional[dict] = None) -> tuple[int, Optional[dict]]:
+    """GET `url` and JSON-decode at most MAX_RESPONSE_BYTES of body.
+
+    Why not just `client.get(...).json()`?
+      httpx buffers the entire body before returning, with no limit.
+      A peer that returns a multi-GB body — by accident or
+      maliciously — would OOM the worker. We stream and cap.
+
+    Returns (status_code, parsed_json or None). If the body exceeds
+    the cap we treat it as a failure (status_code preserved, payload
+    None) so the caller can short-circuit cleanly.
+    """
+    import json
+
+    buf = bytearray()
+    async with client.stream("GET", url, params=params) as resp:
+        async for chunk in resp.aiter_bytes(64 * 1024):
+            buf.extend(chunk)
+            if len(buf) > MAX_RESPONSE_BYTES:
+                logger.warning(
+                    "Federation peer at %s exceeded %d-byte response cap, aborting",
+                    url, MAX_RESPONSE_BYTES,
+                )
+                return resp.status_code, None
+        if resp.status_code != 200:
+            return resp.status_code, None
+
+    try:
+        return 200, json.loads(buf.decode("utf-8", errors="replace"))
+    except Exception as e:
+        logger.warning("Federation peer at %s returned non-JSON body: %s", url, e)
+        return 200, None
 
 
 # === STATUS HELPERS =========================================================
@@ -161,9 +202,8 @@ async def sync_instance(db, instance: database.FederatedInstance) -> dict:
                 # Optional: lightweight catalog stats endpoint to drive
                 # the % progress bar in the admin UI. Not fatal if 404.
                 try:
-                    r = await client.get(f"{base}/api/federation/stats")
-                    if r.status_code == 200:
-                        stats = r.json() or {}
+                    status, stats = await _fetch_json_bounded(client, f"{base}/api/federation/stats")
+                    if status == 200 and isinstance(stats, dict):
                         instance.sync_total = int(stats.get("total") or 0)
                         db.commit()
                 except Exception:
@@ -172,11 +212,16 @@ async def sync_instance(db, instance: database.FederatedInstance) -> dict:
                 while True:
                     url = f"{base}/api/federation/catalog"
                     params = {"after": cursor, "limit": SYNC_PAGE_SIZE}
-                    resp = await client.get(url, params=params)
-                    if resp.status_code != 200:
-                        raise RuntimeError(f"catalog HTTP {resp.status_code}: {resp.text[:200]}")
+                    status, payload = await _fetch_json_bounded(client, url, params=params)
+                    if status != 200:
+                        raise RuntimeError(f"catalog HTTP {status}")
+                    if payload is None:
+                        # Body cap exceeded or malformed JSON. Already
+                        # logged inside the helper. Treat as fatal for
+                        # this sync run — better to retry than to
+                        # silently skip pages.
+                        raise RuntimeError("catalog response too large or invalid")
 
-                    payload = resp.json() or {}
                     items = payload.get("tracks") or []
                     if not items:
                         break
