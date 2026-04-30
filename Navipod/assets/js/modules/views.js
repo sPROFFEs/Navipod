@@ -1830,8 +1830,8 @@ export async function renderArtist(container, name) {
       <section class="artist-section">
         <div class="artist-section-head">
           <h2>In your library</h2>
-          <button class="btn-text" onclick="playFromView(0)" title="Play all">
-            <i data-lucide="play"></i>Play
+          <button class="artist-section-play" onclick="playFromView(0)" title="Play all">
+            <i data-lucide="play"></i><span>Play</span>
           </button>
         </div>
         <div class="track-list">
@@ -1872,9 +1872,15 @@ export async function renderArtist(container, name) {
           ${topTracks.map((t, i) => {
             const safeT = ui.escHtml(t.title || '').replace(/'/g, "\\'");
             const safeA = ui.escHtml(t.artist || name).replace(/'/g, "\\'");
+            // Resolve cover via existing /api/cover/resolve endpoint —
+            // it caches its own results so we don't add to remote API
+            // pressure even if the user opens many artist views.
+            const cover = `/api/cover/resolve?artist=${encodeURIComponent(t.artist || name)}&title=${encodeURIComponent(t.title || '')}`;
             return `
               <li>
                 <span class="artist-top-num">${i + 1}</span>
+                <img class="artist-top-cover" src="${cover}" loading="lazy" decoding="async"
+                     onerror="this.src='/static/img/default_cover.png'">
                 <span class="artist-top-title">${ui.escHtml(t.title || '')}</span>
                 <span class="artist-top-actions">
                   <button onclick="window.startSearchAndDownload && window.startSearchAndDownload('${safeA} ${safeT}')"

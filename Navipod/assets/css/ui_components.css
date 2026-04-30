@@ -801,12 +801,46 @@
 }
 .artist-top-tracks li {
     display: grid;
-    grid-template-columns: 28px 1fr auto;
+    grid-template-columns: 24px 40px 1fr auto;
     align-items: center;
     gap: 12px;
     padding: 8px 12px;
     border-radius: 6px;
     transition: background 0.15s;
+}
+.artist-top-cover {
+    width: 40px;
+    height: 40px;
+    border-radius: 4px;
+    object-fit: cover;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* "Play all" pill in artist section heads. Spotify-style green pill,
+   compact so it sits to the right of the section title without
+   inheriting random default <button> styling. */
+.artist-section-play {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 16px;
+    border-radius: 30px;
+    border: none;
+    background: #1DB954;
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: transform 0.12s, background 0.12s;
+}
+.artist-section-play:hover {
+    background: #1ed760;
+    transform: scale(1.04);
+}
+.artist-section-play i,
+.artist-section-play svg {
+    width: 14px;
+    height: 14px;
 }
 .artist-top-tracks li:hover {
     background: rgba(255, 255, 255, 0.05);
