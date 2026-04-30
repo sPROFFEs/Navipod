@@ -278,6 +278,8 @@
             </div>
 
             <div class="player-right">
+                <button class="icon-btn-sm lyrics-toggle-btn" onclick="toggleLyricsPanel()" id="btn-lyrics"
+                        title="Lyrics"><i data-lucide="mic-vocal"></i></button>
                 <button class="icon-btn-sm" onclick="toggleQueue()" id="btn-queue" title="Queue"><i
                         data-lucide="list-music"></i></button>
                 <button class="icon-btn-sm" onclick="toggleMute()" id="btn-volume-icon"><i
@@ -329,6 +331,9 @@
                     </button>
                     <button class="fs-action-btn" onclick="showAddToPlaylistFromPlayer()" title="Add to Playlist">
                         <i data-lucide="list-plus"></i>
+                    </button>
+                    <button class="fs-action-btn lyrics-toggle-btn" onclick="toggleLyricsPanel()" title="Lyrics">
+                        <i data-lucide="mic-vocal"></i>
                     </button>
                     <button class="fs-action-btn" onclick="toggleQueue()" title="Queue">
                         <i data-lucide="list-music"></i>

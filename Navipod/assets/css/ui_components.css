@@ -1003,3 +1003,173 @@
         gap: 12px;
     }
 }
+
+/* === Lyrics panel ======================================================= */
+/* Slide-in side panel anchored to the right edge. On desktop it sits
+   above the player footer; on mobile it occupies the full screen and
+   sits above the fullscreen player so the user always sees lyrics
+   over their music regardless of which surface they're using. */
+
+.lyrics-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 90px;             /* leave room for the player footer */
+    width: 380px;
+    max-width: 100vw;
+    background: rgba(18, 18, 18, 0.96);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    transform: translateX(110%);
+    transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+    z-index: 950;             /* below fullscreen player (1000) */
+    display: flex;
+    flex-direction: column;
+    color: #fff;
+}
+.lyrics-panel.open {
+    transform: translateX(0);
+}
+
+.lyrics-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.lyrics-head-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+.lyrics-head-meta i,
+.lyrics-head-meta svg {
+    width: 18px;
+    height: 18px;
+}
+.lyrics-close {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 50%;
+}
+.lyrics-close:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+}
+
+.lyrics-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px 28px;
+    text-align: center;
+    scroll-behavior: smooth;
+}
+.lyrics-body::-webkit-scrollbar {
+    width: 6px;
+}
+.lyrics-body::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+}
+
+.lyric-line {
+    font-size: 1.05rem;
+    line-height: 1.7;
+    padding: 4px 0;
+    color: rgba(255, 255, 255, 0.4);
+    transition: color 0.25s, transform 0.25s, font-weight 0.25s;
+}
+.lyric-line.active {
+    color: #fff;
+    font-weight: 700;
+    font-size: 1.25rem;
+    transform: scale(1.03);
+}
+
+.lyrics-empty {
+    padding: 48px 16px;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 0.9rem;
+}
+
+.lyrics-foot {
+    padding: 8px 18px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    text-align: center;
+}
+.lyrics-credit {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 0.7rem;
+}
+
+/* Active state for the toggle buttons in both player surfaces */
+.lyrics-toggle-btn.active,
+.lyrics-toggle-btn.active i,
+.lyrics-toggle-btn.active svg {
+    color: #1DB954;
+}
+
+/* Mobile: full-screen sheet that overlays everything */
+@media (max-width: 768px) {
+    .lyrics-panel {
+        top: 0;
+        bottom: 0;
+        width: 100vw;
+        max-width: 100vw;
+        z-index: 1100;        /* above fullscreen player on mobile so it
+                                  stays visible while the user navigates */
+        border-left: none;
+    }
+    .lyric-line {
+        font-size: 1.1rem;
+    }
+    .lyric-line.active {
+        font-size: 1.35rem;
+    }
+}
+
+/* === Playback preferences (in user_settings.html) ====================== */
+.playback-pref {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+    cursor: pointer;
+}
+.playback-pref:last-of-type {
+    border-bottom: none;
+}
+.playback-pref-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+.playback-pref-info strong {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+.playback-pref-help {
+    color: var(--text-sub, rgba(255, 255, 255, 0.55));
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+.playback-pref-help em {
+    font-style: normal;
+    color: var(--text-main, #fff);
+}
+.playback-pref input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #1DB954;
+}

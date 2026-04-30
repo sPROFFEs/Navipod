@@ -6,6 +6,7 @@
 import * as state from './state.js';
 import * as ui from './ui.js';
 import * as api from './api.js';
+import * as audioEngine from './audio_engine.js';
 
 // Background playback lock references
 let _webLockRelease = null;        // resolves the navigator.locks promise
@@ -591,6 +592,10 @@ export function playTrack(track) {
   updatePlayerUI(track);
   persistPlaybackSession();
 
+  // Notify the lyrics panel — it self-skips when closed so this is
+  // free when the user isn't looking at lyrics.
+  if (window.onLyricsTrackChange) window.onLyricsTrackChange(track);
+
   // Highlight in lists
   document.querySelectorAll('.track-row').forEach((row) => row.classList.remove('active-track'));
   if (state.currentViewList) {
@@ -630,6 +635,19 @@ export function playTrack(track) {
         startPlaybackSessionPersistence();
         persistPlaybackSession();
         updateMediaSessionMetadata(track);
+
+        // Optional Web Audio enhancements — both no-op unless the user
+        // enabled them in settings. ReplayGain is fetched per track;
+        // fade-in only triggers when crossfade-seconds > 0.
+        try {
+          audioEngine.resumeIfSuspended();
+          audioEngine.resetFade();
+          audioEngine.fadeIn();
+          audioEngine.applyReplayGain(track.db_id);
+        } catch (e) {
+          // Engine errors must never break playback. Log only.
+          console.warn('[PLAYER] audio engine post-play error:', e);
+        }
       })
       .catch((e) => {
         _trackTransitionInFlight = false;
@@ -903,6 +921,7 @@ export function setupPlayer() {
     syncPlayerShellVisibility();
     ui.updatePlayButton();
     state.audio._endHandled = false;
+    state.audio._fadeOutStarted = false;
     acquirePlaybackLock();
     startPlaybackSessionPersistence();
     persistPlaybackSession();
@@ -956,6 +975,26 @@ export function setupPlayer() {
   state.audio.addEventListener('timeupdate', () => {
     updateListenProgress();
     ui.updateUIProgress(state.audio.currentTime, state.audio.duration);
+
+    // Trigger crossfade-out a few seconds before the track ends. The
+    // user-configured fade duration drives both how early we start
+    // and the ramp. Idempotent because once fadeOut() schedules the
+    // ramp, scheduling it again with the same duration is harmless.
+    try {
+      const xfDur = audioEngine.getCrossfadeSeconds();
+      if (
+        xfDur > 0 &&
+        state.audio.duration &&
+        !state.audio._fadeOutStarted &&
+        state.audio.currentTime >= state.audio.duration - xfDur - 0.1 &&
+        hasUpcomingTrack()
+      ) {
+        state.audio._fadeOutStarted = true;
+        audioEngine.fadeOut(xfDur);
+      }
+    } catch (_) {
+      // Engine errors must never break playback.
+    }
 
     if (state.audio.duration && state.audio.currentTime >= state.audio.duration - 0.5) {
       if (!state.audio._endHandled) {

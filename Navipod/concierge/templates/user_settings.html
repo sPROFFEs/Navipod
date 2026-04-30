@@ -639,6 +639,67 @@
 
         <section class="user-settings-panel">
             <div class="user-settings-panel-header">
+                <h2><i data-lucide="sliders" width="18" height="18"></i>Playback</h2>
+                <p>Per-device preferences. Saved locally — they don't sync between browsers.</p>
+            </div>
+            <div class="user-settings-panel-body">
+                <label class="playback-pref">
+                    <div class="playback-pref-info">
+                        <strong>ReplayGain normalization</strong>
+                        <span class="playback-pref-help">
+                            Smooths volume differences between tracks using ReplayGain tags
+                            in your library. Tracks without tags are unaffected.
+                        </span>
+                    </div>
+                    <input type="checkbox" id="pref-replaygain" onchange="updateReplayGainPref(this.checked)">
+                </label>
+
+                <label class="playback-pref">
+                    <div class="playback-pref-info">
+                        <strong>Crossfade between tracks (seconds)</strong>
+                        <span class="playback-pref-help">
+                            Fade-out / fade-in across track boundaries.
+                            <em>0</em> turns it off. Try <em>2&ndash;4</em>.
+                        </span>
+                    </div>
+                    <input type="number" id="pref-crossfade" min="0" max="12" step="1"
+                           class="user-settings-input" style="width: 80px; text-align: right;"
+                           onchange="updateCrossfadePref(this.value)">
+                </label>
+            </div>
+            <script>
+              // Initialize the controls from localStorage so the saved prefs
+              // are reflected even if the JS modules haven't finished booting.
+              (function initPlaybackPrefs() {
+                try {
+                  var rg = localStorage.getItem('navipod.replaygain.enabled') === '1';
+                  var xf = parseInt(localStorage.getItem('navipod.crossfade.seconds') || '0', 10) || 0;
+                  var rgEl = document.getElementById('pref-replaygain');
+                  var xfEl = document.getElementById('pref-crossfade');
+                  if (rgEl) rgEl.checked = rg;
+                  if (xfEl) xfEl.value = xf;
+                } catch (e) {}
+              })();
+              window.updateReplayGainPref = function (on) {
+                if (window.audioEngineSetReplayGain) {
+                  window.audioEngineSetReplayGain(on);
+                } else {
+                  try { localStorage.setItem('navipod.replaygain.enabled', on ? '1' : '0'); } catch (e) {}
+                }
+              };
+              window.updateCrossfadePref = function (seconds) {
+                var n = Math.max(0, Math.min(12, parseInt(seconds, 10) || 0));
+                if (window.audioEngineSetCrossfade) {
+                  window.audioEngineSetCrossfade(n);
+                } else {
+                  try { localStorage.setItem('navipod.crossfade.seconds', String(n)); } catch (e) {}
+                }
+              };
+            </script>
+        </section>
+
+        <section class="user-settings-panel">
+            <div class="user-settings-panel-header">
                 <h2><i data-lucide="shield" width="18" height="18"></i>Account</h2>
                 <p>Manage this profile and end the current web session when needed.</p>
             </div>

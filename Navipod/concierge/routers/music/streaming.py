@@ -271,6 +271,66 @@ async def stream_track(track_id: int, request: Request, db: Session = Depends(ge
         return StreamingResponse(iterfile(), media_type=content_type)
 
 
+@router.get("/api/track/{track_id}/gain")
+async def get_track_gain(track_id: int, db: Session = Depends(get_db)):
+    """Return ReplayGain track values for client-side loudness
+    normalization. Reads ReplayGain tags via mutagen — present on most
+    well-tagged libraries (foobar2000 / Picard / rsgain). Returns sane
+    defaults (0 dB / 1.0 peak) when the tags are absent so the
+    frontend can apply gain unconditionally."""
+    track = db.query(database.Track).filter(database.Track.id == track_id).first()
+    file_path = _resolve_allowed_media_path(track.filepath if track else None)
+    if not track or not file_path:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    gain_db = 0.0
+    peak = 1.0
+    try:
+        m = mutagen.File(str(file_path))
+        if m is not None:
+            tags = m.tags or {}
+
+            # ReplayGain tags vary by container — VorbisComment uses
+            # "REPLAYGAIN_TRACK_GAIN", ID3 uses "TXXX:replaygain_track_gain",
+            # MP4 uses "----:com.apple.iTunes:replaygain_track_gain".
+            # Mutagen's universal `easy=True` doesn't expose them so we
+            # iterate the raw tag dict and look for any matching key.
+            def _find(name: str):
+                want = name.lower()
+                for k, v in tags.items() if hasattr(tags, "items") else []:
+                    if want in str(k).lower():
+                        return v
+                return None
+
+            raw_gain = _find("replaygain_track_gain")
+            raw_peak = _find("replaygain_track_peak")
+
+            def _to_float(val):
+                if val is None:
+                    return None
+                if isinstance(val, list) and val:
+                    val = val[0]
+                # ID3 TXXXFrame stores text in `.text` as a list
+                if hasattr(val, "text") and val.text:
+                    val = val.text[0]
+                s = str(val).strip().lower().replace("db", "").strip()
+                try:
+                    return float(s)
+                except Exception:
+                    return None
+
+            g = _to_float(raw_gain)
+            if g is not None:
+                gain_db = g
+            p = _to_float(raw_peak)
+            if p is not None and p > 0:
+                peak = p
+    except Exception as e:
+        logger.debug("ReplayGain lookup failed for track %s: %s", track_id, e)
+
+    return JSONResponse({"gain_db": gain_db, "peak": peak})
+
+
 @router.get("/api/random-track")
 async def get_random_track(db: Session = Depends(get_db)):
     """Return a random track from the local library."""

@@ -8,6 +8,7 @@ from . import (
     artist,
     core,
     delete_requests,
+    lyrics,
     downloads,
     favorites,
     personalization,
@@ -41,6 +42,7 @@ router.include_router(personalization.router)
 router.include_router(playback_state.router)
 router.include_router(wrapped.router)
 router.include_router(artist.router)
+router.include_router(lyrics.router)
 
 # Re-export the combined router
 __all__ = ["router"]

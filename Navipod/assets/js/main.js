@@ -16,6 +16,8 @@ import * as playlists from './modules/playlists.js';
 import * as downloads from './modules/downloads.js';
 import * as views from './modules/views.js';
 import * as admin from './modules/admin.js';
+import * as lyrics from './modules/lyrics.js';
+import * as audioEngine from './modules/audio_engine.js';
 
 function initUserMenu() {
   const userMenu = document.getElementById('user-menu');
@@ -148,6 +150,15 @@ window.startSmartRadio = views.startSmartRadio;
 // it immediately. Used by the artist view's "Complete this album" CTA
 // and the top-tracks download buttons — they don't need their own
 // download flow, the existing search → download path is enough.
+// Lyrics
+window.toggleLyricsPanel = lyrics.toggleLyricsPanel;
+window.closeLyricsPanel = lyrics.closeLyricsPanel;
+window.onLyricsTrackChange = lyrics.onTrackChange;
+
+// Audio engine prefs (settings page calls these)
+window.audioEngineSetReplayGain = audioEngine.setReplayGainEnabled;
+window.audioEngineSetCrossfade = audioEngine.setCrossfadeSeconds;
+
 window.startSearchAndDownload = async function (query) {
   if (!query) return;
   await views.loadView('search');
@@ -196,6 +207,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Setup player controls
   player.setupPlayer();
+
+  // Lyrics panel — injected after player so the audio element exists
+  // and the panel's timeupdate listener can bind cleanly.
+  lyrics.initLyrics();
 
   // Keep heartbeat quiet while backgrounded
   views.initHeartbeatLifecycle();
