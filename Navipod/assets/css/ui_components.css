@@ -1231,3 +1231,172 @@
     color: var(--text-main, #fff);
     text-decoration: underline;
 }
+
+/* === Federation admin panel ============================================= */
+.admin-badge-beta {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(29, 185, 84, 0.18);
+    color: #6ee7a7;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+.federation-subsection {
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+}
+.federation-subsection:last-child { border-bottom: none; }
+.federation-subsection h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 6px 0;
+    font-size: 1rem;
+}
+.federation-help {
+    color: var(--text-sub, rgba(255, 255, 255, 0.6));
+    font-size: 0.85rem;
+    margin: 0 0 12px 0;
+    line-height: 1.5;
+}
+.federation-svc-status {
+    background: var(--surface-2, rgba(255, 255, 255, 0.04));
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.88rem;
+}
+.federation-svc-status i,
+.federation-svc-status svg { width: 16px; height: 16px; }
+.federation-svc-actions { display: flex; gap: 8px; }
+.federation-token-display {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 6px;
+    background: rgba(240, 196, 25, 0.08);
+    border: 1px solid rgba(240, 196, 25, 0.4);
+    font-size: 0.85rem;
+}
+.federation-token-display code {
+    display: block;
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    font-family: monospace;
+    word-break: break-all;
+    user-select: all;
+}
+
+.federation-add-form {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr 1.5fr auto;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+.federation-add-form input {
+    background: var(--surface-2, rgba(255, 255, 255, 0.05));
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: var(--text-main, #fff);
+    font-size: 0.9rem;
+}
+.federation-add-form input:focus {
+    outline: none;
+    border-color: rgba(29, 185, 84, 0.6);
+}
+
+.federation-list { display: flex; flex-direction: column; gap: 10px; }
+.fed-row {
+    background: var(--surface-2, rgba(255, 255, 255, 0.04));
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+.fed-row-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+.fed-row-url {
+    color: var(--text-sub, rgba(255, 255, 255, 0.5));
+    font-size: 0.8rem;
+    font-family: monospace;
+}
+.fed-row-meta {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-size: 0.78rem;
+    color: var(--text-sub, rgba(255, 255, 255, 0.55));
+    margin-bottom: 6px;
+}
+.fed-row-error {
+    color: #f59e0b;
+    font-size: 0.8rem;
+    margin: 4px 0;
+}
+.fed-row-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+.fed-progress-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    overflow: hidden;
+    margin: 4px 0;
+}
+.fed-progress-fill {
+    height: 100%;
+    background: #1DB954;
+    transition: width 0.5s ease;
+}
+
+.fed-status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+.fed-status-healthy  { background: rgba(29, 185, 84, 0.18);  color: #6ee7a7; }
+.fed-status-degraded { background: rgba(240, 196, 25, 0.18); color: #fde047; }
+.fed-status-offline  { background: rgba(220, 38, 38, 0.18);  color: #fca5a5; }
+.fed-status-unknown  { background: rgba(255, 255, 255, 0.06); color: rgba(255, 255, 255, 0.6); }
+
+/* Federation badge in regular track rows */
+.fed-source-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: rgba(96, 165, 250, 0.16);
+    color: #93c5fd;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+.fed-source-badge.degraded {
+    background: rgba(240, 196, 25, 0.18);
+    color: #fde047;
+}
+.fed-source-badge i,
+.fed-source-badge svg { width: 11px; height: 11px; }

@@ -90,6 +90,16 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
     # 1. LOCAL SEARCH (Database)
     local_tracks = _search_local_tracks(db, q, limit=50) if source in ["all", "local"] else []
 
+    # Track which (title, artist) pairs we've already shown locally so
+    # we never surface a federated duplicate of something the user
+    # already has on disk. Dedupe is case-insensitive and ignores
+    # whitespace, matching the `*_norm` columns we keep on
+    # FederatedTrack.
+    seen_norm_pairs: set[tuple[str, str]] = set()
+
+    def _norm_pair(title: str, artist: str) -> tuple[str, str]:
+        return ((title or "").strip().lower(), (artist or "").strip().lower())
+
     for t in local_tracks:
         if source in ["all", "local"]:
             res = {
@@ -105,8 +115,69 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
                 "file_hash": t.file_hash,
             }
             results.append(res)
+            seen_norm_pairs.add(_norm_pair(t.title, t.artist))
         if t.source_id:
             local_ids.add(t.source_id)
+
+    # 1b. FEDERATED SEARCH — peers we've subscribed to. We filter out
+    # OFFLINE instances at the SQL level so users never see tracks they
+    # cannot play. DEGRADED instances still show but the frontend tags
+    # them with a warning badge.
+    if source in ["all", "local"]:
+        try:
+            from federation_service import status_is_playable
+            playable_instances = (
+                db.query(database.FederatedInstance)
+                .filter(database.FederatedInstance.enabled == True)  # noqa: E712
+                .filter(database.FederatedInstance.status.in_(["healthy", "degraded"]))
+                .all()
+            )
+            instance_map = {inst.id: inst for inst in playable_instances if status_is_playable(inst.status)}
+
+            if instance_map:
+                like = f"%{q}%"
+                fed_rows = (
+                    db.query(database.FederatedTrack)
+                    .filter(database.FederatedTrack.instance_id.in_(list(instance_map.keys())))
+                    .filter(
+                        (database.FederatedTrack.title.ilike(like))
+                        | (database.FederatedTrack.artist.ilike(like))
+                    )
+                    .limit(40)
+                    .all()
+                )
+                for ft in fed_rows:
+                    pair = (ft.title_norm or "", ft.artist_norm or "")
+                    # Local takes precedence — drop the federated dupe.
+                    if pair in seen_norm_pairs:
+                        continue
+                    seen_norm_pairs.add(pair)
+
+                    inst = instance_map[ft.instance_id]
+                    # Use the existing public cover resolver instead of
+                    # proxying the remote's cover endpoint — saves a
+                    # round trip and works without authenticating the
+                    # browser against the peer.
+                    thumbnail = _cover_proxy(ft.artist or "", ft.title or "")
+                    results.append({
+                        "id": f"fed:{inst.id}:{ft.remote_id}",
+                        "fed_instance_id": inst.id,
+                        "fed_instance_name": inst.name,
+                        "fed_instance_status": inst.status,
+                        "fed_remote_id": ft.remote_id,
+                        "title": ft.title,
+                        "artist": ft.artist,
+                        "album": ft.album,
+                        "duration": ft.duration,
+                        "thumbnail": thumbnail,
+                        # `is_local` MUST stay False — this disables
+                        # local-only actions (favorite, add to playlist,
+                        # download) in the frontend automatically.
+                        "is_local": False,
+                        "source": "federation",
+                    })
+        except Exception as e:
+            logger.warning("Federated search merge failed: %s", e)
 
     # 2. REMOTE SEARCH (If requested)
     remote_results = []

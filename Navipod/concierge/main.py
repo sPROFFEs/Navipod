@@ -150,6 +150,10 @@ async def startup_event():
     asyncio.create_task(operations_service.autobackup_scheduler())
     asyncio.create_task(wrapped_daily_scheduler())
 
+    # Federation periodic loop (no-op when there are no enabled peers)
+    import federation_service
+    federation_service.start_background_loop()
+
 
 async def reaper_scheduler():
     check_interval = settings.CHECK_INTERVAL_MINUTES
@@ -338,6 +342,9 @@ async def general_stream_proxy(url: str, request: Request, db: Session = Depends
 app.include_router(music_router)
 app.include_router(admin.router)
 app.include_router(user.router)
+
+from routers import federation as federation_router
+app.include_router(federation_router.router)
 # ---------------------------------------------------------------
 
 
@@ -380,6 +387,16 @@ async def login(
     user = auth.get_user_by_username(db, username)
 
     # 2. VERIFICATION
+    # Service accounts are federation-only — they authenticate via API
+    # token through /api/federation/* and must NEVER reach the web UI.
+    # Reject as if the account didn't exist (don't leak its presence).
+    if user and user.is_service_account:
+        is_blocked = security.register_failed_attempt(request)
+        msg = "Invalid credentials"
+        if is_blocked:
+            msg = "Temporarily blocked for security (15 min)."
+        return RedirectResponse(f"/login?error={msg}", status_code=303)
+
     if not user or not auth.verify_password(password, user.hashed_password):
         # Register the hit
         is_blocked = security.register_failed_attempt(request)

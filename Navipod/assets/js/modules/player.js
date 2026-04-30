@@ -696,6 +696,75 @@ export function playTrack(track) {
   }
 }
 
+// === FEDERATED PLAYBACK ====================================================
+//
+// Plays a track that lives on a remote Navipod peer. The actual audio
+// is proxied through /api/federation/proxy/{instance_id}/stream/{remote_id}
+// — that endpoint:
+//   - returns 503 with a Retry-After if the peer is offline (so the
+//     browser plays nothing and we surface a clear error to the user
+//     instead of stalling the player on a broken stream)
+//   - forwards Range headers so seeking still works
+//
+// We treat the federation source as "library-like" for queue/state
+// purposes but never set is_local=true, which keeps favorites /
+// download / "add to playlist" disabled for these rows.
+
+export async function playFederatedTrack(data) {
+  let track = data;
+  if (typeof data === 'string') {
+    try {
+      track = JSON.parse(decodeURIComponent(atob(data)));
+    } catch (e) {
+      return;
+    }
+  }
+  if (!track || track.fed_instance_id == null || track.fed_remote_id == null) {
+    ui.showToast('Federated track is missing routing info', 'error');
+    return;
+  }
+
+  // Stop any ongoing playback before swapping src.
+  if (state.ytPlayer && state.ytPlayer.stopVideo) state.ytPlayer.stopVideo();
+
+  const proxyUrl = `${state.API}/federation/proxy/${track.fed_instance_id}/stream/${track.fed_remote_id}`;
+
+  state.setCurrentTrack(track);
+  updatePlayerUIForPreview(track);
+
+  // Pre-flight HEAD-style probe via fetch — gives us a clean error
+  // message ("Source is offline") instead of letting the <audio>
+  // element fail silently.
+  try {
+    const probe = await fetch(proxyUrl, {
+      method: 'GET',
+      headers: { Range: 'bytes=0-1' },
+    });
+    if (probe.status === 503) {
+      ui.showToast('That track is on a server that is currently offline.', 'error');
+      return;
+    }
+    if (!probe.ok && probe.status !== 206) {
+      ui.showToast('Could not load federated track', 'error');
+      return;
+    }
+  } catch (e) {
+    ui.showToast('Could not reach federated source', 'error');
+    return;
+  }
+
+  state.audio.src = proxyUrl;
+  try {
+    await state.audio.play();
+    state.setIsPlaying(true);
+    ui.updatePlayButton();
+    if (window.onLyricsTrackChange) window.onLyricsTrackChange(track);
+  } catch (e) {
+    console.error('Federated playback error:', e);
+    ui.showToast('Federated playback failed', 'error');
+  }
+}
+
 // === PREVIEW PLAYBACK ===
 
 export async function playPreview(data) {

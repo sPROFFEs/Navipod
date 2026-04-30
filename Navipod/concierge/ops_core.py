@@ -1113,6 +1113,59 @@ def _migration_018_track_delete_requests_relax_fk(conn):
     )
 
 
+def _migration_019_federation(conn):
+    # Service-account flag on existing User rows. New rows get the default
+    # via the model definition; old rows need backfill.
+    cols = [r[1] for r in conn.execute(text("PRAGMA table_info(users)")).fetchall()]
+    if "is_service_account" not in cols:
+        conn.execute(text("ALTER TABLE users ADD COLUMN is_service_account INTEGER NOT NULL DEFAULT 0"))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS federated_instances (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            base_url TEXT NOT NULL,
+            api_token TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'unknown',
+            last_seen_at DATETIME,
+            last_error TEXT,
+            sync_cursor INTEGER NOT NULL DEFAULT 0,
+            last_sync_at DATETIME,
+            sync_state TEXT NOT NULL DEFAULT 'idle',
+            sync_total INTEGER NOT NULL DEFAULT 0,
+            sync_done INTEGER NOT NULL DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS federated_tracks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            instance_id INTEGER NOT NULL REFERENCES federated_instances(id) ON DELETE CASCADE,
+            remote_id INTEGER NOT NULL,
+            title TEXT,
+            artist TEXT,
+            album TEXT,
+            duration INTEGER,
+            cover_url TEXT,
+            title_norm TEXT,
+            artist_norm TEXT,
+            synced_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_federated_tracks_instance ON federated_tracks(instance_id)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_federated_tracks_norm ON federated_tracks(title_norm, artist_norm)"
+    ))
+    conn.execute(text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_federated_tracks_remote ON federated_tracks(instance_id, remote_id)"
+    ))
+
+
 MIGRATIONS = [
     ("000_base_schema", _migration_000_base_schema),
     ("001_tracks_library_columns", _migration_001_tracks_library_columns),
@@ -1133,6 +1186,7 @@ MIGRATIONS = [
     ("016_wrapped_settings", _migration_016_wrapped_settings),
     ("017_track_delete_requests", _migration_017_track_delete_requests),
     ("018_track_delete_requests_relax_fk", _migration_018_track_delete_requests_relax_fk),
+    ("019_federation", _migration_019_federation),
 ]
 
 

@@ -91,6 +91,11 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     avatar_path = Column(String, nullable=True)
     last_access = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    # Service accounts authenticate ONLY via federation tokens — they
+    # cannot log in through the web form, do not appear in regular user
+    # lists, and cannot own playlists or favorites. Used by remote
+    # Navipod instances to read this instance's federated catalog.
+    is_service_account = Column(Boolean, default=False, nullable=False)
 
     download_settings = relationship(
         "DownloadSettings", uselist=False, back_populates="owner", cascade="all, delete-orphan"
@@ -352,3 +357,79 @@ class UserFavorite(Base):
 
     user = relationship("User", back_populates="favorites")
     track = relationship("Track")
+
+
+# === Federation =============================================================
+#
+# A FederatedInstance is a remote Navipod we trust enough to mirror its
+# catalog. The tokens (encrypted) are written by an admin and used by
+# the sync worker / stream proxy. Status is a lightweight enum we
+# update from the health checker:
+#   healthy   — last ping <60s ago
+#   degraded  — last ping 60s..15min ago
+#   offline   — no ping in >15min (or last attempt errored)
+#
+# `enabled=False` keeps the row but pauses sync + stream proxy. Users
+# of this instance see federated tracks ONLY when status='healthy' or
+# 'degraded' (degraded shows a warning badge in the UI).
+#
+# `publish_catalog` controls whether this instance LETS others federate
+# from us. Independent from the client side — you can be a federation
+# *consumer* without being a *publisher*.
+
+class FederatedInstance(Base):
+    __tablename__ = "federated_instances"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)            # human label, shown to users
+    base_url = Column(String, nullable=False)        # e.g. "https://music.example.com"
+    _api_token = Column("api_token", String, nullable=True)  # encrypted bearer token
+    enabled = Column(Boolean, default=True, nullable=False)
+
+    status = Column(String, default="unknown", nullable=False)   # healthy/degraded/offline/unknown
+    last_seen_at = Column(DateTime(timezone=True), nullable=True)
+    last_error = Column(String, nullable=True)
+
+    sync_cursor = Column(Integer, default=0, nullable=False)     # remote track id pagination
+    last_sync_at = Column(DateTime(timezone=True), nullable=True)
+    sync_state = Column(String, default="idle", nullable=False)  # idle/running/error
+    sync_total = Column(Integer, default=0, nullable=False)      # known catalog size (for % bar)
+    sync_done = Column(Integer, default=0, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    @property
+    def api_token(self):
+        return decrypt_secret(self._api_token)
+
+    @api_token.setter
+    def api_token(self, value):
+        self._api_token = encrypt_secret(value)
+
+
+class FederatedTrack(Base):
+    """Mirror of a track on a remote instance. We keep these in the
+    same SQLite as local data for simple cross-table search merging,
+    but they are NEVER returned as `is_local=True` and never join
+    UserFavorite / Playlist / etc. Drop a federation = mass-delete of
+    rows where instance_id matches.
+    """
+    __tablename__ = "federated_tracks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    instance_id = Column(Integer, ForeignKey("federated_instances.id", ondelete="CASCADE"), index=True)
+    remote_id = Column(Integer, nullable=False, index=True)   # the remote's tracks.id
+
+    title = Column(String, index=True)
+    artist = Column(String, index=True)
+    album = Column(String)
+    duration = Column(Integer)
+
+    # Cover URL on the remote (we don't mirror images — fetched on demand).
+    cover_url = Column(String, nullable=True)
+
+    # Lowercase keys for fast dedupe joins against local Track.
+    title_norm = Column(String, index=True)
+    artist_norm = Column(String, index=True)
+
+    synced_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -1031,7 +1031,16 @@ export function createTrackRow(item, idx, playlistId = null) {
   const canAddToPlaylist = item.is_local && item.db_id;
   const isActive = item.id === state.currentTrack?.id;
 
-  const rowClickAction = item.is_local ? `playFromView(${idx})` : `playPreview('${data}')`;
+  // Federation results are NOT local but ARE playable (we proxy them
+  // through /api/federation/proxy). Route them to a dedicated handler
+  // so we can short-circuit playback if the peer drops offline
+  // between the search render and the click.
+  const isFederated = item.source === 'federation' && item.fed_instance_id != null;
+  const rowClickAction = item.is_local
+    ? `playFromView(${idx})`
+    : isFederated
+      ? `playFederatedTrack('${data}')`
+      : `playPreview('${data}')`;
 
   const _safeTitle  = ui.escHtml(item.title  || 'Unknown').replace(/'/g, "\\'");
   const _safeArtist = ui.escHtml(item.artist || 'Unknown').replace(/'/g, "\\'");
@@ -1045,7 +1054,14 @@ export function createTrackRow(item, idx, playlistId = null) {
         <div class="track-main">
             <img src="${img}" class="track-cover-sm" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
             <div class="track-titles">
-                <div class="track-name-sm">${ui.escHtml(item.title || 'Unknown')}</div>
+                <div class="track-name-sm">
+                    ${ui.escHtml(item.title || 'Unknown')}
+                    ${isFederated ? `
+                        <span class="fed-source-badge ${item.fed_instance_status === 'degraded' ? 'degraded' : ''}"
+                              title="From ${ui.escHtml(item.fed_instance_name || 'remote pool')} (${ui.escHtml(item.fed_instance_status || 'unknown')})">
+                            <i data-lucide="globe"></i>${ui.escHtml(item.fed_instance_name || 'remote')}
+                        </span>` : ''}
+                </div>
                 <div class="track-artist-sm">
                     <a class="artist-link"
                        onclick="event.stopPropagation(); loadView('artist', '${_safeArtist}')"

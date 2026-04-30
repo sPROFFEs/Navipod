@@ -55,6 +55,7 @@ window.playTrack = player.playTrack;
 window.playNext = player.playNext;
 window.playPrev = player.playPrev;
 window.playFromView = player.playFromView;
+window.playFederatedTrack = player.playFederatedTrack;
 
 // Queue
 window.addToQueue = queue.addToQueue;

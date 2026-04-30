@@ -175,5 +175,232 @@
             </div>
         </div>
     </section>
+
+    <!-- ================================================================ -->
+    <!-- FEDERATION                                                        -->
+    <!-- Phase 1: read-only catalog mirror + offline-aware playback proxy. -->
+    <!-- ================================================================ -->
+    <section class="admin-panel" id="federation-panel">
+        <div class="admin-panel-header">
+            <div class="admin-panel-title">
+                <h2><i data-lucide="globe" width="22" height="22"></i> Federation <span class="admin-badge-beta">beta</span></h2>
+                <p>
+                    Connect this Navipod to other instances. Their catalogs become searchable and playable
+                    locally; you do not own those files. Federation is OFF by default — nothing happens
+                    until you add at least one peer.
+                </p>
+            </div>
+        </div>
+        <div class="admin-panel-body">
+
+            <div class="federation-subsection">
+                <h3><i data-lucide="key-round" width="16" height="16"></i> Publish my catalog</h3>
+                <p class="federation-help">
+                    Generate a federation token and share it (over a secure channel) with the admin of
+                    the remote Navipod that wants to mirror your library. Rotating it immediately
+                    invalidates the previous token.
+                </p>
+                <div id="federation-svc-status" class="federation-svc-status">Loading…</div>
+                <div class="federation-svc-actions">
+                    <button class="admin-submit" onclick="federationRotateToken()">
+                        <i data-lucide="rotate-cw" width="16" height="16"></i>
+                        <span>Generate / rotate token</span>
+                    </button>
+                </div>
+                <div id="federation-token-display" class="federation-token-display" hidden>
+                    <strong>New token (copy now — it won't be shown again):</strong>
+                    <code id="federation-token-value"></code>
+                </div>
+            </div>
+
+            <div class="federation-subsection">
+                <h3><i data-lucide="server" width="16" height="16"></i> Connected peers</h3>
+                <p class="federation-help">
+                    Add a remote Navipod URL plus the federation token its admin gave you.
+                    Tracks from offline peers are <strong>hidden from search automatically</strong> so
+                    users never click on something that won't play.
+                </p>
+
+                <form class="federation-add-form" onsubmit="federationAddInstance(event)">
+                    <input type="text" id="fed-add-name" placeholder="Display name (e.g. Friend's pool)" required>
+                    <input type="url" id="fed-add-url" placeholder="https://music.example.com" required>
+                    <input type="text" id="fed-add-token" placeholder="Federation token" required>
+                    <button class="admin-submit" type="submit">
+                        <i data-lucide="plus" width="16" height="16"></i>
+                        <span>Add peer</span>
+                    </button>
+                </form>
+
+                <div id="federation-instances-list" class="federation-list">
+                    <div class="admin-empty-state">No peers configured yet.</div>
+                </div>
+            </div>
+        </div>
+    </section>
 </div>
+
+<script>
+/* === Federation admin UI =================================================
+ * Self-contained because admin.html lives outside the main JS module
+ * graph. Cookie auth carries through to /api/admin/federation/*.
+ */
+(function () {
+    const LIST_EL = document.getElementById('federation-instances-list');
+    const SVC_EL  = document.getElementById('federation-svc-status');
+    if (!LIST_EL) return;
+
+    function _statusBadge(status) {
+        const cls = ({
+            healthy: 'fed-status-healthy',
+            degraded: 'fed-status-degraded',
+            offline: 'fed-status-offline',
+            unknown: 'fed-status-unknown',
+        })[status] || 'fed-status-unknown';
+        return `<span class="fed-status-badge ${cls}">${status || 'unknown'}</span>`;
+    }
+    function _fmtDate(iso) {
+        if (!iso) return '—';
+        try { return new Date(iso).toLocaleString(); } catch { return iso; }
+    }
+    function _fmtPct(done, total) {
+        if (!total || total <= 0) return '';
+        const p = Math.min(100, Math.round((done / total) * 100));
+        return `${p}% (${done}/${total})`;
+    }
+    function escapeHtml(str) {
+        return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function _renderRow(inst) {
+        const pct = _fmtPct(inst.sync_done, inst.sync_total);
+        const errorLine = inst.last_error ? `<div class="fed-row-error">⚠ ${escapeHtml(inst.last_error)}</div>` : '';
+        const progressBar = inst.sync_total > 0
+            ? `<div class="fed-progress-bar"><div class="fed-progress-fill" style="width:${
+                Math.min(100, Math.round((inst.sync_done / inst.sync_total) * 100))}%"></div></div>` : '';
+        return `
+          <div class="fed-row" data-id="${inst.id}">
+            <div class="fed-row-head">
+              <strong>${escapeHtml(inst.name)}</strong>
+              ${_statusBadge(inst.status)}
+              <span class="fed-row-url">${escapeHtml(inst.base_url)}</span>
+            </div>
+            <div class="fed-row-meta">
+              <span>Last seen: ${_fmtDate(inst.last_seen_at)}</span>
+              <span>Last sync: ${_fmtDate(inst.last_sync_at)}</span>
+              ${pct ? `<span>${pct}</span>` : ''}
+              <span>State: ${escapeHtml(inst.sync_state)}</span>
+            </div>
+            ${progressBar}
+            ${errorLine}
+            <div class="fed-row-actions">
+              <button class="admin-submit" onclick="federationSyncNow(${inst.id})">
+                <i data-lucide="refresh-cw" width="14" height="14"></i> Sync now
+              </button>
+              <button class="admin-submit" onclick="federationToggleEnabled(${inst.id}, ${!inst.enabled})">
+                <i data-lucide="${inst.enabled ? 'pause' : 'play'}" width="14" height="14"></i>
+                ${inst.enabled ? 'Disable' : 'Enable'}
+              </button>
+              <button class="admin-danger-btn" onclick="federationDeleteInstance(${inst.id})">
+                <i data-lucide="trash-2" width="14" height="14"></i> Remove
+              </button>
+            </div>
+          </div>`;
+    }
+
+    async function refreshList() {
+        const res = await fetch('/api/admin/federation/instances', { credentials: 'include' });
+        if (!res.ok) {
+            LIST_EL.innerHTML = '<div class="admin-empty-state">Failed to load federation list.</div>';
+            return;
+        }
+        const items = await res.json();
+        if (!items.length) {
+            LIST_EL.innerHTML = '<div class="admin-empty-state">No peers configured yet.</div>';
+            return;
+        }
+        LIST_EL.innerHTML = items.map(_renderRow).join('');
+        if (window.lucide) lucide.createIcons();
+    }
+
+    async function refreshServiceAccount() {
+        const res = await fetch('/api/admin/federation/service-account', { credentials: 'include' });
+        if (!res.ok) {
+            SVC_EL.innerHTML = '<em>Could not load.</em>';
+            return;
+        }
+        const data = await res.json();
+        SVC_EL.innerHTML = data.configured
+            ? '<i data-lucide="check-circle-2"></i> Federation publishing is <strong>enabled</strong>. Other instances can read your catalog using the token.'
+            : '<i data-lucide="circle-slash"></i> Federation publishing is <strong>disabled</strong>. Generate a token to allow remote peers to mirror your library.';
+        if (window.lucide) lucide.createIcons();
+    }
+
+    window.federationAddInstance = async function (e) {
+        e.preventDefault();
+        const name = document.getElementById('fed-add-name').value.trim();
+        const base_url = document.getElementById('fed-add-url').value.trim();
+        const api_token = document.getElementById('fed-add-token').value.trim();
+        const res = await fetch('/api/admin/federation/instances', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, base_url, api_token, enabled: true }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            alert('Failed to add peer: ' + (err.detail || res.status));
+            return;
+        }
+        document.getElementById('fed-add-name').value = '';
+        document.getElementById('fed-add-url').value = '';
+        document.getElementById('fed-add-token').value = '';
+        const created = await res.json();
+        // Trigger an immediate sync so the user sees the progress bar
+        // start moving without waiting for the periodic sweep.
+        try { await fetch('/api/admin/federation/instances/' + created.id + '/sync', { method: 'POST', credentials: 'include' }); } catch {}
+        refreshList();
+    };
+
+    window.federationSyncNow = async function (id) {
+        await fetch('/api/admin/federation/instances/' + id + '/sync', { method: 'POST', credentials: 'include' });
+        setTimeout(refreshList, 1500);
+    };
+
+    window.federationToggleEnabled = async function (id, enable) {
+        await fetch('/api/admin/federation/instances/' + id, {
+            method: 'PATCH',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: enable }),
+        });
+        refreshList();
+    };
+
+    window.federationDeleteInstance = async function (id) {
+        if (!confirm('Remove this peer? Its mirrored catalog rows will be deleted from this instance.')) return;
+        await fetch('/api/admin/federation/instances/' + id, { method: 'DELETE', credentials: 'include' });
+        refreshList();
+    };
+
+    window.federationRotateToken = async function () {
+        if (!confirm('Generate a new federation token? This invalidates the previous one immediately.')) return;
+        const res = await fetch('/api/admin/federation/service-account/rotate', { method: 'POST', credentials: 'include' });
+        if (!res.ok) { alert('Failed to rotate token.'); return; }
+        const data = await res.json();
+        const display = document.getElementById('federation-token-display');
+        const value   = document.getElementById('federation-token-value');
+        if (display && value) {
+            value.textContent = data.token;
+            display.hidden = false;
+        }
+        refreshServiceAccount();
+    };
+
+    // Initial load + periodic refresh so the user sees the sync
+    // progress bar tick forward while they watch the panel.
+    refreshList();
+    refreshServiceAccount();
+    setInterval(refreshList, 5000);
+})();
+</script>
 {% endblock %}
