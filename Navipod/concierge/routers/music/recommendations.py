@@ -355,8 +355,27 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
                         "is_local": False,
                         "source": "spotify",
                         "preview": item.get("preview_url"),
+                        # Keep the raw Spotify track id so we can backfill
+                        # the preview URL later via the embed scraper —
+                        # Spotify deprecated preview_url in their official
+                        # API in late 2024 and most tracks return null.
+                        "_spotify_id": item.get("id") if isinstance(item.get("id"), str) and len(item.get("id")) == 22 else None,
                     }
                 )
+
+            # Backfill preview URLs for the first few items via the
+            # embed scraper. Bounded to keep the cache miss latency
+            # reasonable — runs once per 48h cache window.
+            backfill_targets = [it for it in spotify_items if not it.get("preview") and it.get("_spotify_id")][:6]
+            for it in backfill_targets:
+                try:
+                    url = await spotify_service.spotify_service.get_embed_preview(it["_spotify_id"])
+                    if url:
+                        it["preview"] = url
+                except Exception as e:
+                    logger.debug("Embed preview scrape failed: %s", e)
+            for it in spotify_items:
+                it.pop("_spotify_id", None)
         except Exception as e:
             logger.warning("Recommendations Spotify error: %s", e)
 
@@ -544,10 +563,10 @@ async def discovery_feed(request: Request, db: Session = Depends(get_db), limit:
                 for item in section.get("items", []):
                     if item.get("is_local"):
                         continue
-                    # Only include items with a preview URL — without one
-                    # the swipe card has nothing audible to play.
-                    if not item.get("preview"):
-                        continue
+                    # Items without a preview URL still surface — the
+                    # card just hides the ▶ button. Spotify deprecated
+                    # preview_url in late 2024 so requiring it would
+                    # leave the feed nearly empty for most users.
                     items.append(item)
     except Exception as e:
         logger.warning("Discovery feed cache read error: %s", e)
