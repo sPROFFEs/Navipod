@@ -78,7 +78,11 @@ Navipod/**/*.pyc
 Navipod/**/*.pyo
 Navipod/**/*.pyd
 
-# Local docs / scratch files that should not ship
-/docs/
-docs/
+# Local docs / scratch files that should not ship.
+# Anything inside docs/ is ignored EXCEPT the deployment guide, which
+# we ship so admins reading the README on GitHub can follow it.
+/docs/*
+!/docs/DEPLOYMENT.md
+docs/*
+!docs/DEPLOYMENT.md
 spotifyapi.txt

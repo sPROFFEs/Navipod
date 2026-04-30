@@ -51,17 +51,57 @@ Persistent data lives in `/opt/saas-data` (database, cache, per-user music, shar
 
 ## Quick Start
 
+Three deployment modes. The default in this repo is **cloudflared**; switch
+to another by copying a template over the live files. Full guide in
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+| Mode | Use when | What to copy |
+| ---- | -------- | ------------ |
+| **cloudflared** *(default)* | Easiest. Cloudflare Tunnel does TLS at the edge. No public IP, no certs. | nothing — already in place |
+| **internal**     | LAN / VPN testing. Plain HTTP, no DNS. | `Navipod/deployment-templates/internal/{docker-compose.yaml, .env.example}` |
+| **domain**       | Own public domain + Let's Encrypt. | `Navipod/deployment-templates/domain/{docker-compose.yaml, nginx.conf, .env.example}` |
+
+The in-app updater calls `docker compose up -d` against the standard
+filenames in `Navipod/`, so once you've copied a template in, every
+tool in the project keeps working without changes.
+
+### Cloudflared (default)
+
 ```bash
 git clone https://github.com/sPROFFEs/Navipod
 cd Navipod/Navipod
 cp .env.example .env
-nano .env             # set SECRET_KEY, DOMAIN, ALLOWED_HOSTS, COOKIE_SECURE
+nano .env             # set SECRET_KEY, TUNNEL_TOKEN, DOMAIN
 chmod +x setup.sh && ./setup.sh
 ```
 
 The setup script checks Docker, creates `/opt/saas-data`, builds the stack, optionally creates the first admin user, and optionally imports an existing music library.
 
-Then open `http://localhost` (or your configured domain) and log in.
+Then open your tunnel URL and log in.
+
+### Internal HTTP (LAN / VPN)
+
+```bash
+cd Navipod/Navipod
+cp deployment-templates/internal/docker-compose.yaml docker-compose.yaml
+cp deployment-templates/internal/.env.example .env
+nano .env             # set SECRET_KEY; COOKIE_SECURE must stay false
+docker compose up -d
+```
+
+Visit `http://<host-ip>/` from inside your network. **Never expose this mode to the public internet** — there's no TLS.
+
+### Own domain + Let's Encrypt
+
+```bash
+cd Navipod/Navipod
+cp deployment-templates/domain/docker-compose.yaml docker-compose.yaml
+cp deployment-templates/domain/nginx.conf nginx.conf
+cp deployment-templates/domain/.env.example .env
+nano .env             # set SECRET_KEY, DOMAIN, ACME_EMAIL
+```
+
+Initial cert acquisition is one manual step before the auto-renewal loop takes over — full instructions in [`Navipod/deployment-templates/domain/README.md`](Navipod/deployment-templates/domain/README.md) and [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#3-own-domain--lets-encrypt).
 
 If you skipped admin creation, run this from the directory containing `docker-compose.yaml`:
 
@@ -95,22 +135,23 @@ Provider credentials are encrypted at rest using `SECRET_KEY`. Don't rotate `SEC
 
 ## Bulk Music Import
 
-To import an existing music collection from a host folder into the shared pool, run from the repo root:
+To import an existing collection from a host folder into the shared pool, run from the repo root:
 
 ```bash
 ./import_music.sh /path/to/your/music [--enrich]
 ```
 
 What it does:
-- Recursively scans the source folder for audio files (`mp3`, `m4a`, `flac`, `wav`, `ogg`, `opus`, `aac`, `wma`)
-- Moves them into `/opt/saas-data/pool/{Artist}/{Album}/` (the source is emptied)
+- Recursively scans for audio files (`mp3`, `m4a`, `flac`, `wav`, `ogg`, `opus`, `aac`, `wma`)
+- Moves them into `/opt/saas-data/pool/{Artist}/{Album}/` (the source folder is emptied)
 - Reads tags via `mutagen` and registers each track in the DB
 - Saves embedded cover art to the cover cache
-- With `--enrich`, fills missing covers via Spotify/Last.fm/MusicBrainz (requires API keys configured in `Settings > Engine`)
+- With `--enrich`, downloads missing covers via Spotify/Last.fm/MusicBrainz using the API keys already configured in `Settings > Engine`
 - Detects duplicates by hash + fingerprint and skips them
-- Creates a playlist named after the source folder for the new tracks (use `--no-playlist` to skip)
 
-Other flags: `--user USERNAME`, `--dry-run`, `--workers N`, `--verbose`. Run `./import_music.sh --help` for the full list.
+Tracks land in the **shared pool** and become available to every user via search / library views. The script does not create playlists or assign tracks to any user.
+
+Other flags: `--dry-run`, `--workers N`, `--verbose`. Run `./import_music.sh --help` for details.
 
 ## Android App
 
