@@ -231,6 +231,10 @@
                 <i data-lucide="search"></i>
                 <span>Search</span>
             </button>
+            <button class="m-nav-item" data-view="discovery" onclick="loadView('discovery')">
+                <i data-lucide="compass"></i>
+                <span>Discover</span>
+            </button>
             <button class="m-nav-item" data-view="library" onclick="loadView('library')">
                 <i data-lucide="library"></i>
                 <span>Your Library</span>
@@ -460,13 +464,15 @@
         window.markBottomNavActive = function (view) {
             const nav = document.getElementById('m-bottom-nav');
             if (!nav) return;
-            const homeViews    = new Set(['home', 'public', 'discover_radios', 'mix']);
-            const searchViews  = new Set(['search']);
-            const libraryViews = new Set(['library', 'playlist', 'favorites']);
+            const homeViews      = new Set(['home', 'public', 'discover_radios', 'mix']);
+            const searchViews    = new Set(['search']);
+            const discoveryViews = new Set(['discovery']);
+            const libraryViews   = new Set(['library', 'playlist', 'favorites']);
             let activeTab = '';
-            if (homeViews.has(view))         activeTab = 'home';
-            else if (searchViews.has(view))  activeTab = 'search';
-            else if (libraryViews.has(view)) activeTab = 'library';
+            if (homeViews.has(view))           activeTab = 'home';
+            else if (searchViews.has(view))    activeTab = 'search';
+            else if (discoveryViews.has(view)) activeTab = 'discovery';
+            else if (libraryViews.has(view))   activeTab = 'library';
             nav.querySelectorAll('.m-nav-item').forEach((btn) => {
                 btn.classList.toggle('active', btn.dataset.view === activeTab);
             });

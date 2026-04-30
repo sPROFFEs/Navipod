@@ -475,3 +475,194 @@
     color: var(--text-sub);
     font-size: 0.82rem;
 }
+
+
+/* ── Discovery feed ──────────────────────────────────────────────────
+ *  Vertical card stack of recommended remote tracks. Each card has
+ *  a large cover with a play button overlay and a row of action
+ *  buttons (Pass / Download / Like). Mobile shows a single column;
+ *  desktop renders 2 columns to use the wider viewport without
+ *  ballooning each card. */
+
+.discovery-shell {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 0 16px;
+}
+
+.discovery-head {
+    margin: 12px 0 16px 0;
+}
+
+.discovery-head h1 {
+    font-size: 1.7rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0;
+}
+
+.discovery-sub {
+    color: var(--text-sub);
+    font-size: 0.88rem;
+    margin: 4px 0 0 0;
+}
+
+.discovery-feed {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    padding-bottom: 24px;
+}
+
+.discovery-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.18s ease, opacity 0.22s ease;
+}
+
+.discovery-card.dismissing {
+    transform: scale(0.95) translateX(-12px);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.discovery-cover-wrap {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    background: var(--surface-3);
+    overflow: hidden;
+}
+
+.discovery-cover {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.discovery-play-btn {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--primary, #1DB954);
+    border: 0;
+    color: #04140a;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transition: transform 0.12s ease, background-color 0.12s ease;
+}
+
+.discovery-play-btn:hover,
+.discovery-play-btn.playing {
+    transform: scale(1.06);
+    background: var(--primary-hover, #1ed760);
+}
+
+.discovery-play-btn i,
+.discovery-play-btn svg {
+    width: 22px;
+    height: 22px;
+    fill: #04140a;
+}
+
+.discovery-source-badge {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.7);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+.discovery-source-badge i,
+.discovery-source-badge svg {
+    width: 16px;
+    height: 16px;
+}
+
+.discovery-meta {
+    padding: 12px 14px 0 14px;
+    flex: 1;
+    min-width: 0;
+}
+
+.discovery-title {
+    font-size: 0.98rem;
+    font-weight: 600;
+    color: var(--text-main);
+    margin: 0 0 4px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.discovery-artist {
+    font-size: 0.82rem;
+    color: var(--text-sub);
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.discovery-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    gap: 4px;
+    padding: 10px 14px 12px 14px;
+}
+
+.discovery-action {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: transparent;
+    border: 0;
+    color: var(--text-sub);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.12s ease, color 0.12s ease, transform 0.12s ease;
+}
+
+.discovery-action:hover,
+.discovery-action:active {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-main);
+}
+
+.discovery-action.discovery-like.liked {
+    color: #ec4899;
+}
+
+.discovery-action.discovery-like:hover {
+    color: #ec4899;
+}
+
+.discovery-action.discovery-download:hover {
+    color: var(--primary, #1DB954);
+}
+
+.discovery-action i,
+.discovery-action svg {
+    width: 20px;
+    height: 20px;
+}

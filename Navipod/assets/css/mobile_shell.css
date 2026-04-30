@@ -453,14 +453,24 @@
     align-items: center;
     justify-content: center;
     gap: 3px;
-    padding: 6px 4px;
+    padding: 6px 2px;
     background: transparent;
     border: 0;
     color: var(--text-faint, #888);
-    font-size: 0.65rem;
+    /* 0.62rem on smaller screens because the 4-tab layout shrinks each
+     * cell — Spotify uses ~10-11px labels, this keeps them readable. */
+    font-size: 0.62rem;
     font-weight: 600;
     cursor: pointer;
     transition: color 0.12s ease;
+    min-width: 0;
+}
+
+.m-nav-item span {
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .m-nav-item i,
@@ -706,6 +716,25 @@
 
 .user-settings-shell {
     padding: 16px 16px 8px 16px !important;
+}
+
+
+/* ── 8f. Discovery feed — 1-col on mobile ─────────────────────── */
+
+.discovery-feed {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+}
+
+.discovery-shell {
+    padding: 0 16px !important;
+}
+
+/* The cover wrap is square; on mobile that gives a nice big tile.
+ * Cap height so very tall screens don't make a single card occupy
+ * the whole viewport. */
+.discovery-card .discovery-cover-wrap {
+    max-height: 60vh;
 }
 
 

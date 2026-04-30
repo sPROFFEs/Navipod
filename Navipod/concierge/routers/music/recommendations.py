@@ -511,6 +511,76 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
     return JSONResponse(sections)
 
 
+@router.get("/api/discovery/feed")
+async def discovery_feed(request: Request, db: Session = Depends(get_db), limit: int = 20):
+    """Discovery feed — flat list of remote tracks (with preview URLs)
+    the user doesn't already own. Reuses the 48h /api/recommendations
+    cache so the endpoint stays cheap; if the cache is empty (user
+    hasn't visited Home yet) the feed is empty too. The frontend
+    handles that case with an empty-state CTA."""
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    cache_file = os.path.join(RECS_CACHE_DIR, f"recs_{user.username}.json")
+    items: list[dict] = []
+    try:
+        if os.path.exists(cache_file):
+            with open(cache_file, "r") as f:
+                cached = json.load(f)
+            # We want fresh remote tracks only — skip every library-driven
+            # section the home shelves use. Their tracks are already in
+            # the user's library so they don't belong in a discovery feed.
+            local_section_titles = (
+                "Recently Added",
+                "On repeat",
+                "Rediscover",
+                "From artists you used",
+            )
+            for section in cached.get("sections", []):
+                title = section.get("title", "") or ""
+                if any(title.startswith(prefix) for prefix in local_section_titles):
+                    continue
+                for item in section.get("items", []):
+                    if item.get("is_local"):
+                        continue
+                    # Only include items with a preview URL — without one
+                    # the swipe card has nothing audible to play.
+                    if not item.get("preview"):
+                        continue
+                    items.append(item)
+    except Exception as e:
+        logger.warning("Discovery feed cache read error: %s", e)
+
+    # De-dupe against the user's library by lowercase title|artist match
+    # so we only surface things they don't already have.
+    existing_keys = set()
+    try:
+        for t in db.query(database.Track.title, database.Track.artist).all():
+            title = (t[0] or "").strip().lower()
+            artist = (t[1] or "").strip().lower()
+            if title:
+                existing_keys.add(f"{title}|{artist}")
+    except Exception as e:
+        logger.warning("Discovery feed library lookup error: %s", e)
+
+    seen = set()
+    filtered = []
+    for item in items:
+        title = (item.get("title") or "").strip().lower()
+        artist = (item.get("artist") or "").strip().lower()
+        if not title:
+            continue
+        key = f"{title}|{artist}"
+        if key in existing_keys or key in seen:
+            continue
+        seen.add(key)
+        filtered.append(item)
+
+    random.shuffle(filtered)
+    return JSONResponse({"items": filtered[:max(1, min(limit, 60))], "total": len(filtered)})
+
+
 def _get_local_section(db: Session):
     """Build local 'Recently Added' section (cheap DB query, never cached)"""
     local_items = []

@@ -361,6 +361,16 @@ export async function fetchMixes() {
   return [];
 }
 
+export async function fetchDiscoveryFeed(limit = 20) {
+  try {
+    const res = await fetch(`${state.API}/discovery/feed?limit=${limit}`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[DISCOVERY] Fetch error:', e);
+  }
+  return { items: [], total: 0 };
+}
+
 export async function fetchMixDetail(mixKey) {
   try {
     const res = await fetch(`${state.API}/mixes/${encodeURIComponent(mixKey)}`);

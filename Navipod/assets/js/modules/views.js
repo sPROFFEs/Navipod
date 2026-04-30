@@ -177,6 +177,7 @@ export async function loadView(view, param = null, options = {}) {
     else if (view === 'search') renderSearch(container);
     else if (view === 'public') await playlists.renderPublicPlaylists(container);
     else if (view === 'discover_radios') await radio.renderRadio(container);
+    else if (view === 'discovery') await renderDiscovery(container);
     else if (view === 'favorites') await favorites.renderFavorites(container);
     else if (view === 'playlist') {
       await playlists.renderPlaylist(container, param);
@@ -1516,3 +1517,194 @@ export function initHeartbeatLifecycle() {
 export const startHeartbeatSync = sync.startHeartbeatSync;
 export const stopHeartbeatSync = sync.stopHeartbeatSync;
 export const checkSyncState = sync.checkSyncState;
+
+
+// ─── DISCOVERY FEED ─────────────────────────────────────────────────
+//
+// Vertical card stack of recommended remote tracks the user doesn't
+// already own. Each card has a 30-second preview (HTML5 audio) and
+// three action buttons:
+//   ✕ Dismiss — fades the card out and remembers in localStorage so
+//               it doesn't reappear in future feeds.
+//   ⬇ Download — sends the track through the existing triggerDownload
+//               pipeline so it lands in the local library.
+//   ❤ Like — same as Download (the track has to be local first to
+//             be properly favorited).
+//
+// On mobile this is a dedicated bottom-nav tab; on desktop reachable
+// via loadView('discovery').
+
+const DISCOVERY_DISMISSED_KEY = 'navipod_discovery_dismissed';
+const DISCOVERY_DISMISSED_CAP = 200;
+
+function _discoveryKey(item) {
+  return `${(item.title || '').trim().toLowerCase()}|${(item.artist || '').trim().toLowerCase()}`;
+}
+
+function _loadDiscoveryDismissed() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(DISCOVERY_DISMISSED_KEY) || '[]'));
+  } catch { return new Set(); }
+}
+
+function _saveDiscoveryDismissed(set) {
+  try {
+    // Cap to prevent unbounded growth — keep the most recent N
+    const arr = [...set].slice(-DISCOVERY_DISMISSED_CAP);
+    localStorage.setItem(DISCOVERY_DISMISSED_KEY, JSON.stringify(arr));
+  } catch {}
+}
+
+function _discoveryCard(item) {
+  const data = btoa(encodeURIComponent(JSON.stringify(item)));
+  const cover = item.thumbnail || '/static/img/default_cover.png';
+  const title = ui.escHtml(item.title || 'Unknown');
+  const artist = ui.escHtml(item.artist || 'Unknown');
+  const album = ui.escHtml(item.album || '');
+  const src = item.source || 'spotify';
+  const srcMeta = TRACK_SOURCE_ICONS[src] || TRACK_SOURCE_ICONS.local;
+  const preview = item.preview || '';
+  const key = ui.escHtml(_discoveryKey(item));
+
+  return `
+    <article class="discovery-card" data-key="${key}">
+        <div class="discovery-cover-wrap">
+            <img src="${cover}" alt="${title}" class="discovery-cover"
+                 loading="lazy" decoding="async"
+                 onerror="this.src='/static/img/default_cover.png'">
+            ${preview ? `
+              <button class="discovery-play-btn" onclick="discoveryTogglePreview(this, '${encodeURIComponent(preview)}')">
+                  <i data-lucide="play"></i>
+              </button>` : ''}
+            <span class="discovery-source-badge" style="color: ${srcMeta.color}">
+                <i data-lucide="${srcMeta.icon}"></i>
+            </span>
+        </div>
+        <div class="discovery-meta">
+            <h2 class="discovery-title">${title}</h2>
+            <p class="discovery-artist">${artist}${album ? ` · ${album}` : ''}</p>
+        </div>
+        <div class="discovery-actions">
+            <button class="discovery-action discovery-dismiss" onclick="discoveryDismiss(this)" title="Pass">
+                <i data-lucide="x"></i>
+            </button>
+            <button class="discovery-action discovery-download" onclick="discoveryDownload(this, '${data}')" title="Download to library">
+                <i data-lucide="download"></i>
+            </button>
+            <button class="discovery-action discovery-like" onclick="discoveryDownload(this, '${data}', true)" title="Save to library">
+                <i data-lucide="heart"></i>
+            </button>
+        </div>
+    </article>`;
+}
+
+export async function renderDiscovery(container) {
+  const data = await api.fetchDiscoveryFeed(20);
+  const items = data.items || [];
+
+  if (!items.length) {
+    container.innerHTML = `
+        <div class="discovery-shell">
+            <header class="discovery-head">
+                <h1>Discover</h1>
+                <p class="discovery-sub">Tracks recommended for you, with previews.</p>
+            </header>
+            <div class="empty-state">
+                <i data-lucide="compass" class="empty-icon"></i>
+                <p>No discovery items right now.<br>Visit <strong>Home</strong> first to refresh recommendations, then come back.</p>
+            </div>
+        </div>`;
+    lucide.createIcons();
+    return;
+  }
+
+  const dismissed = _loadDiscoveryDismissed();
+  const visible = items.filter((it) => !dismissed.has(_discoveryKey(it)));
+
+  container.innerHTML = `
+        <div class="discovery-shell">
+            <header class="discovery-head">
+                <h1>Discover</h1>
+                <p class="discovery-sub">${visible.length} new tracks · tap ▶ to preview</p>
+            </header>
+            <div class="discovery-feed">
+                ${visible.map(_discoveryCard).join('')}
+            </div>
+        </div>`;
+  lucide.createIcons();
+}
+
+// ── Discovery handlers (window-exposed via main.js) ─────────────────
+
+export function discoveryTogglePreview(btn, encodedUrl) {
+  const url = decodeURIComponent(encodedUrl || '');
+  if (!url) return;
+
+  // Single shared <audio> for previews — pause the previous if any.
+  let audio = window.__discoveryPreviewAudio;
+  if (!audio) {
+    audio = new Audio();
+    audio.preload = 'metadata';
+    audio.crossOrigin = 'anonymous';
+    audio.addEventListener('ended', () => _discoveryResetAllPlayIcons());
+    window.__discoveryPreviewAudio = audio;
+  }
+
+  // Toggle on the same track
+  const playingThis = audio.src && audio.src.indexOf(url) >= 0 && !audio.paused;
+  if (playingThis) {
+    audio.pause();
+    _discoveryResetAllPlayIcons();
+    return;
+  }
+
+  // Stop any other preview, switch to this one
+  audio.pause();
+  _discoveryResetAllPlayIcons();
+  audio.src = url;
+  audio.play().catch((e) => console.warn('[DISCOVERY] preview play failed', e));
+
+  // Flip this button's icon to pause
+  const icon = btn.querySelector('i');
+  if (icon) {
+    icon.setAttribute('data-lucide', 'pause');
+    if (window.lucide) lucide.createIcons();
+  }
+  btn.classList.add('playing');
+}
+
+function _discoveryResetAllPlayIcons() {
+  document.querySelectorAll('.discovery-play-btn.playing').forEach((b) => {
+    const i = b.querySelector('i');
+    if (i) i.setAttribute('data-lucide', 'play');
+    b.classList.remove('playing');
+  });
+  if (window.lucide) lucide.createIcons();
+}
+
+export function discoveryDismiss(btn) {
+  const card = btn.closest('.discovery-card');
+  if (!card) return;
+  const key = card.dataset.key;
+  const dismissed = _loadDiscoveryDismissed();
+  if (key) {
+    dismissed.add(key);
+    _saveDiscoveryDismissed(dismissed);
+  }
+  card.classList.add('dismissing');
+  setTimeout(() => card.remove(), 220);
+}
+
+export function discoveryDownload(btn, encodedData, removeAfter = false) {
+  if (typeof window.triggerDownload === 'function') {
+    window.triggerDownload(encodedData);
+  }
+  btn.classList.add('liked');
+  if (removeAfter) {
+    const card = btn.closest('.discovery-card');
+    if (card) {
+      card.classList.add('dismissing');
+      setTimeout(() => card.remove(), 220);
+    }
+  }
+}
