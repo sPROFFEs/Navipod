@@ -1173,3 +1173,52 @@
     cursor: pointer;
     accent-color: #1DB954;
 }
+
+/* Crossfade discrete chip group ----------------------------------------- */
+.playback-chip-group {
+    display: inline-flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+.playback-chip {
+    min-width: 44px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--surface-2, rgba(255, 255, 255, 0.05));
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    color: var(--text-sub, rgba(255, 255, 255, 0.7));
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.playback-chip:hover {
+    background: var(--surface-3, rgba(255, 255, 255, 0.09));
+    color: var(--text-main, #fff);
+}
+.playback-chip.active {
+    background: rgba(29, 185, 84, 0.18);
+    border-color: rgba(29, 185, 84, 0.6);
+    color: #6ee7a7;
+}
+
+/* Save button row ------------------------------------------------------- */
+.playback-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding-top: 16px;
+    margin-top: 8px;
+    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+}
+.playback-save-hint {
+    color: var(--text-sub, rgba(255, 255, 255, 0.55));
+    font-size: 0.8rem;
+    font-style: italic;
+}
+#pref-save-btn[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+}

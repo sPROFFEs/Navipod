@@ -651,50 +651,109 @@
                             in your library. Tracks without tags are unaffected.
                         </span>
                     </div>
-                    <input type="checkbox" id="pref-replaygain" onchange="updateReplayGainPref(this.checked)">
+                    <input type="checkbox" id="pref-replaygain">
                 </label>
 
-                <label class="playback-pref">
+                <div class="playback-pref">
                     <div class="playback-pref-info">
-                        <strong>Crossfade between tracks (seconds)</strong>
+                        <strong>Crossfade between tracks</strong>
                         <span class="playback-pref-help">
                             Fade-out / fade-in across track boundaries.
-                            <em>0</em> turns it off. Try <em>2&ndash;4</em>.
+                            <em>Off</em> disables crossfade entirely.
                         </span>
                     </div>
-                    <input type="number" id="pref-crossfade" min="0" max="12" step="1"
-                           class="user-settings-input" style="width: 80px; text-align: right;"
-                           onchange="updateCrossfadePref(this.value)">
-                </label>
+                    <div class="playback-chip-group" id="pref-crossfade-chips" role="radiogroup"
+                         aria-label="Crossfade duration">
+                        <!-- Discrete options keep things tidy and steer users away from
+                             pathological values (e.g. 12s on 30s tracks). -->
+                        <button type="button" class="playback-chip" data-value="0">Off</button>
+                        <button type="button" class="playback-chip" data-value="2">2s</button>
+                        <button type="button" class="playback-chip" data-value="4">4s</button>
+                        <button type="button" class="playback-chip" data-value="6">6s</button>
+                        <button type="button" class="playback-chip" data-value="8">8s</button>
+                    </div>
+                </div>
+
+                <div class="user-settings-actions playback-actions">
+                    <span id="pref-save-hint" class="playback-save-hint" aria-live="polite"></span>
+                    <button type="button" id="pref-save-btn" class="user-settings-button" disabled>
+                        <i data-lucide="save" width="16" height="16"></i>
+                        <span>Save changes</span>
+                    </button>
+                </div>
             </div>
             <script>
-              // Initialize the controls from localStorage so the saved prefs
-              // are reflected even if the JS modules haven't finished booting.
+              // Self-contained pref editor:
+              // - Reads saved values into the controls on mount
+              // - Tracks "dirty" state vs the saved values; the Save
+              //   button only enables when something actually changed
+              // - On Save, persists to localStorage and (if the JS app
+              //   modules are loaded) tells the audio engine right away
+              //   so the change applies without a reload.
               (function initPlaybackPrefs() {
+                var RG_KEY = 'navipod.replaygain.enabled';
+                var XF_KEY = 'navipod.crossfade.seconds';
+                var ALLOWED_XF = [0, 2, 4, 6, 8];
+
+                var rgEl = document.getElementById('pref-replaygain');
+                var chipsEl = document.getElementById('pref-crossfade-chips');
+                var saveBtn = document.getElementById('pref-save-btn');
+                var hintEl = document.getElementById('pref-save-hint');
+                if (!rgEl || !chipsEl || !saveBtn) return;
+
+                var savedRg = false;
+                var savedXf = 0;
                 try {
-                  var rg = localStorage.getItem('navipod.replaygain.enabled') === '1';
-                  var xf = parseInt(localStorage.getItem('navipod.crossfade.seconds') || '0', 10) || 0;
-                  var rgEl = document.getElementById('pref-replaygain');
-                  var xfEl = document.getElementById('pref-crossfade');
-                  if (rgEl) rgEl.checked = rg;
-                  if (xfEl) xfEl.value = xf;
+                  savedRg = localStorage.getItem(RG_KEY) === '1';
+                  var n = parseInt(localStorage.getItem(XF_KEY) || '0', 10) || 0;
+                  savedXf = ALLOWED_XF.indexOf(n) >= 0 ? n : 0;
                 } catch (e) {}
+
+                rgEl.checked = savedRg;
+
+                var pendingXf = savedXf;
+                function paintChips(value) {
+                  Array.prototype.forEach.call(chipsEl.querySelectorAll('.playback-chip'), function (b) {
+                    var v = parseInt(b.dataset.value, 10);
+                    b.classList.toggle('active', v === value);
+                    b.setAttribute('aria-checked', v === value ? 'true' : 'false');
+                  });
+                }
+                paintChips(pendingXf);
+
+                function refreshDirty() {
+                  var dirty = (rgEl.checked !== savedRg) || (pendingXf !== savedXf);
+                  saveBtn.disabled = !dirty;
+                  if (hintEl) hintEl.textContent = dirty ? 'Unsaved changes' : '';
+                }
+
+                rgEl.addEventListener('change', refreshDirty);
+                chipsEl.addEventListener('click', function (e) {
+                  var btn = e.target.closest('.playback-chip');
+                  if (!btn) return;
+                  pendingXf = parseInt(btn.dataset.value, 10) || 0;
+                  paintChips(pendingXf);
+                  refreshDirty();
+                });
+
+                saveBtn.addEventListener('click', function () {
+                  try {
+                    localStorage.setItem(RG_KEY, rgEl.checked ? '1' : '0');
+                    localStorage.setItem(XF_KEY, String(pendingXf));
+                  } catch (e) {}
+                  if (window.audioEngineSetReplayGain) window.audioEngineSetReplayGain(rgEl.checked);
+                  if (window.audioEngineSetCrossfade)  window.audioEngineSetCrossfade(pendingXf);
+                  savedRg = rgEl.checked;
+                  savedXf = pendingXf;
+                  refreshDirty();
+                  if (hintEl) {
+                    hintEl.textContent = 'Saved';
+                    setTimeout(function () { if (hintEl.textContent === 'Saved') hintEl.textContent = ''; }, 1800);
+                  }
+                });
+
+                refreshDirty();
               })();
-              window.updateReplayGainPref = function (on) {
-                if (window.audioEngineSetReplayGain) {
-                  window.audioEngineSetReplayGain(on);
-                } else {
-                  try { localStorage.setItem('navipod.replaygain.enabled', on ? '1' : '0'); } catch (e) {}
-                }
-              };
-              window.updateCrossfadePref = function (seconds) {
-                var n = Math.max(0, Math.min(12, parseInt(seconds, 10) || 0));
-                if (window.audioEngineSetCrossfade) {
-                  window.audioEngineSetCrossfade(n);
-                } else {
-                  try { localStorage.setItem('navipod.crossfade.seconds', String(n)); } catch (e) {}
-                }
-              };
             </script>
         </section>
 
