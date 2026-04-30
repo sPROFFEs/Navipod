@@ -93,6 +93,101 @@ function initUserSettingsView(container) {
       renderSecretToggleIcon(button, reveal);
     });
   });
+
+  // ── Playback prefs ────────────────────────────────────────────────
+  // The settings page comes in via renderExternalView (DOMParser +
+  // replaceChildren), which silently drops inline <script> elements.
+  // So we wire the chip-group + Save logic from here, where the JS
+  // module IS loaded. The HTML uses inline onclick="" attrs that call
+  // window-exposed helpers — those work because the attribute is
+  // evaluated at click-time rather than at parse-time.
+  initPlaybackPrefs(userSettingsShell);
+}
+
+// Module-scoped state for the playback prefs editor. We keep the
+// "saved" baseline alongside the "pending" edit so the Save button
+// only enables when there's a real diff.
+let _prefsState = null;
+
+function initPlaybackPrefs(shell) {
+  const RG_KEY = 'navipod.replaygain.enabled';
+  const XF_KEY = 'navipod.crossfade.seconds';
+  const ALLOWED_XF = [0, 2, 4, 6, 8];
+
+  const rgEl    = shell.querySelector('#pref-replaygain');
+  const chipsEl = shell.querySelector('#pref-crossfade-chips');
+  const saveBtn = shell.querySelector('#pref-save-btn');
+  const hintEl  = shell.querySelector('#pref-save-hint');
+  if (!rgEl || !chipsEl || !saveBtn) return;
+
+  let savedRg = false;
+  let savedXf = 0;
+  try {
+    savedRg = localStorage.getItem(RG_KEY) === '1';
+    const n = parseInt(localStorage.getItem(XF_KEY) || '0', 10) || 0;
+    savedXf = ALLOWED_XF.indexOf(n) >= 0 ? n : 0;
+  } catch (_) {}
+
+  rgEl.checked = savedRg;
+  let pendingXf = savedXf;
+
+  _prefsState = {
+    rgEl, chipsEl, saveBtn, hintEl,
+    savedRg, savedXf,
+    pendingXf,
+    RG_KEY, XF_KEY,
+  };
+
+  paintCrossfadeChips(pendingXf);
+  refreshPlaybackPrefsDirty();
+}
+
+function paintCrossfadeChips(value) {
+  if (!_prefsState) return;
+  const { chipsEl } = _prefsState;
+  chipsEl.querySelectorAll('.playback-chip').forEach((b) => {
+    const v = parseInt(b.dataset.value, 10);
+    b.classList.toggle('active', v === value);
+    b.setAttribute('aria-checked', v === value ? 'true' : 'false');
+  });
+}
+
+function refreshPlaybackPrefsDirty() {
+  if (!_prefsState) return;
+  const { rgEl, saveBtn, hintEl, savedRg, savedXf, pendingXf } = _prefsState;
+  const dirty = (rgEl.checked !== savedRg) || (pendingXf !== savedXf);
+  saveBtn.disabled = !dirty;
+  if (hintEl) hintEl.textContent = dirty ? 'Unsaved changes' : '';
+}
+
+// Window-exposed helpers (called from inline onclick="" in user_settings.html)
+export function setCrossfadePending(value) {
+  if (!_prefsState) return;
+  _prefsState.pendingXf = parseInt(value, 10) || 0;
+  paintCrossfadeChips(_prefsState.pendingXf);
+  refreshPlaybackPrefsDirty();
+}
+
+export function markPlaybackPrefsDirty() {
+  refreshPlaybackPrefsDirty();
+}
+
+export function savePlaybackPrefs() {
+  if (!_prefsState) return;
+  const { rgEl, hintEl, RG_KEY, XF_KEY, pendingXf } = _prefsState;
+  try {
+    localStorage.setItem(RG_KEY, rgEl.checked ? '1' : '0');
+    localStorage.setItem(XF_KEY, String(pendingXf));
+  } catch (_) {}
+  if (window.audioEngineSetReplayGain) window.audioEngineSetReplayGain(rgEl.checked);
+  if (window.audioEngineSetCrossfade)  window.audioEngineSetCrossfade(pendingXf);
+  _prefsState.savedRg = rgEl.checked;
+  _prefsState.savedXf = pendingXf;
+  refreshPlaybackPrefsDirty();
+  if (hintEl) {
+    hintEl.textContent = 'Saved';
+    setTimeout(() => { if (hintEl.textContent === 'Saved') hintEl.textContent = ''; }, 1800);
+  }
 }
 
 // === VIEW ROUTING ===

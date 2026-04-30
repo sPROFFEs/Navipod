@@ -145,6 +145,9 @@ window.showTrackActionsSheet = views.showTrackActionsSheet;
 window.closeTrackActionsSheet = views.closeTrackActionsSheet;
 window.renderArtist = views.renderArtist;
 window.startSmartRadio = views.startSmartRadio;
+window.setCrossfadePending = views.setCrossfadePending;
+window.markPlaybackPrefsDirty = views.markPlaybackPrefsDirty;
+window.savePlaybackPrefs = views.savePlaybackPrefs;
 
 // Drop the user into the search view with a pre-filled query and run
 // it immediately. Used by the artist view's "Complete this album" CTA
