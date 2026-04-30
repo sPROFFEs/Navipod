@@ -1706,10 +1706,15 @@ function _discoveryCard(item) {
             <img src="${cover}" alt="${title}" class="discovery-cover"
                  loading="lazy" decoding="async"
                  onerror="this.src='/static/img/default_cover.png'">
-            ${preview ? `
-              <button class="discovery-play-btn" onclick="discoveryTogglePreview(this, '${encodeURIComponent(preview)}')">
-                  <i data-lucide="play"></i>
-              </button>` : ''}
+            <!-- Play button is always shown — discoveryTogglePreview now
+                 routes through /api/playback/preview which resolves any
+                 source (Spotify/YouTube/Last.fm/MB) to a YouTube preview
+                 stream, so the user can audition every card. -->
+            <button class="discovery-play-btn"
+                    onclick="discoveryTogglePreview(this, '${data}')"
+                    title="Preview">
+                <i data-lucide="play"></i>
+            </button>
             <span class="discovery-source-badge" style="color: ${srcMeta.color}">
                 <i data-lucide="${srcMeta.icon}"></i>
             </span>
@@ -1772,9 +1777,31 @@ export async function renderDiscovery(container) {
 
 // ── Discovery handlers (window-exposed via main.js) ─────────────────
 
-export function discoveryTogglePreview(btn, encodedUrl) {
-  const url = decodeURIComponent(encodedUrl || '');
-  if (!url) return;
+export function discoveryTogglePreview(btn, encodedData) {
+  // The card now passes the full encoded track payload (same shape as
+  // createTrackRow) and we resolve to a playable URL via the existing
+  // /api/playback/preview endpoint — same path the eye-icon uses, so
+  // every card has a working ▶ regardless of source. Spotify previews
+  // were unreliable since their late-2024 API change; YouTube fallback
+  // works for everything.
+  let track;
+  try {
+    track = JSON.parse(decodeURIComponent(atob(encodedData)));
+  } catch {
+    return;
+  }
+  if (!track || (!track.id && !track.title)) return;
+
+  // Build the preview URL the same way playPreview does. We pass both
+  // url and title so the backend can pick the cheapest path (Spotify
+  // embed redirect for spotify ids, YouTube search fallback otherwise).
+  const params = new URLSearchParams();
+  if (track.id) params.set('url', track.id);
+  if (track.title) params.set('title', `${track.artist || ''} ${track.title}`.trim());
+  if (track.source === 'spotify' && track.id && track.id.includes('track/')) {
+    params.set('spotify_id', track.id.split('track/').pop().split('?')[0]);
+  }
+  const previewUrl = `${state.API}/playback/preview?${params.toString()}`;
 
   // Single shared <audio> for previews — pause the previous if any.
   let audio = window.__discoveryPreviewAudio;
@@ -1786,21 +1813,24 @@ export function discoveryTogglePreview(btn, encodedUrl) {
     window.__discoveryPreviewAudio = audio;
   }
 
-  // Toggle on the same track
-  const playingThis = audio.src && audio.src.indexOf(url) >= 0 && !audio.paused;
+  // Toggle off if this same card is already playing.
+  const playingThis = audio.dataset.cardKey === btn.closest('.discovery-card')?.dataset.key && !audio.paused;
   if (playingThis) {
     audio.pause();
     _discoveryResetAllPlayIcons();
     return;
   }
 
-  // Stop any other preview, switch to this one
   audio.pause();
   _discoveryResetAllPlayIcons();
-  audio.src = url;
-  audio.play().catch((e) => console.warn('[DISCOVERY] preview play failed', e));
+  audio.src = previewUrl;
+  audio.dataset.cardKey = btn.closest('.discovery-card')?.dataset.key || '';
+  audio.play().catch((e) => {
+    console.warn('[DISCOVERY] preview play failed', e);
+    ui.showToast('Could not play preview', 'error');
+    _discoveryResetAllPlayIcons();
+  });
 
-  // Flip this button's icon to pause
   const icon = btn.querySelector('i');
   if (icon) {
     icon.setAttribute('data-lucide', 'pause');
