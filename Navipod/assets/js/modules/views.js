@@ -2063,27 +2063,17 @@ export async function startSmartRadio(artist, title) {
   }
   ui.showToast('Starting radio…', 'info');
 
+  // Backend returns LOCAL library tracks (real db_id) sorted by
+  // Last.fm similarity to the seed. No external resolution at play
+  // time — the existing /api/stream pipeline handles them like any
+  // other library track.
   const data = await api.fetchSmartRadio(artist, title || '', 30);
-  if (!data || !(data.seeds || []).length) {
-    ui.showToast('No radio seeds found for this track', 'error');
+  const queue = (data && data.tracks) || [];
+
+  if (!queue.length) {
+    ui.showToast('Need more tracks in your library to build a radio', 'error');
     return;
   }
-
-  // Build playable items the existing player can consume. We use the
-  // ytsearch1: pseudo-id format that the streaming endpoint already
-  // resolves transparently — the same pattern Last.fm/MusicBrainz
-  // recommendations use elsewhere in the app.
-  const queue = data.seeds.map((s) => ({
-    id: `ytsearch1:${s.artist} ${s.title} official audio`,
-    title: s.title,
-    artist: s.artist,
-    album: 'Smart Radio',
-    thumbnail: `/api/cover/resolve?artist=${encodeURIComponent(s.artist)}&title=${encodeURIComponent(s.title)}`,
-    is_local: false,
-    source: 'lastfm',
-  }));
-
-  if (!queue.length) return;
 
   state.setCurrentViewList(queue);
   state.setContextQueue([...queue]);

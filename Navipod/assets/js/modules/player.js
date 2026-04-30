@@ -513,7 +513,7 @@ export function setupYouTubePlayer() {
 export function updatePlayerUI(track) {
   if (!track) return;
   document.getElementById('player-title').textContent = track.title || 'Unknown';
-  document.getElementById('player-artist').textContent = track.artist || 'Unknown';
+  _setArtistLabel(document.getElementById('player-artist'), track.artist);
   document.getElementById('player-cover').src = track.thumbnail || '/static/img/default_cover.png';
 
   syncPlayerShellVisibility(track);
@@ -542,10 +542,40 @@ export function updatePlayerUI(track) {
   const fsArtist = document.getElementById('fs-artist');
   const fsCover = document.getElementById('fs-cover');
   if (fsTitle) fsTitle.textContent = track.title || 'Unknown';
-  if (fsArtist) fsArtist.textContent = track.artist || 'Unknown';
+  _setArtistLabel(fsArtist, track.artist);
   if (fsCover) fsCover.src = track.thumbnail || '/static/img/default_cover.png';
 
   lucide.createIcons();
+}
+
+// Replace the artist label content with a clickable link that routes
+// to the artist view. We rebuild the inner HTML each time the track
+// changes (rather than wrapping once at boot) because the existing
+// code paths may overwrite textContent and we want both to work.
+function _setArtistLabel(el, artist) {
+  if (!el) return;
+  const name = artist || 'Unknown';
+  if (!artist || artist === 'Unknown') {
+    el.textContent = name;
+    el.style.cursor = 'default';
+    el.onclick = null;
+    return;
+  }
+  // Use textContent for safety; handler navigates to the artist view.
+  el.textContent = name;
+  el.style.cursor = 'pointer';
+  el.classList.add('artist-link-inline');
+  el.onclick = (e) => {
+    e.stopPropagation();
+    if (typeof window.loadView === 'function') {
+      window.loadView('artist', name);
+      // If we're in the fullscreen player, collapse it so the artist
+      // view is actually visible underneath.
+      if (state.isFullscreenPlayerOpen && typeof window.toggleFullscreenPlayer === 'function') {
+        window.toggleFullscreenPlayer();
+      }
+    }
+  };
 }
 
 // === UPDATE PLAYER FOR PREVIEW (Non-local tracks) ===
@@ -554,7 +584,7 @@ export function updatePlayerUIForPreview(track) {
   if (!track) return;
 
   document.getElementById('player-title').textContent = track.title || 'Preview';
-  document.getElementById('player-artist').textContent = track.artist || 'Unknown';
+  _setArtistLabel(document.getElementById('player-artist'), track.artist);
   document.getElementById('player-cover').src = track.thumbnail || '/static/img/default_cover.png';
 
   syncPlayerShellVisibility(track);
@@ -570,7 +600,7 @@ export function updatePlayerUIForPreview(track) {
   const fsArtist = document.getElementById('fs-artist');
   const fsCover = document.getElementById('fs-cover');
   if (fsTitle) fsTitle.textContent = track.title || 'Preview';
-  if (fsArtist) fsArtist.textContent = track.artist || 'Unknown';
+  _setArtistLabel(fsArtist, track.artist);
   if (fsCover) fsCover.src = track.thumbnail || '/static/img/default_cover.png';
 
   lucide.createIcons();

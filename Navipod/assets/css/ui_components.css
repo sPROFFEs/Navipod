@@ -1222,3 +1222,12 @@
     opacity: 0.45;
     cursor: not-allowed;
 }
+
+/* Clickable artist label inside the mini player + fullscreen player */
+.artist-link-inline {
+    transition: color 0.12s ease;
+}
+.artist-link-inline:hover {
+    color: var(--text-main, #fff);
+    text-decoration: underline;
+}
