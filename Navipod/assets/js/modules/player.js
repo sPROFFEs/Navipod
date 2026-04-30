@@ -732,36 +732,45 @@ export async function playFederatedTrack(data) {
   state.setCurrentTrack(track);
   updatePlayerUIForPreview(track);
 
-  // Pre-flight HEAD-style probe via fetch — gives us a clean error
-  // message ("Source is offline") instead of letting the <audio>
-  // element fail silently.
-  try {
-    const probe = await fetch(proxyUrl, {
-      method: 'GET',
-      headers: { Range: 'bytes=0-1' },
-    });
-    if (probe.status === 503) {
-      ui.showToast('That track is on a server that is currently offline.', 'error');
-      return;
-    }
-    if (!probe.ok && probe.status !== 206) {
-      ui.showToast('Could not load federated track', 'error');
-      return;
-    }
-  } catch (e) {
-    ui.showToast('Could not reach federated source', 'error');
-    return;
-  }
-
+  // Hand the URL straight to the <audio> element. The proxy already
+  // returns 503 for offline peers, which the audio element surfaces
+  // as a network error — we listen for it once below and translate
+  // to a clean toast. (The previous pre-flight probe was over-eager
+  // and aborted on transient blips that the player itself would have
+  // tolerated.)
   state.audio.src = proxyUrl;
+
+  // One-shot error handler scoped to this play attempt. We probe the
+  // status ourselves only AFTER we know playback failed, so we can
+  // tell the user "offline" vs. generic "could not play".
+  const onErr = async () => {
+    state.audio.removeEventListener('error', onErr);
+    try {
+      const probe = await fetch(proxyUrl, { method: 'GET', headers: { Range: 'bytes=0-1' } });
+      if (probe.status === 503) {
+        ui.showToast('That track is on a server that is currently offline.', 'error');
+      } else {
+        ui.showToast('Could not play federated track', 'error');
+      }
+    } catch {
+      ui.showToast('Could not reach federated source', 'error');
+    }
+  };
+  state.audio.addEventListener('error', onErr, { once: true });
+
   try {
     await state.audio.play();
+    // Success — drop the error listener so we don't react to later
+    // (unrelated) audio errors as if this play attempt failed.
+    state.audio.removeEventListener('error', onErr);
     state.setIsPlaying(true);
     ui.updatePlayButton();
     if (window.onLyricsTrackChange) window.onLyricsTrackChange(track);
   } catch (e) {
+    if (e.name === 'AbortError') return;
     console.error('Federated playback error:', e);
-    ui.showToast('Federated playback failed', 'error');
+    // Fall through — `onErr` will handle the toast if the audio
+    // element also fired an error event.
   }
 }
 
