@@ -1166,6 +1166,19 @@ def _migration_019_federation(conn):
     ))
 
 
+def _migration_021_federation_token_prefix(conn):
+    # Fast-path lookup column for token verification. Existing rows
+    # (issued under the old O(N) bcrypt-everyone scheme) keep NULL
+    # prefix and fall through to the slow path; admins should rotate
+    # them at their leisure. New tokens populate the column.
+    cols = [r[1] for r in conn.execute(text("PRAGMA table_info(federation_outbound_peers)")).fetchall()]
+    if "token_prefix" not in cols:
+        conn.execute(text("ALTER TABLE federation_outbound_peers ADD COLUMN token_prefix TEXT"))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_fed_outbound_token_prefix ON federation_outbound_peers(token_prefix)"
+    ))
+
+
 def _migration_020_federation_outbound_peers(conn):
     conn.execute(text("""
         CREATE TABLE IF NOT EXISTS federation_outbound_peers (
@@ -1205,6 +1218,7 @@ MIGRATIONS = [
     ("018_track_delete_requests_relax_fk", _migration_018_track_delete_requests_relax_fk),
     ("019_federation", _migration_019_federation),
     ("020_federation_outbound_peers", _migration_020_federation_outbound_peers),
+    ("021_federation_token_prefix", _migration_021_federation_token_prefix),
 ]
 
 

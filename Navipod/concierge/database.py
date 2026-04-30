@@ -414,11 +414,20 @@ class FederationOutboundPeer(Base):
     is online and when they last connected.
 
     `token_hash` is a bcrypt hash of the cleartext token — we never
-    store the plaintext after creation. To validate an incoming
-    federated request we iterate over all non-revoked peers and run
-    `verify_password`. That scales by # of peers, not # of users; in
-    practice O(few-dozen) per request and bcrypt is intentionally
-    slow so this also rate-limits brute-force attempts.
+    store the plaintext after creation.
+
+    `token_prefix` is the first 12 chars of the cleartext, stored as
+    a fast-path index for verification. On an incoming request we
+    look up by prefix first (one indexed query) and only run the
+    expensive bcrypt comparison against the matching row(s). With
+    `secrets.token_urlsafe(40)` collisions on a 12-char prefix are
+    astronomically unlikely (>10^21). Without this column, every
+    federation request would bcrypt-verify against EVERY peer in the
+    table — an O(N) DoS vector since each bcrypt is ~100ms.
+
+    Legacy rows (issued before 020 → 021 migration) have NULL prefix;
+    they fall through to the slow scan path until the admin rotates
+    that token.
     """
     __tablename__ = "federation_outbound_peers"
 
@@ -426,6 +435,7 @@ class FederationOutboundPeer(Base):
     name = Column(String, nullable=False)              # admin-chosen label
     peer_url = Column(String, nullable=True)           # optional, e.g. "https://music.example.com"
     token_hash = Column(String, nullable=False)
+    token_prefix = Column(String, index=True, nullable=True)
     revoked = Column(Boolean, default=False, nullable=False)
     revoked_at = Column(DateTime(timezone=True), nullable=True)
 

@@ -53,18 +53,14 @@ CONNECT_TIMEOUT_S = 5.0
 READ_TIMEOUT_S = 15.0
 
 
-# Async lock so we never run two sync passes for the same instance
-# concurrently (e.g. user clicks "sync now" while the periodic sweep
-# is mid-run).
-_sync_locks: dict[int, asyncio.Lock] = {}
-
-
-def _lock_for(instance_id: int) -> asyncio.Lock:
-    lock = _sync_locks.get(instance_id)
-    if lock is None:
-        lock = asyncio.Lock()
-        _sync_locks[instance_id] = lock
-    return lock
+# Set of instance ids currently being synced. Single-threaded asyncio
+# guarantees that the `add` after the membership check is atomic
+# (no `await` between them), so the check-then-set race that an
+# `asyncio.Lock` couldn't avoid is not possible here. A set also
+# self-cleans: removing an id on completion means the structure
+# never grows beyond the set of in-flight syncs (vs. the previous
+# `dict[id, Lock]` which held a Lock object per instance forever).
+_currently_syncing: set[int] = set()
 
 
 def _now() -> datetime:
@@ -138,11 +134,16 @@ async def sync_instance(db, instance: database.FederatedInstance) -> dict:
     gap. The remote returns rows ordered by id ASC; we use the highest
     id seen as the next cursor."""
 
-    lock = _lock_for(instance.id)
-    if lock.locked():
+    # Atomic check-and-claim: in single-threaded asyncio, no other
+    # coroutine can run between the membership test and the `.add`
+    # because there is no `await` between them. So if the id is
+    # already in the set, we are GUARANTEED to be a duplicate caller
+    # (manual sync racing the periodic sweep, e.g.) and skip cleanly.
+    if instance.id in _currently_syncing:
         return {"skipped": "already running"}
+    _currently_syncing.add(instance.id)
 
-    async with lock:
+    try:
         if not instance.enabled:
             return {"skipped": "disabled"}
 
@@ -219,6 +220,10 @@ async def sync_instance(db, instance: database.FederatedInstance) -> dict:
             db.commit()
             logger.warning("Federation sync failed for %s: %s", instance.name, e)
             return {"error": str(e), "added": total_added, "updated": total_updated}
+    finally:
+        # Always release the slot, including the `disabled` early-return
+        # path and any unhandled exception.
+        _currently_syncing.discard(instance.id)
 
 
 def _upsert_federated_track(db, instance_id: int, item: dict) -> tuple[int, int]:
@@ -288,6 +293,17 @@ async def _tick():
             .filter(database.FederatedInstance.enabled == True)  # noqa: E712
             .all()
         )
+
+        # Prune entries for instances that have been deleted or
+        # disabled since the last tick. Without this, both
+        # `_last_sync_run` and the (now-removed) `_sync_locks` would
+        # accumulate stale entries forever — and a re-used auto-
+        # increment id (rare but possible after vacuum) would inherit
+        # an old timestamp, suppressing the first sync of the new peer.
+        valid_ids = {inst.id for inst in instances}
+        for stale_id in list(_last_sync_run.keys() - valid_ids):
+            _last_sync_run.pop(stale_id, None)
+
         now = time.time()
         for inst in instances:
             await check_instance_health(db, inst)
