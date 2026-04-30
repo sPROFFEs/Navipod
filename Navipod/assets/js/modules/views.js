@@ -335,6 +335,12 @@ export async function renderExternalView(container, url) {
     if (url === '/user/settings') {
       initUserSettingsView(container);
     }
+    // Admin home page mounts the federation panel — bootstrap it the
+    // same way as user settings, since inline <script> blocks in the
+    // injected fragment are silently dropped by DOMParser+replaceChildren.
+    if (url === '/admin/' && typeof window.initAdminFederationPanel === 'function') {
+      window.initAdminFederationPanel(container);
+    }
 
     const scripts = doc.querySelectorAll('script[src]');
     for (const script of scripts) {

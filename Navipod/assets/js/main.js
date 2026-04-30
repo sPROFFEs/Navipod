@@ -190,6 +190,16 @@ window.adminFindDuplicates = admin.adminFindDuplicates;
 window.showDeleteTrackModal = admin.showDeleteTrackModal;
 window.adminDeleteTrack = admin.adminDeleteTrack;
 
+// Federation admin panel
+window.federationAddInstance = admin.federationAddInstance;
+window.federationSyncNow = admin.federationSyncNow;
+window.federationToggleEnabled = admin.federationToggleEnabled;
+window.federationDeleteInstance = admin.federationDeleteInstance;
+window.federationIssueToken = admin.federationIssueToken;
+window.federationRevokeOutbound = admin.federationRevokeOutbound;
+window.federationDeleteOutbound = admin.federationDeleteOutbound;
+window.initAdminFederationPanel = admin.initAdminFederationPanel;
+
 // === YOUTUBE API CALLBACK ===
 window.onYouTubeIframeAPIReady = () => {
   player.setupYouTubePlayer();
