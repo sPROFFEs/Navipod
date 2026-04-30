@@ -709,6 +709,28 @@ async def reset_playlist_cover(playlist_id: int, request: Request, db: Session =
     return JSONResponse({"status": "ok", "thumbnail": _playlist_cover_url(playlist.id)})
 
 
+@router.get("/api/tracks/{track_id}/playlists")
+async def get_playlists_containing_track(track_id: int, request: Request, db: Session = Depends(get_db)):
+    """Returns the IDs of playlists owned by the current user that
+    already contain this track. The "Add to playlist" modal uses this
+    to render a green check (already added) instead of a "+" button
+    on those playlists, so the user can't trigger the duplicate-add
+    error from the UI."""
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    rows = (
+        db.query(database.PlaylistItem.playlist_id)
+        .join(database.Playlist, database.PlaylistItem.playlist_id == database.Playlist.id)
+        .filter(database.Playlist.owner_id == user.id)
+        .filter(database.PlaylistItem.track_id == track_id)
+        .distinct()
+        .all()
+    )
+    return JSONResponse({"playlist_ids": [r[0] for r in rows]})
+
+
 @router.post("/api/playlists/{playlist_id}/add")
 async def add_to_playlist(playlist_id: int, req: AddToPlaylistRequest, request: Request, db: Session = Depends(get_db)):
     """Add track to playlist"""

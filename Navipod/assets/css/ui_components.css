@@ -1444,3 +1444,21 @@
     border: 1px solid rgba(220, 38, 38, 0.5);
     color: #fca5a5;
 }
+
+/* Add-to-playlist modal: rows where the track is already a member.
+   Show a green check, dim the row a touch, kill hover/cursor so it
+   doesn't look like an add target. */
+.modal-playlist-item--member {
+    cursor: default;
+    opacity: 0.78;
+}
+.modal-playlist-item--member:hover {
+    background: transparent !important;
+    transform: none !important;
+}
+.modal-playlist-check-icon {
+    color: #1DB954;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+}

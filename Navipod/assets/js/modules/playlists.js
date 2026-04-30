@@ -405,27 +405,54 @@ export function playPlaylistShuffle() {
 
 // === MODALS ===
 
-export function showAddToPlaylistModal(trackId) {
+export async function showAddToPlaylistModal(trackId) {
   const editablePlaylists = state.userPlaylists.filter((p) => p.is_editable !== false);
+
+  // Fetch which of those playlists already contain this track so we
+  // can render a green check (already added) instead of a "+" button
+  // on those rows. Network call is local — ~10–50 ms — so we await
+  // before rendering to avoid a flicker between the two states.
+  let alreadyIn = new Set();
+  if (trackId && editablePlaylists.length) {
+    try {
+      const r = await fetch(`${state.API}/tracks/${trackId}/playlists`, { credentials: 'include' });
+      if (r.ok) {
+        const d = await r.json();
+        alreadyIn = new Set(d.playlist_ids || []);
+      }
+    } catch {
+      // On failure we just render everything as addable; the backend
+      // /add endpoint will still reject duplicates with a clear toast.
+    }
+  }
+
+  const renderItem = (p) => {
+    const isMember = alreadyIn.has(p.id);
+    const thumb = p.thumbnail || '/static/img/default_cover.png';
+    const trackCount = p.track_count || 0;
+    const trailing = isMember
+      ? `<i data-lucide="check-circle-2" class="modal-playlist-check-icon" title="Already in this playlist"></i>`
+      : `<i data-lucide="plus-circle" class="modal-playlist-add-icon"></i>`;
+    // Member rows are NOT clickable — we communicate "already added"
+    // visually and avoid the dup-add backend error entirely.
+    const clickAttr = isMember ? '' : `onclick="addToPlaylist(${p.id}, ${trackId})"`;
+    const stateClass = isMember ? 'modal-playlist-item--member' : '';
+    return `
+        <div class="modal-playlist-item ${stateClass}" ${clickAttr}>
+            <div class="modal-playlist-thumb">
+                <img src="${thumb}" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'" alt="">
+            </div>
+            <div class="modal-playlist-info">
+                <span class="modal-playlist-name">${ui.escHtml(p.name)}</span>
+                <span class="modal-playlist-count">${trackCount} track${trackCount !== 1 ? 's' : ''}</span>
+            </div>
+            ${trailing}
+        </div>`;
+  };
+
   const playlistItems =
     editablePlaylists.length > 0
-      ? editablePlaylists
-          .map((p) => {
-            const thumb = p.thumbnail || '/static/img/default_cover.png';
-            const trackCount = p.track_count || 0;
-            return `
-                <div class="modal-playlist-item" onclick="addToPlaylist(${p.id}, ${trackId})">
-                    <div class="modal-playlist-thumb">
-                        <img src="${thumb}" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'" alt="">
-                    </div>
-                    <div class="modal-playlist-info">
-                        <span class="modal-playlist-name">${ui.escHtml(p.name)}</span>
-                        <span class="modal-playlist-count">${trackCount} track${trackCount !== 1 ? 's' : ''}</span>
-                    </div>
-                    <i data-lucide="plus-circle" class="modal-playlist-add-icon"></i>
-                </div>`;
-          })
-          .join('')
+      ? editablePlaylists.map(renderItem).join('')
       : '<p class="modal-empty">No editable playlists available. Create one below!</p>';
 
   const html = `<div class="modal-overlay" onclick="closeModal()">
