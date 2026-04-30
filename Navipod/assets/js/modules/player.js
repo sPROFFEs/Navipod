@@ -749,9 +749,21 @@ export async function playFederatedTrack(data) {
       const probe = await fetch(proxyUrl, { method: 'GET', headers: { Range: 'bytes=0-1' } });
       if (probe.status === 503) {
         ui.showToast('That track is on a server that is currently offline.', 'error');
-      } else {
-        ui.showToast('Could not play federated track', 'error');
+        return;
       }
+      // The proxy returns 502 with a JSON body when the upstream
+      // rejected the request. Surface the upstream status so the
+      // admin / user can debug (bad token, deleted track, etc.).
+      if (probe.status === 502) {
+        try {
+          const body = await probe.json();
+          ui.showToast(body.error || 'Federated source unreachable', 'error');
+        } catch {
+          ui.showToast('Federated source unreachable', 'error');
+        }
+        return;
+      }
+      ui.showToast(`Could not play federated track (HTTP ${probe.status})`, 'error');
     } catch {
       ui.showToast('Could not reach federated source', 'error');
     }

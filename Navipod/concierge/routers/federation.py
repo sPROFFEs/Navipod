@@ -479,59 +479,79 @@ async def federation_proxy_stream(
 
     # Forward Range header to preserve seeking.
     upstream_headers = {
-        "Authorization": f"Bearer {inst.api_token}" if inst.api_token else "",
         "User-Agent": "Navipod-Federation/1.0",
     }
+    if inst.api_token:
+        upstream_headers["Authorization"] = f"Bearer {inst.api_token}"
     if request.headers.get("range"):
         upstream_headers["Range"] = request.headers["range"]
 
     upstream_url = inst.base_url.rstrip("/") + f"/api/federation/stream/{remote_id}"
 
+    # Open the upstream stream RIGHT NOW (not lazily inside the
+    # generator) so we can inspect the upstream response status and
+    # headers BEFORE we commit to a status code on our own response.
+    # This avoids the previous bug where we returned a 200/206 wrapper
+    # around an upstream 4xx — the browser saw an empty body and
+    # raised a generic media error.
+    import httpx
+    upstream_client = httpx.AsyncClient(timeout=30.0)
+    try:
+        upstream_req = upstream_client.build_request("GET", upstream_url, headers=upstream_headers)
+        upstream_resp = await upstream_client.send(upstream_req, stream=True)
+    except Exception as e:
+        await upstream_client.aclose()
+        logger.warning("Federation upstream connect failed for inst=%s remote=%s: %s", instance_id, remote_id, e)
+        return JSONResponse(
+            {"error": "Could not reach federated source"},
+            status_code=502,
+        )
+
+    if upstream_resp.status_code >= 400:
+        # Surface the real upstream status so the frontend can give a
+        # clean error (401 = bad/revoked token, 404 = track gone, etc.)
+        body_preview = (await upstream_resp.aread())[:200]
+        await upstream_resp.aclose()
+        await upstream_client.aclose()
+        logger.warning(
+            "Federation upstream rejected inst=%s remote=%s: HTTP %s — %r",
+            instance_id, remote_id, upstream_resp.status_code, body_preview,
+        )
+        return JSONResponse(
+            {"error": f"Upstream returned {upstream_resp.status_code}"},
+            status_code=502,
+        )
+
+    # Forward the headers the audio element actually cares about.
+    forwarded_headers = {}
+    for key in ("content-type", "content-length", "content-range", "accept-ranges"):
+        if key in upstream_resp.headers:
+            forwarded_headers[key.title()] = upstream_resp.headers[key]
+    if "Accept-Ranges" not in forwarded_headers:
+        forwarded_headers["Accept-Ranges"] = "bytes"
+
+    media_type = upstream_resp.headers.get("content-type", "audio/mpeg")
+    upstream_status = upstream_resp.status_code  # 200 or 206
+
     async def _streamer():
         try:
-            async with http_client.stream("GET", upstream_url, headers=upstream_headers, timeout=30.0) as resp:
-                # Mirror upstream status + key headers to the client.
-                if resp.status_code >= 400:
-                    return
-                async for chunk in resp.aiter_bytes(PROXY_CHUNK_BYTES):
-                    yield chunk
+            async for chunk in upstream_resp.aiter_bytes(PROXY_CHUNK_BYTES):
+                yield chunk
         except Exception as e:
-            logger.warning("Federation stream proxy failed for inst=%s remote=%s: %s", instance_id, remote_id, e)
-
-    # Discover headers for the response: we open a HEAD-style probe
-    # to grab content-type / content-length / accept-ranges from
-    # upstream. (httpx doesn't easily let us "peek" inside a stream
-    # context, so we issue a tiny Range request to see them.)
-    probe_headers = {**upstream_headers, "Range": "bytes=0-1"}
-    content_type = "audio/mpeg"
-    content_length = None
-    content_range = None
-    accept_ranges = "bytes"
-    try:
-        probe = await http_client.get(upstream_url, headers=probe_headers, timeout=10.0)
-        content_type = probe.headers.get("content-type", content_type)
-        # On a 206 the upstream gives us the full size in Content-Range
-        cr = probe.headers.get("content-range")
-        if cr and "/" in cr:
+            logger.warning("Federation stream interrupted for inst=%s remote=%s: %s", instance_id, remote_id, e)
+        finally:
             try:
-                content_length = int(cr.split("/")[-1])
+                await upstream_resp.aclose()
             except Exception:
-                content_length = None
-    except Exception as e:
-        logger.warning("Federation stream probe failed: %s", e)
+                pass
+            try:
+                await upstream_client.aclose()
+            except Exception:
+                pass
 
-    response_headers = {"Accept-Ranges": accept_ranges}
-    if content_length:
-        response_headers["Content-Length"] = str(content_length)
-
-    # If the client sent a Range, we want to relay 206 too — the
-    # upstream stream call will receive that header and emit a 206;
-    # but Starlette's StreamingResponse uses status 200 by default. We
-    # force 206 when the client requested a range so seeking works.
-    status = 206 if request.headers.get("range") else 200
     return StreamingResponse(
         _streamer(),
-        media_type=content_type,
-        status_code=status,
-        headers=response_headers,
+        media_type=media_type,
+        status_code=upstream_status,
+        headers=forwarded_headers,
     )
