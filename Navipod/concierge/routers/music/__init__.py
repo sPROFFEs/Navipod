@@ -5,6 +5,7 @@ Music module - Aggregates all music-related routers.
 from fastapi import APIRouter
 
 from . import (
+    artist,
     core,
     delete_requests,
     downloads,
@@ -39,6 +40,7 @@ router.include_router(recent_activity.router)
 router.include_router(personalization.router)
 router.include_router(playback_state.router)
 router.include_router(wrapped.router)
+router.include_router(artist.router)
 
 # Re-export the combined router
 __all__ = ["router"]

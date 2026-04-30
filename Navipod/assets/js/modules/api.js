@@ -371,6 +371,27 @@ export async function fetchDiscoveryFeed(limit = 20) {
   return { items: [], total: 0 };
 }
 
+export async function fetchArtist(name) {
+  try {
+    const res = await fetch(`${state.API}/artist/${encodeURIComponent(name)}`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[ARTIST] Fetch error:', e);
+  }
+  return null;
+}
+
+export async function fetchSmartRadio(artist, title, limit = 30) {
+  try {
+    const url = `${state.API}/radio/track?artist=${encodeURIComponent(artist)}&title=${encodeURIComponent(title)}&limit=${limit}`;
+    const res = await fetch(url);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('[RADIO] Smart radio fetch error:', e);
+  }
+  return null;
+}
+
 export async function fetchMixDetail(mixKey) {
   try {
     const res = await fetch(`${state.API}/mixes/${encodeURIComponent(mixKey)}`);

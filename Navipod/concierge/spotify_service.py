@@ -328,6 +328,90 @@ class SpotifyService:
             logger.warning("Spotify fetch error: %s", e)
             return []
 
+    async def get_artist_albums(self, client_id: str, client_secret: str, artist_id: str, country: str = "ES", limit: int = 30) -> list:
+        """List the artist's albums + singles (no compilations/appears_on
+        — those bloat discography views with greatest-hits-style noise)."""
+        token = await self._get_access_token(client_id, client_secret)
+        if not token or not artist_id:
+            return []
+
+        url = f"https://api.spotify.com/v1/artists/{artist_id}/albums"
+        headers = {"Authorization": f"Bearer {token}"}
+        params = {
+            "include_groups": "album,single",
+            "market": country,
+            "limit": min(50, max(1, limit)),
+        }
+        try:
+            resp = await self.client.get(url, headers=headers, params=params)
+            if resp.status_code != 200:
+                logger.warning("Spotify artist albums failed: %s", resp.status_code)
+                return []
+            data = resp.json()
+            seen = set()
+            out = []
+            for alb in data.get("items", []):
+                name = (alb.get("name") or "").strip()
+                if not name:
+                    continue
+                # Spotify often returns the same album twice across
+                # markets/editions; collapse on lowercase title to dedupe.
+                key = name.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                images = alb.get("images") or []
+                out.append({
+                    "id": alb.get("id"),
+                    "name": name,
+                    "type": alb.get("album_type", "album"),
+                    "release_date": alb.get("release_date", ""),
+                    "total_tracks": alb.get("total_tracks", 0),
+                    "image": images[0]["url"] if images else "",
+                    "url": (alb.get("external_urls") or {}).get("spotify", ""),
+                })
+            # Newest first.
+            out.sort(key=lambda a: a.get("release_date") or "", reverse=True)
+            return out
+        except Exception as e:
+            logger.warning("Spotify artist albums exception: %s", e)
+            return []
+
+    async def get_artist_by_name(self, client_id: str, client_secret: str, name: str) -> Optional[Dict]:
+        """Resolve a free-text artist name to a Spotify artist record
+        (id, image, popularity). We cache the result upstream so this
+        gets called once per artist per cache window."""
+        if not name:
+            return None
+        token = await self._get_access_token(client_id, client_secret)
+        if not token:
+            return None
+        url = "https://api.spotify.com/v1/search"
+        headers = {"Authorization": f"Bearer {token}"}
+        params = {"q": name, "type": "artist", "limit": 1}
+        try:
+            resp = await self.client.get(url, headers=headers, params=params)
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            items = data.get("artists", {}).get("items", [])
+            if not items:
+                return None
+            a = items[0]
+            images = a.get("images") or []
+            return {
+                "id": a.get("id"),
+                "name": a.get("name"),
+                "image": images[0]["url"] if images else "",
+                "url": (a.get("external_urls") or {}).get("spotify", ""),
+                "genres": a.get("genres", []),
+                "followers": (a.get("followers") or {}).get("total", 0),
+                "popularity": a.get("popularity", 0),
+            }
+        except Exception as e:
+            logger.warning("Spotify artist resolve exception: %s", e)
+            return None
+
     async def get_embed_preview(self, track_id: str) -> Optional[str]:
         """
         Scraping directo de open.spotify.com para evitar el bloqueo del proxy.

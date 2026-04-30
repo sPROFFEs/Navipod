@@ -666,3 +666,306 @@
     width: 20px;
     height: 20px;
 }
+
+/* === Artist link inside track rows ====================================== */
+/* Subtle hover treatment — by default the artist line looks identical to a
+   plain text label so it doesn't visually compete with the track title.
+   Underline appears only on hover so users discover the affordance without
+   the row looking cluttered. */
+.artist-link {
+    color: inherit;
+    cursor: pointer;
+}
+.artist-link:hover {
+    color: var(--text-primary, #fff);
+    text-decoration: underline;
+}
+
+/* === Artist view ======================================================== */
+.artist-shell {
+    padding: 0 0 32px 0;
+}
+
+.artist-hero {
+    position: relative;
+    background-size: cover;
+    background-position: center 25%;
+    padding: 80px 32px 40px;
+    color: #fff;
+    border-radius: 0 0 12px 12px;
+    margin-bottom: 24px;
+}
+.artist-hero-inner {
+    max-width: 1100px;
+}
+.artist-hero-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+.artist-tag {
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(8px);
+    border-radius: 30px;
+    padding: 3px 10px;
+    font-size: 0.72rem;
+    text-transform: lowercase;
+}
+.artist-hero-name {
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 800;
+    margin: 0 0 8px;
+    line-height: 1.1;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+.artist-hero-stats {
+    margin: 0 0 18px;
+    opacity: 0.85;
+    font-size: 0.85rem;
+}
+.artist-hero-actions {
+    display: flex;
+    gap: 10px;
+}
+.artist-hero-actions .btn-primary,
+.artist-hero-actions .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 22px;
+    border-radius: 30px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+}
+.artist-hero-actions .btn-primary {
+    background: #1DB954;
+    color: #fff;
+}
+.artist-hero-actions .btn-primary:hover {
+    transform: scale(1.04);
+}
+.artist-hero-actions .btn-secondary {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    backdrop-filter: blur(8px);
+}
+.artist-hero-actions .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.artist-section {
+    padding: 0 32px;
+    margin-bottom: 32px;
+}
+.artist-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+.artist-section-head h2 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin: 0;
+}
+.artist-empty {
+    text-align: center;
+    padding: 40px 16px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 8px;
+}
+.artist-empty .btn-primary {
+    margin-top: 12px;
+    background: #1DB954;
+    color: #fff;
+    border: none;
+    padding: 10px 22px;
+    border-radius: 30px;
+    cursor: pointer;
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    font-weight: 600;
+}
+
+/* Top tracks (Last.fm chart) shown only when missing locally */
+.artist-top-tracks {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 24px;
+}
+.artist-top-tracks li {
+    display: grid;
+    grid-template-columns: 28px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+.artist-top-tracks li:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+.artist-top-num {
+    color: var(--text-secondary, #999);
+    font-variant-numeric: tabular-nums;
+}
+.artist-top-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.artist-top-actions {
+    display: flex;
+    gap: 4px;
+}
+.artist-top-actions button {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary, #aaa);
+    padding: 6px;
+    border-radius: 50%;
+    cursor: pointer;
+}
+.artist-top-actions button:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+.artist-top-actions i,
+.artist-top-actions svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Discography */
+.artist-albums-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 20px;
+}
+.artist-album-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.artist-album-cover-link {
+    display: block;
+    aspect-ratio: 1;
+    overflow: hidden;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+}
+.artist-album-cover {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.2s;
+}
+.artist-album-cover-link:hover .artist-album-cover {
+    transform: scale(1.04);
+}
+.artist-album-title {
+    font-weight: 600;
+    font-size: 0.92rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.artist-album-sub {
+    font-size: 0.78rem;
+    color: var(--text-secondary, #999);
+}
+.album-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    margin-top: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: none;
+    cursor: default;
+}
+.album-status.owned {
+    color: #1DB954;
+    background: rgba(29, 185, 84, 0.12);
+}
+.album-status.partial {
+    color: #f0c419;
+    background: rgba(240, 196, 25, 0.14);
+    cursor: pointer;
+}
+.album-status.partial:hover {
+    background: rgba(240, 196, 25, 0.25);
+}
+.album-status i,
+.album-status svg {
+    width: 12px;
+    height: 12px;
+}
+
+/* Similar artists */
+.artist-similar-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 16px;
+}
+.artist-similar-card {
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    text-align: center;
+    padding: 8px;
+    border-radius: 8px;
+}
+.artist-similar-card:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+.artist-similar-cover {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 50%;
+    margin-bottom: 8px;
+}
+.artist-similar-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Bio */
+.artist-bio p {
+    max-width: 70ch;
+    line-height: 1.55;
+    color: var(--text-secondary, #ccc);
+}
+
+@media (max-width: 768px) {
+    .artist-hero {
+        padding: 60px 16px 28px;
+        border-radius: 0;
+    }
+    .artist-section {
+        padding: 0 16px;
+    }
+    .artist-top-tracks {
+        grid-template-columns: 1fr;
+    }
+    .artist-albums-grid {
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+        gap: 14px;
+    }
+    .artist-similar-grid {
+        grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+        gap: 12px;
+    }
+}

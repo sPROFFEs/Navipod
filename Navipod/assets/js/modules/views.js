@@ -178,6 +178,7 @@ export async function loadView(view, param = null, options = {}) {
     else if (view === 'public') await playlists.renderPublicPlaylists(container);
     else if (view === 'discover_radios') await radio.renderRadio(container);
     else if (view === 'discovery') await renderDiscovery(container);
+    else if (view === 'artist') await renderArtist(container, param);
     else if (view === 'favorites') await favorites.renderFavorites(container);
     else if (view === 'playlist') {
       await playlists.renderPlaylist(container, param);
@@ -950,7 +951,11 @@ export function createTrackRow(item, idx, playlistId = null) {
             <img src="${img}" class="track-cover-sm" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
             <div class="track-titles">
                 <div class="track-name-sm">${ui.escHtml(item.title || 'Unknown')}</div>
-                <div class="track-artist-sm">${ui.escHtml(item.artist || 'Unknown')}</div>
+                <div class="track-artist-sm">
+                    <a class="artist-link"
+                       onclick="event.stopPropagation(); loadView('artist', '${_safeArtist}')"
+                    >${ui.escHtml(item.artist || 'Unknown')}</a>
+                </div>
             </div>
         </div>
         <div class="track-source-col"><span class="source-badge ${src}">${src}</span></div>
@@ -1059,6 +1064,18 @@ export function showTrackActionsSheet(encodedData, playlistId) {
         <i data-lucide="trash-2"></i><span>Remove from Playlist</span>
       </button>`);
   }
+
+  // Smart radio + artist view — available for any track regardless of source.
+  actions.push(`
+    <button class="tas-action-btn"
+            onclick="startSmartRadio('${safeArtist}', '${safeTitle}'); closeTrackActionsSheet()">
+      <i data-lucide="radio"></i><span>Start radio</span>
+    </button>`);
+  actions.push(`
+    <button class="tas-action-btn"
+            onclick="loadView('artist', '${safeArtist}'); closeTrackActionsSheet()">
+      <i data-lucide="user"></i><span>Go to artist</span>
+    </button>`);
 
   const sheet = document.createElement('div');
   sheet.id = 'track-actions-sheet';
@@ -1709,4 +1726,268 @@ export function discoveryDownload(btn, encodedData, removeAfter = false) {
       setTimeout(() => card.remove(), 220);
     }
   }
+}
+
+// === ARTIST VIEW ============================================================
+//
+// Surfaces every datum we have for an artist:
+//   1. Hero — name, hero image (Spotify), listener count + tags (Last.fm)
+//   2. Tracks in your library  (local DB)
+//   3. Top tracks               (Last.fm — only if user has no local copy)
+//   4. Discography              (Spotify albums + singles)
+//                               (annotated with owned / missing track counts)
+//   5. Fans also like           (Last.fm getSimilar)
+//
+// Each remote section degrades gracefully: if the relevant API key is
+// missing or the call failed, the section is hidden rather than empty.
+
+function _artistAlbumCard(alb) {
+  const cover = alb.image || '/static/img/default_cover.png';
+  const year = (alb.release_date || '').slice(0, 4);
+  const subtitle = [year, alb.type === 'single' ? 'Single' : 'Album'].filter(Boolean).join(' · ');
+
+  // "Complete this album" CTA: only for albums where the user has SOME
+  // tracks but is missing others — full ownership shows a check, no
+  // ownership shows a generic download link instead of a "complete" CTA.
+  let ctaHtml = '';
+  if (alb.fully_owned) {
+    ctaHtml = `<span class="album-status owned"><i data-lucide="check"></i>In library</span>`;
+  } else if (alb.owned_count > 0 && alb.missing_count > 0) {
+    const search = ui.escHtml(`${alb.name}`).replace(/'/g, "\\'");
+    ctaHtml = `
+      <button class="album-status partial"
+              onclick="event.stopPropagation(); window.startSearchAndDownload && window.startSearchAndDownload('${search}')"
+              title="Complete this album">
+        <i data-lucide="package-plus"></i>
+        Complete (${alb.missing_count} missing)
+      </button>`;
+  }
+
+  const url = alb.url || '';
+  return `
+    <article class="artist-album-card">
+      <a class="artist-album-cover-link" href="${url}" target="_blank" rel="noopener">
+        <img src="${cover}" class="artist-album-cover" loading="lazy"
+             onerror="this.src='/static/img/default_cover.png'">
+      </a>
+      <div class="artist-album-meta">
+        <div class="artist-album-title">${ui.escHtml(alb.name || 'Untitled')}</div>
+        <div class="artist-album-sub">${subtitle}</div>
+        ${ctaHtml}
+      </div>
+    </article>`;
+}
+
+function _artistSimilarCard(sim) {
+  const cover = sim.image || '/static/img/default_cover.png';
+  const safe = ui.escHtml(sim.name || '').replace(/'/g, "\\'");
+  return `
+    <button class="artist-similar-card" onclick="loadView('artist', '${safe}')">
+      <img src="${cover}" class="artist-similar-cover" loading="lazy"
+           onerror="this.src='/static/img/default_cover.png'">
+      <div class="artist-similar-name">${ui.escHtml(sim.name || '')}</div>
+    </button>`;
+}
+
+export async function renderArtist(container, name) {
+  if (!name) {
+    container.innerHTML = `<div class="empty-state">No artist specified.</div>`;
+    return;
+  }
+
+  const data = await api.fetchArtist(name);
+  if (!data) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <p>Could not load <strong>${ui.escHtml(name)}</strong>.</p>
+      </div>`;
+    return;
+  }
+
+  const heroImg =
+    (data.spotify && data.spotify.image) ||
+    (data.local_tracks && data.local_tracks[0] && data.local_tracks[0].thumbnail) ||
+    '/static/img/default_cover.png';
+
+  const tags = (data.info && data.info.tags) || [];
+  const listenerCount = data.info && data.info.listeners ? Number(data.info.listeners).toLocaleString() : '';
+  const followerCount = data.spotify && data.spotify.followers ? Number(data.spotify.followers).toLocaleString() : '';
+  const stats = [
+    listenerCount ? `${listenerCount} Last.fm listeners` : '',
+    followerCount ? `${followerCount} Spotify followers` : '',
+    `${data.local_tracks.length} tracks in your library`,
+  ].filter(Boolean).join(' · ');
+
+  const bio = (data.info && data.info.bio) || '';
+
+  // Local tracks rail — empty state when the user has nothing of this
+  // artist locally, with a CTA to play smart radio (since there is
+  // nothing to play locally we route through Last.fm seeds instead).
+  let localBlock = '';
+  if (data.local_tracks.length) {
+    state.setCurrentViewList(data.local_tracks);
+    localBlock = `
+      <section class="artist-section">
+        <div class="artist-section-head">
+          <h2>In your library</h2>
+          <button class="btn-text" onclick="playFromView(0)" title="Play all">
+            <i data-lucide="play"></i>Play
+          </button>
+        </div>
+        <div class="track-list">
+          ${data.local_tracks.map((t, i) => createTrackRow(t, i, null)).join('')}
+        </div>
+      </section>`;
+  } else {
+    const safe = ui.escHtml(name).replace(/'/g, "\\'");
+    localBlock = `
+      <section class="artist-section">
+        <div class="artist-empty">
+          <p>You don't have any ${ui.escHtml(name)} tracks yet.</p>
+          <button class="btn-primary"
+                  onclick="startSmartRadio('${safe}', '${ui.escHtml(((data.top_tracks||[])[0]||{}).title || '').replace(/'/g, "\\'")}')">
+            <i data-lucide="radio"></i> Start a radio
+          </button>
+        </div>
+      </section>`;
+  }
+
+  // Top tracks — only show entries the user doesn't already have locally,
+  // so we don't double up with "In your library" above.
+  const localKeys = new Set(
+    data.local_tracks.map((t) => `${(t.title || '').toLowerCase()}|${(t.artist || '').toLowerCase()}`)
+  );
+  const topTracks = (data.top_tracks || []).filter((t) =>
+    !localKeys.has(`${(t.title || '').toLowerCase()}|${(t.artist || '').toLowerCase()}`)
+  ).slice(0, 8);
+
+  let topBlock = '';
+  if (topTracks.length) {
+    topBlock = `
+      <section class="artist-section">
+        <div class="artist-section-head">
+          <h2>Popular tracks you don't have</h2>
+        </div>
+        <ol class="artist-top-tracks">
+          ${topTracks.map((t, i) => {
+            const safeT = ui.escHtml(t.title || '').replace(/'/g, "\\'");
+            const safeA = ui.escHtml(t.artist || name).replace(/'/g, "\\'");
+            return `
+              <li>
+                <span class="artist-top-num">${i + 1}</span>
+                <span class="artist-top-title">${ui.escHtml(t.title || '')}</span>
+                <span class="artist-top-actions">
+                  <button onclick="window.startSearchAndDownload && window.startSearchAndDownload('${safeA} ${safeT}')"
+                          title="Download to library">
+                    <i data-lucide="download"></i>
+                  </button>
+                  <button onclick="startSmartRadio('${safeA}', '${safeT}')" title="Start radio from this track">
+                    <i data-lucide="radio"></i>
+                  </button>
+                </span>
+              </li>`;
+          }).join('')}
+        </ol>
+      </section>`;
+  }
+
+  const albumsBlock = (data.albums && data.albums.length)
+    ? `
+      <section class="artist-section">
+        <div class="artist-section-head"><h2>Discography</h2></div>
+        <div class="artist-albums-grid">
+          ${data.albums.map(_artistAlbumCard).join('')}
+        </div>
+      </section>`
+    : '';
+
+  const similarBlock = (data.similar && data.similar.length)
+    ? `
+      <section class="artist-section">
+        <div class="artist-section-head"><h2>Fans also like</h2></div>
+        <div class="artist-similar-grid">
+          ${data.similar.map(_artistSimilarCard).join('')}
+        </div>
+      </section>`
+    : '';
+
+  const safeArtistAttr = ui.escHtml(name).replace(/'/g, "\\'");
+
+  container.innerHTML = `
+    <div class="artist-shell">
+      <header class="artist-hero" style="background-image: linear-gradient(180deg, rgba(0,0,0,0.2), rgba(0,0,0,0.85)), url('${heroImg}')">
+        <div class="artist-hero-inner">
+          <div class="artist-hero-tags">${tags.map((t) => `<span class="artist-tag">${ui.escHtml(t)}</span>`).join('')}</div>
+          <h1 class="artist-hero-name">${ui.escHtml(data.name || name)}</h1>
+          <p class="artist-hero-stats">${stats}</p>
+          <div class="artist-hero-actions">
+            ${data.local_tracks.length ? `
+              <button class="btn-primary" onclick="playFromView(0)">
+                <i data-lucide="play"></i> Play
+              </button>` : ''}
+            <button class="btn-secondary"
+                    onclick="startSmartRadio('${safeArtistAttr}', '${ui.escHtml(((data.top_tracks||[])[0]||{}).title || '').replace(/'/g, "\\'")}')">
+              <i data-lucide="radio"></i> Radio
+            </button>
+          </div>
+        </div>
+      </header>
+
+      ${localBlock}
+      ${topBlock}
+      ${albumsBlock}
+      ${similarBlock}
+
+      ${bio ? `
+        <section class="artist-section artist-bio">
+          <div class="artist-section-head"><h2>About</h2></div>
+          <p>${ui.escHtml(bio)}</p>
+        </section>` : ''}
+    </div>`;
+
+  if (window.lucide) lucide.createIcons();
+}
+
+// === SMART RADIO ============================================================
+// Builds an endless queue from a (artist, title) seed. The backend
+// returns a list of (title, artist) candidates from the cached
+// Last.fm getSimilar pool; we resolve each through the existing search
+// → preview pipeline so playback uses YouTube / Spotify previews
+// without us re-implementing source resolution here.
+
+export async function startSmartRadio(artist, title) {
+  if (!artist) {
+    ui.showToast('Need an artist to start a radio', 'error');
+    return;
+  }
+  ui.showToast('Starting radio…', 'info');
+
+  const data = await api.fetchSmartRadio(artist, title || '', 30);
+  if (!data || !(data.seeds || []).length) {
+    ui.showToast('No radio seeds found for this track', 'error');
+    return;
+  }
+
+  // Build playable items the existing player can consume. We use the
+  // ytsearch1: pseudo-id format that the streaming endpoint already
+  // resolves transparently — the same pattern Last.fm/MusicBrainz
+  // recommendations use elsewhere in the app.
+  const queue = data.seeds.map((s) => ({
+    id: `ytsearch1:${s.artist} ${s.title} official audio`,
+    title: s.title,
+    artist: s.artist,
+    album: 'Smart Radio',
+    thumbnail: `/api/cover/resolve?artist=${encodeURIComponent(s.artist)}&title=${encodeURIComponent(s.title)}`,
+    is_local: false,
+    source: 'lastfm',
+  }));
+
+  if (!queue.length) return;
+
+  state.setCurrentViewList(queue);
+  state.setContextQueue([...queue]);
+  state.setOriginalContextQueue([...queue]);
+  state.setContextIndex(0);
+  player.playTrack(queue[0]);
+  ui.showToast(`Radio: ${queue.length} tracks queued`, 'success');
 }

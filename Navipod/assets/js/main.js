@@ -141,6 +141,27 @@ window.showTrackDeleteRequestModal = views.showTrackDeleteRequestModal;
 window.submitTrackDeleteRequest = views.submitTrackDeleteRequest;
 window.showTrackActionsSheet = views.showTrackActionsSheet;
 window.closeTrackActionsSheet = views.closeTrackActionsSheet;
+window.renderArtist = views.renderArtist;
+window.startSmartRadio = views.startSmartRadio;
+
+// Drop the user into the search view with a pre-filled query and run
+// it immediately. Used by the artist view's "Complete this album" CTA
+// and the top-tracks download buttons — they don't need their own
+// download flow, the existing search → download path is enough.
+window.startSearchAndDownload = async function (query) {
+  if (!query) return;
+  await views.loadView('search');
+  const input = document.getElementById('search-input');
+  if (input) {
+    input.value = query;
+    if (typeof window.executeSearch === 'function') {
+      window.executeSearch(query);
+    } else {
+      // Fallback: trigger an input event so search.js picks it up.
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+};
 
 // Admin
 window.toggleReset = admin.toggleReset;
