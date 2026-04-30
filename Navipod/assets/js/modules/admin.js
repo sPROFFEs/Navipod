@@ -383,22 +383,63 @@ function _fedRenderInbound(inst) {
     </div>`;
 }
 
+// Distinguish the three real states we can observe so the user can
+// debug what's going on instead of always seeing a generic empty
+// message:
+//   - 401  → session expired (very common after a docker recreate);
+//            keep the previous list rendered and show a banner asking
+//            for a refresh.
+//   - 5xx / network → transient (concierge still booting?). Same
+//                     thing: keep the prior list, show a transient
+//                     banner, and the next 5s tick may recover.
+//   - 200 + []      → genuinely no peers configured.
+//   - 200 + items   → render normally.
+//
+// Critically, on transient failures we DO NOT clear the list. The
+// previous bug was clobbering the rendered rows on the first hiccup
+// after a recreate, making it look like the peers had been deleted.
+function _fedShowBanner(el, message, level = 'warn') {
+  // Insert (or update) a banner ABOVE the existing list rather than
+  // wiping the list. Banner auto-clears on the next successful poll.
+  let banner = el.querySelector('.fed-status-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.className = 'fed-status-banner';
+    el.prepend(banner);
+  }
+  banner.dataset.level = level;
+  banner.textContent = message;
+}
+function _fedClearBanner(el) {
+  const banner = el.querySelector('.fed-status-banner');
+  if (banner) banner.remove();
+}
+
 async function _fedRefreshInbound() {
   const el = document.getElementById('federation-instances-list');
   if (!el) return;
   try {
     const res = await fetch('/api/admin/federation/instances', { credentials: 'include' });
+    if (res.status === 401 || res.status === 403) {
+      _fedShowBanner(el, 'Session expired — refresh the page to re-authenticate.', 'auth');
+      return;
+    }
     if (!res.ok) {
-      el.innerHTML = '<div class="admin-empty-state">Failed to load federation list.</div>';
+      _fedShowBanner(el, `Could not refresh peer list (HTTP ${res.status}). Retrying in 5s…`, 'warn');
       return;
     }
     const items = await res.json();
+    _fedClearBanner(el);
     el.innerHTML = items.length
       ? items.map(_fedRenderInbound).join('')
       : '<div class="admin-empty-state">No peers configured yet.</div>';
     if (window.lucide) lucide.createIcons();
   } catch (e) {
+    // Network error (concierge still booting, etc.) — keep whatever's
+    // currently rendered and show a transient banner. Do NOT replace
+    // the rendered rows with an empty state.
     console.warn('[FED] inbound refresh failed', e);
+    _fedShowBanner(el, 'Network error reaching the server. Retrying in 5s…', 'warn');
   }
 }
 
@@ -445,17 +486,25 @@ async function _fedRefreshOutbound() {
   if (!el) return;
   try {
     const res = await fetch('/api/admin/federation/outbound', { credentials: 'include' });
+    if (res.status === 401 || res.status === 403) {
+      _fedShowBanner(el, 'Session expired — refresh the page to re-authenticate.', 'auth');
+      return;
+    }
     if (!res.ok) {
-      el.innerHTML = '<div class="admin-empty-state">Failed to load issued tokens.</div>';
+      _fedShowBanner(el, `Could not refresh issued-token list (HTTP ${res.status}). Retrying in 5s…`, 'warn');
       return;
     }
     const items = await res.json();
+    _fedClearBanner(el);
     el.innerHTML = items.length
       ? items.map(_fedRenderOutbound).join('')
       : '<div class="admin-empty-state">No tokens issued yet.</div>';
     if (window.lucide) lucide.createIcons();
   } catch (e) {
+    // Same protection as inbound: keep prior list visible, surface
+    // the transient error in a banner, let the 5s poll retry.
     console.warn('[FED] outbound refresh failed', e);
+    _fedShowBanner(el, 'Network error reaching the server. Retrying in 5s…', 'warn');
   }
 }
 

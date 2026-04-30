@@ -1422,3 +1422,25 @@
     color: rgba(255, 255, 255, 0.55);
     text-decoration: line-through;
 }
+
+/* Transient/auth banners for the federation admin lists. We render
+   them ABOVE the existing list (instead of wiping it) so a momentary
+   network blip after a docker recreate doesn't make the user think
+   their peers have been deleted. */
+.fed-status-banner {
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 500;
+}
+.fed-status-banner[data-level="warn"] {
+    background: rgba(240, 196, 25, 0.12);
+    border: 1px solid rgba(240, 196, 25, 0.4);
+    color: #fde047;
+}
+.fed-status-banner[data-level="auth"] {
+    background: rgba(220, 38, 38, 0.14);
+    border: 1px solid rgba(220, 38, 38, 0.5);
+    color: #fca5a5;
+}
