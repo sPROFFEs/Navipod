@@ -1604,6 +1604,7 @@ export async function renderDiscovery(container) {
 
   if (!items.length) {
     container.innerHTML = `
+        ${ui.homeTabsBar('discovery')}
         <div class="discovery-shell">
             <header class="discovery-head">
                 <h1>Discover</h1>
@@ -1622,6 +1623,7 @@ export async function renderDiscovery(container) {
   const visible = items.filter((it) => !dismissed.has(_discoveryKey(it)));
 
   container.innerHTML = `
+        ${ui.homeTabsBar('discovery')}
         <div class="discovery-shell">
             <header class="discovery-head">
                 <h1>Discover</h1>

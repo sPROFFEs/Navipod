@@ -24,17 +24,22 @@ export function escHtml(str) {
 }
 
 /**
- * Spotify-style tab bar shown at the top of `home`, `public` and
- * `discover_radios` so users can flip between the three Browse surfaces
- * without leaving the visual context. Each chip just calls loadView()
- * with the corresponding canonical view name; the active one is
- * highlighted based on the argument.
+ * Spotify-style tab bar shown at the top of every Browse-level surface
+ * (Home / Public / Discover / Radios) so users can flip between them
+ * without leaving the visual context. Each chip calls loadView() with
+ * the corresponding canonical view name; the active one is highlighted
+ * based on the argument.
+ *
+ * Note: 'Discover Radios' is shortened to just 'Radios' here because
+ * we now also have a 'Discover' tab for the preview-feed view, and
+ * the two side by side were ambiguous.
  */
 export function homeTabsBar(activeTab) {
   const tabs = [
-    { key: 'all',             label: 'All',             view: 'home' },
-    { key: 'public',          label: 'Public',          view: 'public' },
-    { key: 'discover_radios', label: 'Discover Radios', view: 'discover_radios' }
+    { key: 'all',             label: 'All',       view: 'home' },
+    { key: 'public',          label: 'Public',    view: 'public' },
+    { key: 'discovery',       label: 'Discover',  view: 'discovery' },
+    { key: 'discover_radios', label: 'Radios',    view: 'discover_radios' }
   ];
   return `
     <div class="home-tabs">
