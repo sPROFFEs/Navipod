@@ -407,6 +407,35 @@ class FederatedInstance(Base):
         self._api_token = encrypt_secret(value)
 
 
+class FederationOutboundPeer(Base):
+    """One row per remote instance we *publish* to (i.e. that we let
+    federate FROM us). Each peer has its own token so revoking one
+    doesn't disrupt the others, and we can show the admin which peer
+    is online and when they last connected.
+
+    `token_hash` is a bcrypt hash of the cleartext token — we never
+    store the plaintext after creation. To validate an incoming
+    federated request we iterate over all non-revoked peers and run
+    `verify_password`. That scales by # of peers, not # of users; in
+    practice O(few-dozen) per request and bcrypt is intentionally
+    slow so this also rate-limits brute-force attempts.
+    """
+    __tablename__ = "federation_outbound_peers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)              # admin-chosen label
+    peer_url = Column(String, nullable=True)           # optional, e.g. "https://music.example.com"
+    token_hash = Column(String, nullable=False)
+    revoked = Column(Boolean, default=False, nullable=False)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+
+    last_seen_at = Column(DateTime(timezone=True), nullable=True)
+    last_seen_ip = Column(String, nullable=True)
+    last_seen_user_agent = Column(String, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class FederatedTrack(Base):
     """Mirror of a track on a remote instance. We keep these in the
     same SQLite as local data for simple cross-table search merging,

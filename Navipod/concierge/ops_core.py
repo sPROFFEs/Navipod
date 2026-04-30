@@ -1166,6 +1166,23 @@ def _migration_019_federation(conn):
     ))
 
 
+def _migration_020_federation_outbound_peers(conn):
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS federation_outbound_peers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            peer_url TEXT,
+            token_hash TEXT NOT NULL,
+            revoked INTEGER NOT NULL DEFAULT 0,
+            revoked_at DATETIME,
+            last_seen_at DATETIME,
+            last_seen_ip TEXT,
+            last_seen_user_agent TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+
+
 MIGRATIONS = [
     ("000_base_schema", _migration_000_base_schema),
     ("001_tracks_library_columns", _migration_001_tracks_library_columns),
@@ -1187,6 +1204,7 @@ MIGRATIONS = [
     ("017_track_delete_requests", _migration_017_track_delete_requests),
     ("018_track_delete_requests_relax_fk", _migration_018_track_delete_requests_relax_fk),
     ("019_federation", _migration_019_federation),
+    ("020_federation_outbound_peers", _migration_020_federation_outbound_peers),
 ]
 
 

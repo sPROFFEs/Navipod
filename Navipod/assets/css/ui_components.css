@@ -1400,3 +1400,25 @@
 }
 .fed-source-badge i,
 .fed-source-badge svg { width: 11px; height: 11px; }
+
+/* 2-column outbound peer issue form (no token field — generated server-side) */
+.federation-add-form-2col {
+    grid-template-columns: 1fr 1.5fr auto;
+}
+.fed-row-url-missing {
+    color: var(--text-faint, rgba(255, 255, 255, 0.4));
+    font-style: italic;
+}
+.fed-row-ua {
+    color: var(--text-faint, rgba(255, 255, 255, 0.4));
+    font-size: 0.72rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 280px;
+    white-space: nowrap;
+}
+.fed-status-revoked {
+    background: rgba(120, 120, 120, 0.18);
+    color: rgba(255, 255, 255, 0.55);
+    text-decoration: line-through;
+}

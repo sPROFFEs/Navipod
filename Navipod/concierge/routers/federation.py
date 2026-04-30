@@ -60,32 +60,53 @@ def _require_admin(user: database.User):
         raise HTTPException(status_code=403, detail="Admin only")
 
 
-def _verify_federation_token(db: Session, authorization: str | None) -> database.User:
-    """Validate a Bearer token against the service account password.
-    We reuse bcrypt-hashed_password as the token store: the admin
-    generates a random token, we hash + persist on the service-account
-    user, the remote stores the plaintext. Comparison goes through
-    auth.verify_password so timing is constant."""
+def _verify_federation_token(db: Session, request: Request, authorization: str | None) -> database.FederationOutboundPeer:
+    """Validate a Bearer token against the federation_outbound_peers
+    table. Each peer has its own bcrypt-hashed token so revoking one
+    doesn't disrupt the others.
+
+    Side-effect: on a successful match we record `last_seen_at`, the
+    request IP, and the User-Agent. The admin panel reads those fields
+    to display online/idle/offline status and to know which peer is
+    currently active."""
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing federation token")
     token = authorization[7:].strip()
     if not token:
         raise HTTPException(status_code=401, detail="Empty federation token")
 
-    svc = (
-        db.query(database.User)
-        .filter(database.User.is_service_account == True)  # noqa: E712
-        .filter(database.User.username == SERVICE_ACCOUNT_USERNAME)
-        .first()
+    from auth import verify_password
+    candidates = (
+        db.query(database.FederationOutboundPeer)
+        .filter(database.FederationOutboundPeer.revoked == False)  # noqa: E712
+        .all()
     )
-    if not svc:
-        # No service account configured yet — federation publishing is OFF.
+    if not candidates:
+        # No peers configured — federation publishing is effectively OFF.
         raise HTTPException(status_code=403, detail="Federation publishing disabled")
 
-    from auth import verify_password
-    if not verify_password(token, svc.hashed_password):
+    matched: database.FederationOutboundPeer | None = None
+    for peer in candidates:
+        try:
+            if verify_password(token, peer.token_hash):
+                matched = peer
+                break
+        except Exception:
+            continue
+
+    if not matched:
         raise HTTPException(status_code=401, detail="Invalid federation token")
-    return svc
+
+    # Update freshness fields. Cheap — single row UPDATE per request.
+    # We capture the original X-Forwarded-For when present (CloudFlare
+    # / nginx reverse-proxies) so the admin sees the real peer IP.
+    fwd = request.headers.get("x-forwarded-for")
+    ip = (fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else None))
+    matched.last_seen_at = datetime.now(timezone.utc)
+    matched.last_seen_ip = ip
+    matched.last_seen_user_agent = (request.headers.get("user-agent") or "")[:240]
+    db.commit()
+    return matched
 
 
 # ============================================================================
@@ -94,27 +115,30 @@ def _verify_federation_token(db: Session, authorization: str | None) -> database
 
 @router.get("/api/federation/health")
 async def federation_health(
+    request: Request,
     db: Session = Depends(get_db),
     authorization: str | None = Header(default=None),
 ):
     """Lightweight probe. The remote calls this every minute; we just
     confirm we're alive and the token is good."""
-    _verify_federation_token(db, authorization)
+    _verify_federation_token(db, request, authorization)
     return {"status": "ok", "ts": datetime.now(timezone.utc).isoformat()}
 
 
 @router.get("/api/federation/stats")
 async def federation_stats(
+    request: Request,
     db: Session = Depends(get_db),
     authorization: str | None = Header(default=None),
 ):
-    _verify_federation_token(db, authorization)
+    _verify_federation_token(db, request, authorization)
     total = db.query(database.Track).count()
     return {"total": total}
 
 
 @router.get("/api/federation/catalog")
 async def federation_catalog(
+    request: Request,
     db: Session = Depends(get_db),
     authorization: str | None = Header(default=None),
     after: int = Query(0, ge=0),
@@ -123,7 +147,7 @@ async def federation_catalog(
     """Paginated catalog dump. The remote sends us a cursor (`after`)
     and we return tracks with id > cursor, ordered by id ASC. The peer
     persists the highest id seen and uses it as the next cursor."""
-    _verify_federation_token(db, authorization)
+    _verify_federation_token(db, request, authorization)
 
     rows = (
         db.query(database.Track)
@@ -156,7 +180,7 @@ async def federation_stream(
     """Direct file stream with Range passthrough. Authenticated by
     federation token (NOT user cookie) so peers can fetch without
     impersonating a real user."""
-    _verify_federation_token(db, authorization)
+    _verify_federation_token(db, request, authorization)
 
     # Defer to the local streaming logic by importing the existing
     # helper. Range header is taken from the original request and
@@ -303,53 +327,122 @@ async def _run_manual_sync(instance_id: int):
         db.close()
 
 
-# === SERVICE ACCOUNT (publishing side) ======================================
+# === OUTBOUND PEERS (publishing side) =======================================
+#
+# Each row in federation_outbound_peers represents a remote instance
+# we *let* federate from us. The admin creates one row per peer, gets
+# back the cleartext token ONCE, and shares it with the remote admin.
+# From then on every incoming federation request stamps that row with
+# last_seen_at + last_seen_ip so the admin can see who's online.
 
-@router.get("/api/admin/federation/service-account")
-async def admin_get_service_account(request: Request, db: Session = Depends(get_db)):
-    user = get_current_user(request, db)
-    _require_admin(user)
-    svc = (
-        db.query(database.User)
-        .filter(database.User.is_service_account == True)  # noqa: E712
-        .filter(database.User.username == SERVICE_ACCOUNT_USERNAME)
-        .first()
-    )
+def _outbound_status(peer: database.FederationOutboundPeer) -> str:
+    if peer.revoked:
+        return "revoked"
+    if not peer.last_seen_at:
+        return "never"
+    last = peer.last_seen_at
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    delta = (datetime.now(timezone.utc) - last).total_seconds()
+    if delta <= 90:
+        return "online"
+    if delta <= 15 * 60:
+        return "idle"
+    return "offline"
+
+
+def _serialize_outbound(peer: database.FederationOutboundPeer) -> dict:
     return {
-        "configured": bool(svc),
-        "username": SERVICE_ACCOUNT_USERNAME,
+        "id": peer.id,
+        "name": peer.name,
+        "peer_url": peer.peer_url,
+        "status": _outbound_status(peer),
+        "revoked": bool(peer.revoked),
+        "revoked_at": peer.revoked_at.isoformat() if peer.revoked_at else None,
+        "last_seen_at": peer.last_seen_at.isoformat() if peer.last_seen_at else None,
+        "last_seen_ip": peer.last_seen_ip,
+        "last_seen_user_agent": peer.last_seen_user_agent,
+        "created_at": peer.created_at.isoformat() if peer.created_at else None,
     }
 
 
-@router.post("/api/admin/federation/service-account/rotate")
-async def admin_rotate_service_token(request: Request, db: Session = Depends(get_db)):
-    """(Re)generates the federation token used by remote peers to read
-    OUR catalog. Returns the plaintext ONCE — admin must copy it now
-    or rotate again. Old token is invalidated immediately."""
+@router.get("/api/admin/federation/outbound")
+async def admin_list_outbound(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    _require_admin(user)
+    rows = (
+        db.query(database.FederationOutboundPeer)
+        .order_by(database.FederationOutboundPeer.id.asc())
+        .all()
+    )
+    return [_serialize_outbound(r) for r in rows]
+
+
+@router.post("/api/admin/federation/outbound")
+async def admin_create_outbound(request: Request, db: Session = Depends(get_db)):
+    """Issue a new federation token bound to a named peer. Returns the
+    cleartext ONCE — the admin must copy it before navigating away."""
     user = get_current_user(request, db)
     _require_admin(user)
 
-    svc = (
-        db.query(database.User)
-        .filter(database.User.username == SERVICE_ACCOUNT_USERNAME)
+    payload = await request.json()
+    name = (payload.get("name") or "").strip()
+    peer_url = (payload.get("peer_url") or "").strip().rstrip("/") or None
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    if peer_url and not (peer_url.startswith("http://") or peer_url.startswith("https://")):
+        raise HTTPException(status_code=400, detail="peer_url must be http(s)://")
+
+    token = secrets.token_urlsafe(40)
+    peer = database.FederationOutboundPeer(
+        name=name,
+        peer_url=peer_url,
+        token_hash=get_password_hash(token),
+    )
+    db.add(peer)
+    db.commit()
+    db.refresh(peer)
+    out = _serialize_outbound(peer)
+    out["token"] = token   # plaintext, last time it's ever in the response
+    return out
+
+
+@router.post("/api/admin/federation/outbound/{peer_id}/revoke")
+async def admin_revoke_outbound(peer_id: int, request: Request, db: Session = Depends(get_db)):
+    """Soft-revoke: token stops working immediately, row stays so the
+    admin can still see "this peer was online until X". Use DELETE for
+    a permanent removal."""
+    user = get_current_user(request, db)
+    _require_admin(user)
+
+    peer = (
+        db.query(database.FederationOutboundPeer)
+        .filter(database.FederationOutboundPeer.id == peer_id)
         .first()
     )
-    new_token = secrets.token_urlsafe(40)
-    if not svc:
-        svc = database.User(
-            username=SERVICE_ACCOUNT_USERNAME,
-            hashed_password=get_password_hash(new_token),
-            is_active=True,
-            is_admin=False,
-            is_service_account=True,
-        )
-        db.add(svc)
-    else:
-        svc.is_service_account = True
-        svc.is_active = True
-        svc.hashed_password = get_password_hash(new_token)
+    if not peer:
+        raise HTTPException(status_code=404, detail="Not found")
+    peer.revoked = True
+    peer.revoked_at = datetime.now(timezone.utc)
     db.commit()
-    return {"token": new_token, "username": SERVICE_ACCOUNT_USERNAME}
+    return _serialize_outbound(peer)
+
+
+@router.delete("/api/admin/federation/outbound/{peer_id}")
+async def admin_delete_outbound(peer_id: int, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    _require_admin(user)
+
+    peer = (
+        db.query(database.FederationOutboundPeer)
+        .filter(database.FederationOutboundPeer.id == peer_id)
+        .first()
+    )
+    if not peer:
+        raise HTTPException(status_code=404, detail="Not found")
+    db.delete(peer)
+    db.commit()
+    return {"deleted": peer_id}
 
 
 # ============================================================================

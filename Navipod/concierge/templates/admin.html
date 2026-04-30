@@ -194,22 +194,30 @@
         <div class="admin-panel-body">
 
             <div class="federation-subsection">
-                <h3><i data-lucide="key-round" width="16" height="16"></i> Publish my catalog</h3>
+                <h3><i data-lucide="key-round" width="16" height="16"></i> Issued tokens (my catalog → others)</h3>
                 <p class="federation-help">
-                    Generate a federation token and share it (over a secure channel) with the admin of
-                    the remote Navipod that wants to mirror your library. Rotating it immediately
-                    invalidates the previous token.
+                    Each row is a token you issued to a specific remote Navipod. Status updates the
+                    moment a peer hits any federation endpoint with that token, so you can see who's
+                    actively connected. Revoking a token disables it instantly without breaking the
+                    others.
                 </p>
-                <div id="federation-svc-status" class="federation-svc-status">Loading…</div>
-                <div class="federation-svc-actions">
-                    <button class="admin-submit" onclick="federationRotateToken()">
-                        <i data-lucide="rotate-cw" width="16" height="16"></i>
-                        <span>Generate / rotate token</span>
+
+                <form class="federation-add-form federation-add-form-2col" onsubmit="federationIssueToken(event)">
+                    <input type="text" id="fed-issue-name" placeholder="Peer name (e.g. Friend's pool)" required>
+                    <input type="url" id="fed-issue-url" placeholder="Peer URL (optional, for reference)">
+                    <button class="admin-submit" type="submit">
+                        <i data-lucide="plus" width="16" height="16"></i>
+                        <span>Issue token</span>
                     </button>
-                </div>
+                </form>
+
                 <div id="federation-token-display" class="federation-token-display" hidden>
                     <strong>New token (copy now — it won't be shown again):</strong>
                     <code id="federation-token-value"></code>
+                </div>
+
+                <div id="federation-outbound-list" class="federation-list">
+                    <div class="admin-empty-state">No tokens issued yet.</div>
                 </div>
             </div>
 
@@ -245,8 +253,8 @@
  * graph. Cookie auth carries through to /api/admin/federation/*.
  */
 (function () {
-    const LIST_EL = document.getElementById('federation-instances-list');
-    const SVC_EL  = document.getElementById('federation-svc-status');
+    const LIST_EL     = document.getElementById('federation-instances-list');
+    const OUTBOUND_EL = document.getElementById('federation-outbound-list');
     if (!LIST_EL) return;
 
     function _statusBadge(status) {
@@ -322,16 +330,75 @@
         if (window.lucide) lucide.createIcons();
     }
 
-    async function refreshServiceAccount() {
-        const res = await fetch('/api/admin/federation/service-account', { credentials: 'include' });
+    function _outboundStatusBadge(status) {
+        const cls = ({
+            online:  'fed-status-healthy',
+            idle:    'fed-status-degraded',
+            offline: 'fed-status-offline',
+            never:   'fed-status-unknown',
+            revoked: 'fed-status-revoked',
+        })[status] || 'fed-status-unknown';
+        return `<span class="fed-status-badge ${cls}">${status || 'unknown'}</span>`;
+    }
+
+    function _renderOutboundRow(peer) {
+        const urlLine = peer.peer_url
+            ? `<span class="fed-row-url">${escapeHtml(peer.peer_url)}</span>`
+            : `<span class="fed-row-url fed-row-url-missing">no URL set</span>`;
+        const ipLine = peer.last_seen_ip
+            ? `<span>From: <code>${escapeHtml(peer.last_seen_ip)}</code></span>`
+            : '';
+        const ua = peer.last_seen_user_agent
+            ? `<span class="fed-row-ua" title="${escapeHtml(peer.last_seen_user_agent)}">UA: ${escapeHtml(peer.last_seen_user_agent.slice(0, 40))}${peer.last_seen_user_agent.length > 40 ? '…' : ''}</span>`
+            : '';
+        const revokedBanner = peer.revoked
+            ? `<div class="fed-row-error">Token revoked${peer.revoked_at ? ' on ' + _fmtDate(peer.revoked_at) : ''}.</div>`
+            : '';
+
+        const actions = peer.revoked
+            ? `<button class="admin-danger-btn" onclick="federationDeleteOutbound(${peer.id})">
+                 <i data-lucide="trash-2" width="14" height="14"></i> Delete record
+               </button>`
+            : `<button class="admin-danger-btn" onclick="federationRevokeOutbound(${peer.id})">
+                 <i data-lucide="ban" width="14" height="14"></i> Revoke token
+               </button>
+               <button class="admin-danger-btn" onclick="federationDeleteOutbound(${peer.id})">
+                 <i data-lucide="trash-2" width="14" height="14"></i> Delete
+               </button>`;
+
+        return `
+          <div class="fed-row" data-id="${peer.id}">
+            <div class="fed-row-head">
+              <strong>${escapeHtml(peer.name)}</strong>
+              ${_outboundStatusBadge(peer.status)}
+              ${urlLine}
+            </div>
+            <div class="fed-row-meta">
+              <span>Last seen: ${_fmtDate(peer.last_seen_at)}</span>
+              ${ipLine}
+              ${ua}
+              <span>Issued: ${_fmtDate(peer.created_at)}</span>
+            </div>
+            ${revokedBanner}
+            <div class="fed-row-actions">
+              ${actions}
+            </div>
+          </div>`;
+    }
+
+    async function refreshOutbound() {
+        if (!OUTBOUND_EL) return;
+        const res = await fetch('/api/admin/federation/outbound', { credentials: 'include' });
         if (!res.ok) {
-            SVC_EL.innerHTML = '<em>Could not load.</em>';
+            OUTBOUND_EL.innerHTML = '<div class="admin-empty-state">Failed to load issued tokens.</div>';
             return;
         }
-        const data = await res.json();
-        SVC_EL.innerHTML = data.configured
-            ? '<i data-lucide="check-circle-2"></i> Federation publishing is <strong>enabled</strong>. Other instances can read your catalog using the token.'
-            : '<i data-lucide="circle-slash"></i> Federation publishing is <strong>disabled</strong>. Generate a token to allow remote peers to mirror your library.';
+        const items = await res.json();
+        if (!items.length) {
+            OUTBOUND_EL.innerHTML = '<div class="admin-empty-state">No tokens issued yet.</div>';
+            return;
+        }
+        OUTBOUND_EL.innerHTML = items.map(_renderOutboundRow).join('');
         if (window.lucide) lucide.createIcons();
     }
 
@@ -382,10 +449,23 @@
         refreshList();
     };
 
-    window.federationRotateToken = async function () {
-        if (!confirm('Generate a new federation token? This invalidates the previous one immediately.')) return;
-        const res = await fetch('/api/admin/federation/service-account/rotate', { method: 'POST', credentials: 'include' });
-        if (!res.ok) { alert('Failed to rotate token.'); return; }
+    window.federationIssueToken = async function (e) {
+        e.preventDefault();
+        const name = document.getElementById('fed-issue-name').value.trim();
+        const peer_url = document.getElementById('fed-issue-url').value.trim();
+        if (!name) { alert('Peer name is required.'); return; }
+
+        const res = await fetch('/api/admin/federation/outbound', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, peer_url: peer_url || null }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            alert('Failed to issue token: ' + (err.detail || res.status));
+            return;
+        }
         const data = await res.json();
         const display = document.getElementById('federation-token-display');
         const value   = document.getElementById('federation-token-value');
@@ -393,14 +473,28 @@
             value.textContent = data.token;
             display.hidden = false;
         }
-        refreshServiceAccount();
+        document.getElementById('fed-issue-name').value = '';
+        document.getElementById('fed-issue-url').value = '';
+        refreshOutbound();
     };
 
-    // Initial load + periodic refresh so the user sees the sync
-    // progress bar tick forward while they watch the panel.
+    window.federationRevokeOutbound = async function (id) {
+        if (!confirm('Revoke this token? The remote will lose access immediately. The row stays so you can still see when the peer was last online.')) return;
+        await fetch('/api/admin/federation/outbound/' + id + '/revoke', { method: 'POST', credentials: 'include' });
+        refreshOutbound();
+    };
+
+    window.federationDeleteOutbound = async function (id) {
+        if (!confirm('Delete this token record permanently? You will lose the history of when the peer was online.')) return;
+        await fetch('/api/admin/federation/outbound/' + id, { method: 'DELETE', credentials: 'include' });
+        refreshOutbound();
+    };
+
+    // Initial load + periodic refresh so the user sees sync progress
+    // and peer-online status update live while they watch the panel.
     refreshList();
-    refreshServiceAccount();
-    setInterval(refreshList, 5000);
+    refreshOutbound();
+    setInterval(() => { refreshList(); refreshOutbound(); }, 5000);
 })();
 </script>
 {% endblock %}
