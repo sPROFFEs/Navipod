@@ -2,26 +2,27 @@
 #
 # Navipod — Bulk Music Import
 # ───────────────────────────
-# Stages a host folder into the import_stage volume and runs the in-container
-# importer to move files into the shared pool, register them in the DB, save
-# embedded covers, and (optionally) enrich missing metadata + covers via the
-# configured remote providers.
+# Imports audio files from a host folder into the SHARED POOL only. Tracks
+# become available to every user of the instance via search / library views.
+# This script does NOT create playlists and does NOT assign tracks to any
+# user; it only moves audio into /opt/saas-data/pool, registers each track
+# in the DB with metadata, and optionally fetches missing covers via the
+# remote APIs already configured by the admin in `Settings > Engine`.
 #
 # Usage:
 #     ./import_music.sh /path/to/music [options]
 #
 # Options forwarded to the Python importer:
-#     --user USERNAME      owner of the created playlist (default: first admin)
-#     --no-playlist        don't create a playlist for the imported tracks
 #     --enrich             use Spotify/Last.fm/MusicBrainz APIs for covers + metadata
+#                          (uses the keys configured in Settings > Engine)
 #     --dry-run            scan and report what would happen, change nothing
 #     --workers N          concurrent API calls during enrichment (default 4)
 #     --verbose            per-track debug output
 #
 # Examples:
-#     ./import_music.sh /mnt/library/rock --enrich
-#     ./import_music.sh /tmp/old-music --no-playlist --dry-run
-#     ./import_music.sh ~/downloads/album --user alice --enrich
+#     ./import_music.sh /mnt/library
+#     ./import_music.sh /mnt/library --enrich
+#     ./import_music.sh /tmp/old-music --dry-run
 #
 
 set -euo pipefail
@@ -73,37 +74,54 @@ if [[ ! -d "$STAGE_HOST" ]]; then
 fi
 
 # ─── Move audio files into the staging volume ────────────────────────────────
-# We use rsync --remove-source-files so that the original folder ends up
-# empty afterwards (the importer cleans up empty dirs as well). If rsync
-# isn't available we fall back to mv.
+# Strategy: enumerate files with `find -iname` (case-insensitive,
+# recursive, doesn't depend on shell globstar or rsync filter rules)
+# and move each one preserving its relative subpath under $SRC.
+#
+# Why not rsync? We used rsync's --include filter previously, which
+# DOES recurse but is case-sensitive — files like "Song.Mp3" slipped
+# through. `find -iname` matches *.MP3, *.mp3, *.Mp3, *.mP3, etc.,
+# eliminating an entire class of "no audio files found" reports.
 echo "→ staging audio files from $SRC into $STAGE_HOST"
-shopt -s globstar nullglob
-EXTS=("mp3" "m4a" "flac" "wav" "ogg" "opus" "aac" "wma")
 
+# Audio extensions we accept. Add new ones here — the find call below
+# expands them with -iname so case is irrelevant.
+EXTS=(
+    mp3 m4a flac wav ogg opus aac wma
+    aif aiff alac dsf dsd ape mka mp4
+)
+
+# Build `\( -iname '*.mp3' -o -iname '*.flac' -o ... \)` for find.
+FIND_FILTER=( '(' )
+first=1
+for ext in "${EXTS[@]}"; do
+    if [[ $first -eq 1 ]]; then
+        FIND_FILTER+=( -iname "*.${ext}" )
+        first=0
+    else
+        FIND_FILTER+=( -o -iname "*.${ext}" )
+    fi
+done
+FIND_FILTER+=( ')' )
+
+# Enumerate audio files NUL-separated to survive spaces/newlines in
+# filenames. `-print0` + `read -d ''` is the canonical safe loop.
 count=0
-if command -v rsync >/dev/null 2>&1; then
-    INCLUDE_ARGS=()
-    for ext in "${EXTS[@]}"; do
-        INCLUDE_ARGS+=(--include "*.${ext}" --include "*.${ext^^}")
-    done
-    sudo rsync -av --prune-empty-dirs \
-        --include "*/" "${INCLUDE_ARGS[@]}" --exclude "*" \
-        --remove-source-files \
-        "$SRC/" "$STAGE_HOST/"
-    count=$(sudo find "$STAGE_HOST" -type f \( $(printf -- '-iname *.%s -o ' "${EXTS[@]}" | sed 's/ -o $//') \) 2>/dev/null | wc -l)
-else
-    for ext in "${EXTS[@]}"; do
-        for f in "$SRC"/**/*."$ext" "$SRC"/**/*."${ext^^}"; do
-            [[ -e "$f" ]] || continue
-            rel="${f#$SRC/}"
-            dest="$STAGE_HOST/$rel"
-            sudo mkdir -p "$(dirname "$dest")"
-            sudo mv "$f" "$dest"
-            ((count++))
-        done
-    done
-fi
-shopt -u globstar nullglob
+while IFS= read -r -d '' f; do
+    rel="${f#$SRC/}"
+    dest="$STAGE_HOST/$rel"
+    sudo mkdir -p "$(dirname "$dest")"
+    sudo mv "$f" "$dest"
+    # `count=$((count+1))` instead of `((count++))` because the latter
+    # exits with status 1 when the OLD value was 0, which under
+    # `set -e` would abort the script on the very first file.
+    count=$((count+1))
+done < <(sudo find "$SRC" -type f "${FIND_FILTER[@]}" -print0)
+
+# Clean up empty source directories left behind by the moves so the
+# user's original tree ends up tidy (the importer also drops empty
+# dirs in the staging volume on its way out).
+sudo find "$SRC" -mindepth 1 -depth -type d -empty -delete 2>/dev/null || true
 
 if [[ "$count" -eq 0 ]]; then
     echo "✗ no audio files found under $SRC" >&2
