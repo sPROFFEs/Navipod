@@ -2,24 +2,30 @@
 Bulk music importer for Navipod.
 
 Walks a folder recursively, moves audio files into the shared pool, registers
-each track in the DB with full metadata extracted via mutagen, saves embedded
-cover art if present, and optionally enriches missing metadata + covers via
+each track in the DB with metadata extracted via mutagen, saves embedded
+cover art if present, and optionally enriches missing covers + metadata via
 the configured remote providers (Spotify / Last.fm / MusicBrainz).
+
+This is a pool-only tool — it does not create playlists or assign tracks to
+any user. Tracks land in the shared pool and become available to every user
+of the instance via the search / library views.
 
 Designed to run inside the `concierge` container so it has the same DB,
 pool path, cover cache and provider services as the live FastAPI app.
 
-Usage (inside the container):
-    python importer.py --source /saas-data/import_stage [options]
+When `--enrich` is set, the script reads the API keys from the first admin's
+`DownloadSettings` row (the same ones configured in `Settings > Engine` in
+the web UI). Decryption works because the container has access to
+`SECRET_KEY` from the .env.
 
-Options:
+Usage (inside the container):
+    python importer.py --source /saas-data/import_stage [--enrich] [--dry-run]
+
+Flags:
     --source PATH        Folder to scan recursively (required)
-    --user USERNAME      Owner of the created playlist (defaults to first admin)
-    --no-playlist        Don't create a playlist; just import to pool
-    --enrich             Call remote APIs (Spotify/Last.fm/MusicBrainz) to fill
-                         missing metadata and download covers when not embedded
-    --dry-run            Scan and report what would happen, without moving files
-                         or writing to the DB
+    --enrich             Use Spotify/Last.fm/MusicBrainz APIs to fill missing
+                         metadata and download covers when not embedded
+    --dry-run            Scan and report what would happen, change nothing
     --workers N          Concurrency for cover/metadata API calls (default 4)
     --verbose            Per-track debug output
 
@@ -43,12 +49,12 @@ import httpx
 
 # DB + services live in the concierge package; importer runs inside that container
 try:
-    from database import SessionLocal, Track, Playlist, PlaylistItem, User, DownloadSettings
+    from database import SessionLocal, Track, User, DownloadSettings
     import track_identity
     import cover_cache
     import metadata_service
 except ImportError:                                                       # pragma: no cover
-    from concierge.database import SessionLocal, Track, Playlist, PlaylistItem, User, DownloadSettings
+    from concierge.database import SessionLocal, Track, User, DownloadSettings
     from concierge import track_identity
     from concierge import cover_cache
     from concierge import metadata_service
@@ -153,10 +159,7 @@ async def download_cover_if_missing(
     title: str, artist: str, album: str,
     sem: asyncio.Semaphore, http: httpx.AsyncClient,
 ) -> bool:
-    """
-    If the track has no embedded cover yet, ask the configured providers for
-    one and stash it in cover_cache. Returns True iff a cover was saved.
-    """
+    """If the track has no cached cover yet, ask the configured providers."""
     if cover_cache.get_cached_cover(track_id):
         return False
     if not settings:
@@ -186,7 +189,6 @@ class Stats:
     imported: int  = 0
     duplicate: int = 0
     failed: int    = 0
-    skipped: int   = 0
     covers_embedded: int = 0
     covers_remote:   int = 0
     enriched: int  = 0
@@ -196,20 +198,18 @@ class Stats:
 def _pool_target(md: LocalMetadata, ext: str, pool_root: Path = POOL_ROOT) -> Path:
     folder = pool_root / fs_safe(md.artist) / fs_safe(md.album)
     folder.mkdir(parents=True, exist_ok=True)
-    name = f"{fs_safe(md.title)}{ext.lower()}"
-    return folder / name
+    return folder / f"{fs_safe(md.title)}{ext.lower()}"
 
 
 def _resolve_collision(target: Path, fhash: str) -> Path:
     """If a different file already lives at `target`, append a hash suffix."""
     if not target.exists():
         return target
-    stem, ext = target.stem, target.suffix
-    return target.with_name(f"{stem}_{fhash[:6]}{ext}")
+    return target.with_name(f"{target.stem}_{fhash[:6]}{target.suffix}")
 
 
-def import_one(db, path: Path, *, dry_run: bool, stats: Stats) -> Track | None:
-    """Move file into pool + create Track row. Returns the Track (or None if dup/fail)."""
+def import_one(db, path: Path, *, dry_run: bool, stats: Stats) -> int | None:
+    """Move file into pool + create Track row. Returns the new track id, or None."""
     try:
         fhash = file_hash(path)
         md    = extract_metadata(path)
@@ -228,7 +228,6 @@ def import_one(db, path: Path, *, dry_run: bool, stats: Stats) -> Track | None:
                 except OSError: pass
             return None
 
-        # Move to pool
         target = _resolve_collision(_pool_target(md, path.suffix), fhash)
         if dry_run:
             logger.info("DRY   %s  →  %s", path.name, target)
@@ -264,7 +263,7 @@ def import_one(db, path: Path, *, dry_run: bool, stats: Stats) -> Track | None:
         stats.imported += 1
         stats.new_track_ids.append(track.id)
         logger.info("OK    %s  →  #%s  %s — %s", path.name, track.id, md.artist, md.title)
-        return track
+        return track.id
 
     except Exception as e:
         stats.failed += 1
@@ -278,33 +277,75 @@ def import_one(db, path: Path, *, dry_run: bool, stats: Stats) -> Track | None:
 #  Async enrichment pass (runs after all files are imported)
 # ──────────────────────────────────────────────────────────────────────────────
 
-async def enrich_pass(track_ids: list[int], settings: DownloadSettings, workers: int, stats: Stats) -> None:
+async def enrich_pass(track_ids: list[int], settings: DownloadSettings,
+                      workers: int, stats: Stats) -> None:
     if not track_ids:
         return
-    sem  = asyncio.Semaphore(workers)
+
+    # `sem` was previously used only inside _process to gate the HTTP
+    # call to enrich_metadata. The DB session opened ABOVE that
+    # semaphore was unbounded — for an N-track import, asyncio.gather
+    # spawned N concurrent _process tasks, each holding a fresh
+    # SQLAlchemy connection (we use NullPool, so each session is its
+    # own SQLite file descriptor). On a 1700-track import that blows
+    # past the default Linux fd limit of 1024 and SQLite starts
+    # returning "unable to open database file" — a transient error
+    # that the metadata_cache helper then mistakes for corruption.
+    #
+    # Add an OUTER semaphore that bounds total concurrent tasks. The
+    # inner `sem` is kept for the HTTP enrich call so we don't change
+    # the cover-download / enrichment HTTP behavior.
+    http_sem = asyncio.Semaphore(workers)            # HTTP bound (existing)
+    db_sem = asyncio.Semaphore(max(2, workers))      # DB / overall bound (new)
+
     async with httpx.AsyncClient() as http:
         async def _process(tid: int):
-            db = SessionLocal()
-            try:
-                t = db.get(Track, tid)
-                if not t:
-                    return
-                if await download_cover_if_missing(
-                    t.id, settings, t.title, t.artist, t.album, sem, http
-                ):
-                    stats.covers_remote += 1
-                # Genre / release_year aren't first-class columns on Track today,
-                # but enrich_metadata still warms metadata_cache for the live UI
-                async with sem:
-                    try:
-                        await metadata_service.enrich_metadata(settings, t.title, t.artist, t.album)
-                        stats.enriched += 1
-                    except Exception as e:
-                        logger.debug("enrich failed for #%s: %s", t.id, e)
-            finally:
-                db.close()
+            async with db_sem:
+                db = SessionLocal()
+                try:
+                    t = db.get(Track, tid)
+                    if not t: return
+                    if await download_cover_if_missing(
+                        t.id, settings, t.title, t.artist, t.album, http_sem, http
+                    ):
+                        stats.covers_remote += 1
+                    async with http_sem:
+                        try:
+                            await metadata_service.enrich_metadata(settings, t.title, t.artist, t.album)
+                            stats.enriched += 1
+                        except Exception as e:
+                            logger.debug("enrich failed for #%s: %s", t.id, e)
+                finally:
+                    db.close()
 
+        # gather still creates len(track_ids) tasks but only `db_sem`
+        # of them run concurrently — the rest are queued at the
+        # `async with db_sem` await.
         await asyncio.gather(*(_process(tid) for tid in track_ids))
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  API settings discovery
+# ──────────────────────────────────────────────────────────────────────────────
+
+def get_api_settings(db) -> DownloadSettings | None:
+    """
+    Return the first admin's DownloadSettings if it has any provider key
+    configured. Decryption happens automatically inside the container because
+    SECRET_KEY is loaded from the env. If no admin has configured keys yet,
+    return None so enrichment can be silently skipped.
+    """
+    admin = db.query(User).filter_by(is_admin=True).first()
+    if not admin:
+        return None
+    s = db.query(DownloadSettings).filter_by(user_id=admin.id).first()
+    if not s:
+        return None
+    has_any = bool(
+        getattr(s, "spotify_client_id", None) or
+        getattr(s, "lastfm_api_key", None)
+    )
+    return s if has_any else None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -315,43 +356,8 @@ def find_audio_files(root: Path) -> list[Path]:
     return [p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in AUDIO_EXTS]
 
 
-def resolve_user(db, username: str | None) -> User | None:
-    if username:
-        u = db.query(User).filter_by(username=username).first()
-        if not u:
-            logger.error("user %r not found", username)
-        return u
-    # Default: first admin, or first user
-    return (db.query(User).filter_by(is_admin=True).first()
-            or db.query(User).first())
-
-
-def get_or_create_playlist(db, name: str, owner_id: int) -> Playlist:
-    pl = db.query(Playlist).filter_by(name=name, owner_id=owner_id).first()
-    if pl:
-        return pl
-    pl = Playlist(name=name, owner_id=owner_id)
-    db.add(pl); db.commit(); db.refresh(pl)
-    return pl
-
-
-def add_to_playlist(db, playlist: Playlist, tracks: list[Track]) -> int:
-    if not tracks:
-        return 0
-    start_pos = db.query(PlaylistItem).filter_by(playlist_id=playlist.id).count()
-    seen = {row[0] for row in db.query(PlaylistItem.track_id)
-                                 .filter_by(playlist_id=playlist.id).all()}
-    added = 0
-    for offset, t in enumerate(tracks, start=1):
-        if t.id in seen: continue
-        db.add(PlaylistItem(playlist_id=playlist.id, track_id=t.id, position=start_pos + offset))
-        added += 1
-    db.commit()
-    return added
-
-
 def cleanup_empty_dirs(root: Path) -> None:
-    for dirpath, _, _ in sorted((os.walk(root, topdown=False)), reverse=True):
+    for dirpath, _, _ in sorted(os.walk(root, topdown=False), reverse=True):
         try: os.rmdir(dirpath)
         except OSError: pass
 
@@ -369,37 +375,24 @@ def run(args: argparse.Namespace) -> int:
 
     db = SessionLocal()
     try:
-        user = resolve_user(db, args.user)
-        if not user:
-            logger.error("no user available — create an admin first")
-            return 4
+        # Resolve API keys for enrichment (always pulls from first admin's
+        # configured Settings > Engine credentials).
+        settings = None
+        if args.enrich:
+            settings = get_api_settings(db)
+            if not settings:
+                logger.warning(
+                    "--enrich requested but no admin has API keys configured in "
+                    "Settings > Engine. API enrichment will be skipped."
+                )
 
-        settings = (db.query(DownloadSettings)
-                      .filter_by(user_id=user.id).first()) if args.enrich else None
-        if args.enrich and not settings:
-            logger.warning("--enrich requested but user %r has no DownloadSettings; "
-                           "API enrichment will be skipped", user.username)
-
-        playlist = None
-        if not args.no_playlist:
-            playlist_name = source.name or "Imported"
-            playlist = get_or_create_playlist(db, playlist_name, user.id)
-            logger.info("playlist target: %r (id=%s) owned by %s",
-                        playlist.name, playlist.id, user.username)
-
-        stats    = Stats()
-        imported = []
-
+        stats = Stats()
         logger.info("scanning %d audio file(s) under %s", len(files), source)
+
         for idx, path in enumerate(files, start=1):
             stats.scanned += 1
             print(f"[{idx}/{len(files)}] {path.name}", flush=True)
-            t = import_one(db, path, dry_run=args.dry_run, stats=stats)
-            if t: imported.append(t)
-
-        if playlist and imported and not args.dry_run:
-            n = add_to_playlist(db, playlist, imported)
-            logger.info("added %d new item(s) to playlist %r", n, playlist.name)
+            import_one(db, path, dry_run=args.dry_run, stats=stats)
 
         if args.enrich and settings and stats.new_track_ids and not args.dry_run:
             logger.info("enriching %d new track(s) — covers + metadata cache",
@@ -429,12 +422,9 @@ def run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Bulk import audio files into the Navipod pool."
+        description="Bulk import audio files into the Navipod shared pool."
     )
     parser.add_argument("--source", required=True, help="folder to scan recursively")
-    parser.add_argument("--user", help="username that owns the created playlist (default: first admin)")
-    parser.add_argument("--no-playlist", action="store_true",
-                        help="don't auto-create a playlist for the imported tracks")
     parser.add_argument("--enrich", action="store_true",
                         help="call remote APIs to download missing covers and warm metadata cache")
     parser.add_argument("--dry-run", action="store_true",

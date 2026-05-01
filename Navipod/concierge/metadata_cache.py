@@ -108,6 +108,26 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
     )
 
 
+# Substrings in the SQLite error message that indicate ACTUAL on-disk
+# corruption — versus transient failures (file-descriptor exhaustion,
+# busy locks, etc.) that should NOT cause us to rotate the cache file.
+# Rotating on a transient error makes everything worse: we throw away
+# valid data and re-create the file, only to hit the same transient
+# error on the next call.
+_CORRUPTION_INDICATORS = (
+    "malformed",          # SQLITE_CORRUPT
+    "database disk image is malformed",
+    "file is not a database",
+    "not a database",
+    "encrypted or is not a database",
+)
+
+
+def _is_real_corruption(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    return any(ind in msg for ind in _CORRUPTION_INDICATORS)
+
+
 @contextmanager
 def _get_conn() -> Iterator[sqlite3.Connection | None]:
     _ensure_parent_dir()
@@ -128,7 +148,12 @@ def _get_conn() -> Iterator[sqlite3.Connection | None]:
                 except Exception:
                     pass
             _log(f"Database error: {exc}")
-            if attempt == 0:
+            # Only rotate the file for ACTUAL corruption. Transient
+            # errors like "unable to open database file" (commonly
+            # caused by fd exhaustion or temporary lock contention)
+            # used to trigger the rotation too — that turned a
+            # recoverable hiccup into actual data loss.
+            if attempt == 0 and _is_real_corruption(exc):
                 _backup_corrupt_db()
                 continue
             yield None
