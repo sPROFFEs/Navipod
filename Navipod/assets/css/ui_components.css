@@ -1462,3 +1462,89 @@
     height: 22px;
     flex-shrink: 0;
 }
+
+/* Federation admin panel — mobile responsive overrides ===================
+ * The panel was designed for desktop column widths. On <=768px:
+ *  - The 3/4-column grid forms must collapse to 1 column.
+ *  - Long URLs / IPs / UA strings must wrap instead of pushing the
+ *    row past the viewport.
+ *  - Action buttons must wrap rather than overflow horizontally.
+ *  - The whole panel needs `min-width: 0` on its grid children to
+ *    allow flex/grid items to shrink below their natural width
+ *    (otherwise the URL element forces the row wider than the screen).
+ */
+
+@media (max-width: 768px) {
+    /* Form rows: stack inputs vertically. The implicit min-content of
+       each input was forcing the form past 100vw. */
+    .federation-add-form,
+    .federation-add-form-2col {
+        grid-template-columns: 1fr;
+    }
+
+    /* Allow text inside flex/grid children to wrap instead of forcing
+       the row to grow to fit. min-width:0 is the canonical fix for
+       "child of grid/flex won't shrink below its content size". */
+    .fed-row,
+    .fed-row-head,
+    .fed-row-meta,
+    .fed-row-actions {
+        min-width: 0;
+    }
+
+    /* URL is monospace + long; allow it to break anywhere. */
+    .fed-row-url,
+    .fed-row-url-missing {
+        word-break: break-all;
+        overflow-wrap: anywhere;
+        font-size: 0.72rem;
+    }
+
+    /* Stack the head info instead of one wrap-y line, so the badge
+       and URL each get their own row and we don't end up with weird
+       vertical alignment. */
+    .fed-row-head {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+
+    /* Meta/UA fields can be long IPs + 200-char user agents. Let
+       them wrap and trim the UA harder on mobile. */
+    .fed-row-meta {
+        gap: 8px;
+        font-size: 0.72rem;
+    }
+    .fed-row-ua {
+        max-width: 100%;
+        white-space: normal;
+    }
+
+    /* Action buttons wrap onto multiple lines. The default flex-wrap
+       was already there but the buttons themselves had implicit
+       min-content that prevented shrinking. */
+    .fed-row-actions {
+        gap: 8px;
+    }
+    .fed-row-actions button {
+        flex: 0 0 auto;
+    }
+
+    /* The whole admin shell on mobile sometimes inherits a fixed
+       padding from desktop styles — add a safety horizontal padding
+       so the federation panel never butts against the viewport edge. */
+    #federation-panel {
+        max-width: 100%;
+    }
+    #federation-panel .admin-panel-body {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    /* Token display code block: the urlsafe token is ~54 chars; allow
+       it to break so the modal doesn't extend past the viewport. */
+    .federation-token-display code {
+        word-break: break-all;
+        font-size: 0.78rem;
+    }
+}
