@@ -129,10 +129,24 @@ if [[ "$count" -eq 0 ]]; then
 fi
 echo "→ staged $count file(s)"
 
+# ─── Make the staged files readable by `appuser` inside the container ───────
+# We sudo'd the moves on the host, so the new files end up root-owned both
+# on disk and (via the bind mount) inside the container. The importer
+# below runs as `appuser` (UID 1000) — the same user as the running
+# concierge — so it needs read access to the staged content. A single
+# chown over the staging tree is the simplest fix.
+sudo chown -R 1000:1000 "$STAGE_HOST" 2>/dev/null || true
+
 # ─── Run the in-container importer ───────────────────────────────────────────
-echo "→ running importer inside the concierge container"
+# Run as `appuser`, not the Dockerfile default (root). The running
+# concierge process holds SQLite open as appuser; another process
+# attempting to open the same WAL DB as a different UID (even root)
+# can hit "unable to open database file" because fcntl locks are
+# UID-scoped on some bind-mounted filesystems. Matching the UID
+# eliminates that whole class of failure.
+echo "→ running importer inside the concierge container (as appuser)"
 echo
-docker compose exec -T concierge python importer.py \
+docker compose exec -T --user appuser concierge python importer.py \
     --source /saas-data/import_stage "$@"
 RC=$?
 
