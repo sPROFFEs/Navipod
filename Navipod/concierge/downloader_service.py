@@ -388,7 +388,15 @@ class DownloadManager:
                 self._runtime_cookie_path = self._resolve_cookie_file(temp_dir)
                 # 2. DESCARGAR EN TEMP
                 success = False
-                if "spotify.com" in job.input_url:
+                # Federation tracks (fed:{instance_id}:{remote_id}) are
+                # already on a peer in our trust circle — fetch the
+                # actual file directly via the federation stream
+                # endpoint instead of falling through to YouTube
+                # search, which would download a different recording.
+                if job.input_url.startswith("fed:"):
+                    self._log(job_id, "Downloading from federated peer...", 5)
+                    success = self._handle_federation_direct(job.input_url, temp_dir, job_id)
+                elif "spotify.com" in job.input_url:
                     self._log(job_id, "Resolving Spotify track...", 5)
                     success = self._handle_spotify_robust(job.input_url, temp_dir, job_id)
                 else:
@@ -439,7 +447,14 @@ class DownloadManager:
                             logger.warning(f"Error reading tags: {e}")
 
                         # Intento de adivinar Source ID
-                        if "spotify" in job.input_url and job.input_url.count("track") == 1:
+                        if job.input_url.startswith("fed:"):
+                            # Federation: "fed:{instance_id}:{remote_id}"
+                            # is already a stable, instance-scoped id.
+                            # Re-using it as source_id means downloading
+                            # the same federated track twice will hit
+                            # the dedup check.
+                            source_id = job.input_url
+                        elif "spotify" in job.input_url and job.input_url.count("track") == 1:
                              # Single track download, use input URL as ID base
                              source_id = f"spotify:track:{job.input_url.split('/')[-1].split('?')[0]}"
                         elif "youtu" in job.input_url:
@@ -575,6 +590,172 @@ class DownloadManager:
                 self.db.commit()
             finally:
                 self._runtime_cookie_path = None
+
+    # ── FEDERATION DIRECT ─────────────────────────────────────────────────
+    # Fetch a track that lives on a peer Navipod via the existing
+    # /api/federation/stream/{remote_id} endpoint (token-authenticated).
+    # We skip yt-dlp entirely because the file is already known and
+    # tagged on the peer — searching YouTube would resolve a DIFFERENT
+    # recording (different mix, different mastering, different artist
+    # spelling) and the user gets the wrong song.
+
+    def _handle_federation_direct(self, fed_url: str, folder: str, job_id: int) -> bool:
+        # Parse "fed:{instance_id}:{remote_id}".
+        parts = fed_url.split(":")
+        if len(parts) != 3 or parts[0] != "fed":
+            self._set_last_reason(f"Invalid federation URL format: {fed_url}")
+            return False
+        try:
+            instance_id = int(parts[1])
+            remote_id = int(parts[2])
+        except ValueError:
+            self._set_last_reason(f"Federation URL must contain integer ids: {fed_url}")
+            return False
+
+        # Look up peer + cached track metadata. We use the cached
+        # FederatedTrack row for filename + tagging hints; without it
+        # we still proceed but with a generic name.
+        inst = self.db.query(database.FederatedInstance).filter(
+            database.FederatedInstance.id == instance_id
+        ).first()
+        if not inst:
+            self._set_last_reason(f"Federation peer #{instance_id} not configured on this instance")
+            return False
+        if not inst.enabled:
+            self._set_last_reason(f"Federation peer '{inst.name}' is disabled")
+            return False
+
+        # Hard-block downloads from a peer the health checker says is
+        # offline. Otherwise we'd waste time on a guaranteed timeout.
+        try:
+            import federation_service as _fed_svc
+            if not _fed_svc.status_is_playable(inst.status):
+                self._set_last_reason(
+                    f"Federation peer '{inst.name}' is currently {inst.status} — try again later"
+                )
+                return False
+        except Exception:
+            pass
+
+        fed_track = self.db.query(database.FederatedTrack).filter(
+            database.FederatedTrack.instance_id == instance_id,
+            database.FederatedTrack.remote_id == remote_id,
+        ).first()
+
+        upstream_url = inst.base_url.rstrip("/") + f"/api/federation/stream/{remote_id}"
+        upstream_headers = {"User-Agent": "Navipod-Federation/1.0"}
+        if inst.api_token:
+            upstream_headers["Authorization"] = f"Bearer {inst.api_token}"
+
+        self._set_engine_used("federation")
+        self._log(job_id, f"Fetching from {inst.name}...", 10)
+
+        # Sync httpx.Client because _process_download_sync runs in a
+        # thread executor — calling async code from here would require
+        # an extra runloop per download.
+        try:
+            with httpx.Client(timeout=httpx.Timeout(60.0, connect=8.0)) as client:
+                with client.stream("GET", upstream_url, headers=upstream_headers) as resp:
+                    if resp.status_code >= 400:
+                        # Read at most 256 bytes of error body so a
+                        # broken peer can't OOM us with a giant 500
+                        # page.
+                        preview = b""
+                        for chunk in resp.iter_bytes(256):
+                            preview = chunk
+                            break
+                        self._set_last_reason(
+                            f"Peer rejected stream request (HTTP {resp.status_code}): {preview[:200]!r}"
+                        )
+                        return False
+
+                    # Pick file extension from Content-Type. If the
+                    # peer doesn't tell us, assume mp3 — the existing
+                    # tagging step in the post-download pipeline will
+                    # detect the real format from file magic anyway.
+                    ctype = (resp.headers.get("content-type") or "audio/mpeg").split(";")[0].strip().lower()
+                    ext_map = {
+                        "audio/mpeg": ".mp3",
+                        "audio/mp3": ".mp3",
+                        "audio/mp4": ".m4a",
+                        "audio/x-m4a": ".m4a",
+                        "audio/aac": ".aac",
+                        "audio/flac": ".flac",
+                        "audio/x-flac": ".flac",
+                        "audio/ogg": ".ogg",
+                        "audio/vorbis": ".ogg",
+                        "audio/wav": ".wav",
+                        "audio/x-wav": ".wav",
+                        "audio/webm": ".webm",
+                    }
+                    suffix = ext_map.get(ctype, ".mp3")
+
+                    # Build a sanitized filename from the cached
+                    # metadata. The downstream _iter_downloaded_audio_files
+                    # reads everything in `folder`, so the name is just
+                    # for human-readable temp files.
+                    if fed_track and (fed_track.artist or fed_track.title):
+                        base = f"{fed_track.artist or 'Unknown'} - {fed_track.title or 'Unknown'}"
+                    else:
+                        base = f"federation-{instance_id}-{remote_id}"
+                    safe_chars = set(" -_.()&,'!")
+                    base = "".join(c for c in base if c.isalnum() or c in safe_chars)[:120].strip() or f"federation-{instance_id}-{remote_id}"
+                    out_path = os.path.join(folder, base + suffix)
+
+                    total_bytes = 0
+                    content_length = int(resp.headers.get("content-length") or 0)
+                    last_progress_reported = 5
+                    with open(out_path, "wb") as f:
+                        for chunk in resp.iter_bytes(64 * 1024):
+                            f.write(chunk)
+                            total_bytes += len(chunk)
+                            if content_length:
+                                pct = 10 + int((total_bytes / content_length) * 75)
+                                # Throttle log calls — we don't need a
+                                # commit per chunk.
+                                if pct >= last_progress_reported + 5:
+                                    self._log(job_id, f"Downloaded {total_bytes // 1024} KiB", min(85, pct))
+                                    last_progress_reported = pct
+                            elif total_bytes // (256 * 1024) > last_progress_reported:
+                                # Unknown content-length — log every 256 KiB.
+                                last_progress_reported = total_bytes // (256 * 1024)
+                                self._log(job_id, f"Downloaded {total_bytes // 1024} KiB", None)
+
+            # Surface the resolved title/artist/album on the job so
+            # the UI's download history shows the real track, not the
+            # fed:X:Y opaque id.
+            if fed_track:
+                if fed_track.title:
+                    self._update_job(job_id, "resolved_title", fed_track.title)
+                if fed_track.artist:
+                    self._update_job(job_id, "resolved_artist", fed_track.artist)
+                if fed_track.album:
+                    self._update_job(job_id, "resolved_album", fed_track.album)
+
+            self._log(job_id, "Download complete, processing...", 88)
+            return True
+
+        except httpx.HTTPError as e:
+            self._set_last_reason(f"Federation stream HTTP error: {e}")
+            return False
+        except Exception as e:
+            logger.exception("Federation direct download error")
+            self._set_last_reason(f"Federation download error: {e}")
+            return False
+
+    def _update_job(self, job_id: int, attr: str, value):
+        """Helper to set a single field on the active job and commit
+        without disturbing other in-flight commits in the session."""
+        try:
+            j = self.db.query(database.DownloadJob).filter(database.DownloadJob.id == job_id).first()
+            if j:
+                setattr(j, attr, value)
+                self.db.commit()
+        except Exception:
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
 
     def _handle_spotify_robust(self, url, folder, job_id):
         """

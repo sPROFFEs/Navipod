@@ -9,6 +9,7 @@ KNOWN_SOURCES = {
     "soundcloud",
     "audius",
     "jamendo",
+    "federation",
 }
 
 SOURCE_DOMAIN_HINTS = (
@@ -35,6 +36,12 @@ def infer_source(raw_source: str | None = None, raw_url: str | None = None, defa
     url = (raw_url or "").strip().lower()
     if not url:
         return default
+
+    # Federation track ids look like "fed:1:1722". They aren't real
+    # URLs, so urlparse below would silently misclassify them as
+    # "external"; handle them explicitly.
+    if url.startswith("fed:"):
+        return "federation"
 
     parsed = urlparse(url)
     haystack = " ".join(part for part in [parsed.netloc, parsed.path, parsed.query, url] if part)

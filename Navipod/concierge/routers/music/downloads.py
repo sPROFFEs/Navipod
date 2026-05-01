@@ -94,6 +94,13 @@ async def _resolve_download_url(user, req: DownloadRequest) -> tuple[str, str]:
     if not raw_url:
         return raw_url, "empty"
 
+    # Federation tracks: pass through unchanged. The downloader
+    # branches on the "fed:" prefix and fetches the file directly
+    # from the peer — we must NOT mangle the id by routing it
+    # through the YouTube/Spotify resolver below.
+    if raw_url.startswith("fed:"):
+        return raw_url, "federation-direct"
+
     if "youtube.com/watch" in raw_url or "youtu.be/" in raw_url:
         return raw_url, "youtube-direct"
 
