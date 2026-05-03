@@ -36,6 +36,28 @@ let _gainFade = null;
 let _initialized = false;
 let _initFailed = false;
 
+// iOS detection (covers iPhone, iPad in legacy mode, and iPadOS which
+// disguises itself as MacIntel with touch points). Browser-only check;
+// no UA spoofing concerns because we degrade gracefully either way.
+//
+// On iOS, calling `createMediaElementSource(audio)` permanently routes
+// the audio element's output through the Web Audio graph. When iOS
+// suspends the AudioContext (which it does aggressively on background,
+// lock screen, app-switcher) the graph mutes — and even though the
+// <audio> element keeps trying to play, no sound comes out. There's no
+// reliable way to keep the AudioContext alive across iOS background
+// the way Android does. The least-bad option is to NOT initialize the
+// chain on iOS and accept that ReplayGain + Crossfade won't work
+// there. Background playback (the bigger feature) keeps working.
+const _IS_IOS = (() => {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  if (/iPad|iPhone|iPod/.test(ua)) return true;
+  // iPadOS 13+ ships a desktop-class user agent — sniff via touch points.
+  if (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1) return true;
+  return false;
+})();
+
 // Pre-amp keeps tracks from clipping after positive gain. Spotify uses
 // -1 dB; we follow suit so a fully-tagged library tagged at -14 LUFS
 // peaks comfortably below 0 dBFS.
@@ -72,6 +94,16 @@ export function setCrossfadeSeconds(seconds) {
 export function ensureInitialized() {
   if (_initialized || _initFailed) return _initialized;
   if (!state.audio) return false;
+  // Hard skip on iOS — see the _IS_IOS comment above. We mark as
+  // failed so subsequent calls short-circuit cheaply.
+  if (_IS_IOS) {
+    _initFailed = true;
+    _notifyInitFailure(
+      'ReplayGain / Crossfade are disabled on iOS — they would break background playback. ' +
+      'Regular playback continues unaffected.'
+    );
+    return false;
+  }
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) {

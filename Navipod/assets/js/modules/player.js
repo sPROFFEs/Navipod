@@ -1191,19 +1191,47 @@ export function setupPlayer() {
   }
 
   // --- BACKGROUND PLAYBACK: Visibility change handler ---
-  // When user returns to the tab, check if the track ended while backgrounded
+  // When user returns to the tab, check if the track ended while backgrounded.
+  //
+  // iOS quirk: after a long background suspension, `audio.ended` can
+  // report `true` even when the track DID NOT actually finish — Safari
+  // resets some internal state when reviving the tab. The previous
+  // version naively triggered playNext() in that case, causing the
+  // skipping/looping users reported on iOS. We now also verify
+  // currentTime is within the legitimate end-of-track window before
+  // advancing.
+  const _IS_IOS_PLAYER = (() => {
+    const ua = navigator.userAgent || '';
+    if (/iPad|iPhone|iPod/.test(ua)) return true;
+    if (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1) return true;
+    return false;
+  })();
+
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       persistPlaybackSession();
       return;
     }
     if (document.visibilityState === 'visible' && state.currentTrack) {
-      // If audio ended while in background, the 'ended' event may not have fired
-      if (state.audio.ended && !state.audio._endHandled) {
+      // Stricter end-of-track detection — `audio.ended` alone is not
+      // trustworthy on iOS resume.
+      const dur = Number.isFinite(state.audio.duration) ? state.audio.duration : 0;
+      const cur = Number.isFinite(state.audio.currentTime) ? state.audio.currentTime : 0;
+      const reallyEnded =
+        state.audio.ended &&
+        dur > 0 &&
+        cur >= dur - 1.0;   // within the last 1s of the actual track
+
+      if (reallyEnded && !state.audio._endHandled) {
         console.log('[BG-PLAY] Track ended while backgrounded, advancing...');
         state.audio._endHandled = true;
         playNext();
+      } else if (state.audio.ended && !reallyEnded) {
+        // iOS bogus 'ended' state — log so we can spot the symptom in
+        // user reports without taking action.
+        console.log('[BG-PLAY] audio.ended=true but currentTime=%s/%s; ignoring (likely iOS resume artifact)', cur, dur);
       }
+
       // Re-acquire screen wake lock (cannot be requested while hidden).
       if (!state.audio.paused) {
         acquirePlaybackLock();
@@ -1212,8 +1240,42 @@ export function setupPlayer() {
       if ('mediaSession' in navigator) {
         navigator.mediaSession.playbackState = state.audio.paused ? 'paused' : 'playing';
       }
+
+      // iOS-only: re-bind MediaSession metadata and refresh play()
+      // intent. After a long background, iOS sometimes loses the
+      // session binding and the lock-screen widget shows nothing.
+      // Re-applying the metadata when we get focus back is harmless
+      // on Android but fixes the lock-screen ghost on iOS.
+      if (_IS_IOS_PLAYER && state.currentTrack && 'mediaSession' in navigator) {
+        try {
+          updateMediaSessionMetadata(state.currentTrack);
+        } catch (e) {
+          console.warn('[BG-PLAY] iOS MediaSession refresh failed:', e);
+        }
+      }
     }
   });
+
+  // iOS BFCache restore: when the user navigates away and comes back
+  // (or when the home button briefly suspends the PWA), iOS may put
+  // the page in the back-forward cache. On `pageshow.persisted` the
+  // page is being restored from BFCache — JS state is intact but
+  // timers may be off. Re-apply MediaSession metadata so the lock
+  // screen reflects the right track. Guarded for iOS only because
+  // pageshow on Android with persisted=true is rare and the existing
+  // visibilitychange path already handles those cases.
+  if (_IS_IOS_PLAYER) {
+    window.addEventListener('pageshow', (event) => {
+      if (!event.persisted) return;
+      console.log('[BG-PLAY] pageshow from BFCache, refreshing session');
+      if (state.currentTrack && 'mediaSession' in navigator) {
+        try {
+          updateMediaSessionMetadata(state.currentTrack);
+          navigator.mediaSession.playbackState = state.audio.paused ? 'paused' : 'playing';
+        } catch (e) { /* best-effort */ }
+      }
+    });
+  }
 
   window.addEventListener('pagehide', () => {
     persistPlaybackSession();
