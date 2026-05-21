@@ -48,6 +48,22 @@ export function setSource(el, src) {
 
 // === EXECUTE SEARCH ===
 
+// Reusable music-bar loader strip. Sits above the results body in
+// every render path; CSS shows/hides it based on .search-results-fetching
+// on the parent, so the body never gets wiped on each keystroke.
+const LOADER_STRIP_HTML = `
+  <div class="music-loader search-loader-strip" aria-hidden="true">
+    <div class="music-bar" style="animation-delay: 0.0s"></div>
+    <div class="music-bar" style="animation-delay: 0.1s"></div>
+    <div class="music-bar" style="animation-delay: 0.2s"></div>
+    <div class="music-bar" style="animation-delay: 0.3s"></div>
+    <div class="music-bar" style="animation-delay: 0.4s"></div>
+  </div>`;
+
+function renderResults(container, bodyHtml) {
+  container.innerHTML = `${LOADER_STRIP_HTML}<div class="search-results-body">${bodyHtml}</div>`;
+}
+
 export async function executeSearch(query) {
   const results = document.getElementById('search-results');
   if (!results) return;
@@ -71,39 +87,23 @@ export async function executeSearch(query) {
   // payload — surfacing "No results found" here was actively misleading.
   if (!query) {
     results.classList.remove('search-results-fetching');
-    results.innerHTML =
-      '<div class="empty-state"><p>Type to search your library, federated peers, and remote sources.</p></div>';
+    renderResults(
+      results,
+      '<div class="empty-state"><p>Type to search your library, federated peers, and remote sources.</p></div>'
+    );
     state.setCurrentViewList([]);
     return;
   }
 
-  // Only show the music-loader on the first search (empty container), or
-  // when explicitly resetting from an empty/no-results state. Once we
-  // have real content, keep it on screen while the next request is
-  // in-flight — otherwise every keystroke wipes the panel and produces
-  // a visible flash.
-  const hasContent =
-    results.children.length > 0 &&
-    !results.querySelector('.music-loader') &&
-    !results.querySelector('.search-empty-placeholder');
+  // Flag the panel as fetching — CSS reveals the loader strip and
+  // dims the existing body. Body content stays on screen until the
+  // new render swaps it in, so there's no flash on supersede.
+  results.classList.add('search-results-fetching');
 
-  if (!hasContent) {
-    results.innerHTML = `
-      <div class="empty-state">
-          <div class="music-loader">
-              <div class="music-bar" style="animation-delay: 0.0s"></div>
-              <div class="music-bar" style="animation-delay: 0.1s"></div>
-              <div class="music-bar" style="animation-delay: 0.2s"></div>
-              <div class="music-bar" style="animation-delay: 0.3s"></div>
-              <div class="music-bar" style="animation-delay: 0.4s"></div>
-          </div>
-      </div>`;
-    if (window.lucide?.createIcons) lucide.createIcons();
-  } else {
-    // Stale-while-revalidate: dim the panel slightly so it's clear that
-    // the user's latest keystroke is being processed, without wiping
-    // the last good results.
-    results.classList.add('search-results-fetching');
+  // If the panel is empty (first search after view load) make sure
+  // the wrapper exists so the loader strip has somewhere to render.
+  if (!results.querySelector('.search-results-body')) {
+    renderResults(results, '');
   }
 
   try {
@@ -117,7 +117,7 @@ export async function executeSearch(query) {
           : res.status === 429
             ? 'Too many searches in a row — slow down (limit: 30/min).'
             : `Search failed (HTTP ${res.status}).`;
-      results.innerHTML = `<div class="empty-state" style="color:#e74c3c;"><p>${ui.escHtml(msg)}</p></div>`;
+      renderResults(results, `<div class="empty-state" style="color:#e74c3c;"><p>${ui.escHtml(msg)}</p></div>`);
       return;
     }
 
@@ -129,23 +129,32 @@ export async function executeSearch(query) {
     if (controller.signal.aborted || state.searchAbortController !== controller) return;
 
     if (!Array.isArray(data) || data.length === 0) {
-      results.innerHTML = '<div class="empty-state"><p>No results found in your library or remote sources.</p></div>';
+      renderResults(
+        results,
+        '<div class="empty-state"><p>No results found in your library or remote sources.</p></div>'
+      );
       state.setCurrentViewList([]);
       return;
     }
 
     state.setCurrentViewList(data);
-    results.innerHTML = `<div class="track-list"><div class="track-row header"><div class="track-num">#</div><div>Title</div><div>Source</div><div></div><div></div></div>${data.map((item, i) => (window.createTrackRow ? window.createTrackRow(item, i) : '')).join('')}</div>`;
+    renderResults(
+      results,
+      `<div class="track-list"><div class="track-row header"><div class="track-num">#</div><div>Title</div><div>Source</div><div></div><div></div></div>${data.map((item, i) => (window.createTrackRow ? window.createTrackRow(item, i) : '')).join('')}</div>`
+    );
     if (window.lucide?.createIcons) lucide.createIcons();
   } catch (e) {
     if (e.name === 'AbortError') return; // expected on supersede
     console.error('[SEARCH] Error:', e);
-    results.innerHTML = `<div class="empty-state" style="color:#e74c3c;">Error: ${ui.escHtml(e.message || 'Unknown error')}</div>`;
+    renderResults(
+      results,
+      `<div class="empty-state" style="color:#e74c3c;">Error: ${ui.escHtml(e.message || 'Unknown error')}</div>`
+    );
   } finally {
     if (state.searchAbortController === controller) {
       state.setSearchAbortController(null);
+      results.classList.remove('search-results-fetching');
     }
-    results.classList.remove('search-results-fetching');
   }
 }
 

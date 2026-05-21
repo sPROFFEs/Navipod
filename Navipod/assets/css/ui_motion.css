@@ -1,9 +1,9 @@
 *,
 *::before,
 *::after {
-    transition-property: background-color, border-color, color, opacity, box-shadow;
-    transition-duration: 140ms;
-    transition-timing-function: ease;
+  transition-property: background-color, border-color, color, opacity, box-shadow;
+  transition-duration: 140ms;
+  transition-timing-function: ease;
 }
 
 .card,
@@ -24,23 +24,25 @@
 .monitor-secondary,
 .monitor-warning,
 .monitor-danger {
-    transform: none !important;
+  transform: none !important;
 }
 
 .gradient-orb,
 .noise-overlay {
-    display: none !important;
+  display: none !important;
 }
 
 .music-loader .music-bar,
 .playing-icon,
 .fs-background,
 .play-overlay {
-    animation-duration: 0.9s;
+  animation-duration: 0.9s;
 }
 
 .play-overlay {
-    transition: opacity 140ms ease, visibility 140ms ease;
+  transition:
+    opacity 140ms ease,
+    visibility 140ms ease;
 }
 
 .player-footer,
@@ -48,24 +50,41 @@
 .fullscreen-player,
 .modal-overlay,
 .update-toast {
-    transition: opacity 180ms ease, visibility 180ms ease;
+  transition:
+    opacity 180ms ease,
+    visibility 180ms ease;
 }
 
-/* Search results stale-while-revalidate dimmer — applied while a new
- * query is in-flight and there are already results on screen, so we
- * don't wipe the panel and flash a loader on every keystroke. */
-#search-results.search-results-fetching {
-    opacity: 0.55;
-    transition: opacity 120ms ease;
-    pointer-events: none;
+/* Search results loading state. The inline strip lives above the
+ * results body and is the same music-bar animation used elsewhere,
+ * just shorter. We keep the body on screen and dim it slightly so
+ * the page never wipes on keystroke/source-switch — only the strip
+ * appears/disappears to signal a request is in flight. */
+.search-loader-strip {
+  display: none;
+  height: 22px;
+  margin: 0 0 12px;
+}
+
+#search-results.search-results-fetching .search-loader-strip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+#search-results.search-results-fetching .search-results-body {
+  opacity: 0.6;
+  transition: opacity 120ms ease;
+  pointer-events: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-        animation: none !important;
-        transition-duration: 0.01ms !important;
-        scroll-behavior: auto !important;
-    }
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
