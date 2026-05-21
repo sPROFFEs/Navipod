@@ -3,6 +3,7 @@ Unified search: local library plus remote providers.
 """
 
 import logging
+from urllib.parse import quote_plus
 
 import database
 import metadata_cache
@@ -39,8 +40,11 @@ def _search_local_tracks(db: Session, raw_query: str, limit: int = 50):
                 track_map = {track.id: track for track in tracks}
                 return [track_map[track_id] for track_id in track_ids if track_id in track_map]
             return []
-        except Exception:
-            pass
+        except Exception as exc:
+            # FTS failure here usually means the virtual table is missing
+            # or out of sync with `tracks`. Log so ops sees it instead of
+            # silently degrading every search to a slow ILIKE scan.
+            logger.warning("tracks_fts query failed, falling back to ILIKE: %s", exc)
 
     return (
         db.query(database.Track)
@@ -59,7 +63,13 @@ def _fetch_existing_source_ids(db: Session, candidate_ids: set[str]) -> set[str]
 
 
 def _cover_proxy(artist: str, title: str) -> str:
-    return f"/api/cover/resolve?artist={artist}&title={title}"
+    # `artist` / `title` come from untrusted external sources (Last.fm,
+    # MusicBrainz, federated peers). Without url-encoding, an `&`, `=`,
+    # `#`, or whitespace in either value breaks the query string — and
+    # since the URL is rendered into an `<img src="...">` attribute on
+    # the frontend, an unescaped `"` would also break out of the
+    # attribute. quote_plus handles both correctness and safety.
+    return f"/api/cover/resolve?artist={quote_plus(artist or '')}&title={quote_plus(title or '')}"
 
 
 class MetadataResolveRequest(BaseModel):
@@ -126,6 +136,7 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
     if source in ["all", "local"]:
         try:
             from federation_service import status_is_playable
+
             playable_instances = (
                 db.query(database.FederatedInstance)
                 .filter(database.FederatedInstance.enabled == True)  # noqa: E712
@@ -139,10 +150,7 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
                 fed_rows = (
                     db.query(database.FederatedTrack)
                     .filter(database.FederatedTrack.instance_id.in_(list(instance_map.keys())))
-                    .filter(
-                        (database.FederatedTrack.title.ilike(like))
-                        | (database.FederatedTrack.artist.ilike(like))
-                    )
+                    .filter((database.FederatedTrack.title.ilike(like)) | (database.FederatedTrack.artist.ilike(like)))
                     .limit(40)
                     .all()
                 )
@@ -159,23 +167,25 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
                     # round trip and works without authenticating the
                     # browser against the peer.
                     thumbnail = _cover_proxy(ft.artist or "", ft.title or "")
-                    results.append({
-                        "id": f"fed:{inst.id}:{ft.remote_id}",
-                        "fed_instance_id": inst.id,
-                        "fed_instance_name": inst.name,
-                        "fed_instance_status": inst.status,
-                        "fed_remote_id": ft.remote_id,
-                        "title": ft.title,
-                        "artist": ft.artist,
-                        "album": ft.album,
-                        "duration": ft.duration,
-                        "thumbnail": thumbnail,
-                        # `is_local` MUST stay False — this disables
-                        # local-only actions (favorite, add to playlist,
-                        # download) in the frontend automatically.
-                        "is_local": False,
-                        "source": "federation",
-                    })
+                    results.append(
+                        {
+                            "id": f"fed:{inst.id}:{ft.remote_id}",
+                            "fed_instance_id": inst.id,
+                            "fed_instance_name": inst.name,
+                            "fed_instance_status": inst.status,
+                            "fed_remote_id": ft.remote_id,
+                            "title": ft.title,
+                            "artist": ft.artist,
+                            "album": ft.album,
+                            "duration": ft.duration,
+                            "thumbnail": thumbnail,
+                            # `is_local` MUST stay False — this disables
+                            # local-only actions (favorite, add to playlist,
+                            # download) in the frontend automatically.
+                            "is_local": False,
+                            "source": "federation",
+                        }
+                    )
         except Exception as e:
             logger.warning("Federated search merge failed: %s", e)
 
@@ -315,6 +325,7 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
 
 
 @router.get("/api/search/{source}")
+@limiter.limit("30/minute")
 async def api_search(source: str, q: str, request: Request, db: Session = Depends(get_db)):
     """Search specific source (spotify or youtube)"""
     user = get_current_user_safe(db, request)

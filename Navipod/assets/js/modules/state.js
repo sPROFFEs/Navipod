@@ -16,6 +16,11 @@ export let isPlaying = false;
 // === SEARCH STATE ===
 export let searchDebounce = null;
 export let currentSource = 'all';
+// AbortController for the in-flight unified-search request. Must be
+// aborted whenever a new search supersedes it (typing, source chip
+// click) so a slow upstream cannot land stale results on top of the
+// user's latest intent.
+export let searchAbortController = null;
 
 // === USER DATA ===
 export let userFavorites = new Set();
@@ -71,6 +76,9 @@ export function setSearchDebounce(val) {
 }
 export function setCurrentSource(val) {
   currentSource = val;
+}
+export function setSearchAbortController(val) {
+  searchAbortController = val;
 }
 export function setUserFavorites(val) {
   userFavorites = val;

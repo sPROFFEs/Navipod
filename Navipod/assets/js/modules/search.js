@@ -5,7 +5,6 @@
 
 import * as state from './state.js';
 import * as ui from './ui.js';
-import * as api from './api.js';
 
 // === SEARCH INPUT HANDLER ===
 
@@ -14,10 +13,9 @@ export function handleSearch(val) {
   state.setSearchDebounce(
     setTimeout(() => {
       // Previously `query.length > 1` silently skipped single-character
-      // queries (U-08). Allow any length — empty triggers discovery mode,
-      // anything else is a normal search.
-      const query = val.trim();
-      executeSearch(query);
+      // queries (U-08). Allow any length — empty shows a help state, any
+      // non-empty value runs the unified search.
+      executeSearch(val.trim());
     }, 400)
   );
 }
@@ -25,6 +23,12 @@ export function handleSearch(val) {
 // === SOURCE SELECTION ===
 
 export function setSource(el, src) {
+  // The chip click is the user's explicit signal — cancel any pending
+  // debounced search from typing so we don't fire two redundant requests.
+  if (state.searchDebounce) {
+    clearTimeout(state.searchDebounce);
+    state.setSearchDebounce(null);
+  }
   state.setCurrentSource(src);
   document.querySelectorAll('.chip').forEach((c) => c.classList.remove('active'));
   el.classList.add('active');
@@ -45,14 +49,39 @@ export function setSource(el, src) {
 // === EXECUTE SEARCH ===
 
 export async function executeSearch(query) {
-  console.log('[SEARCH] Executing search for:', query || '(empty/discovery)');
   const results = document.getElementById('search-results');
   if (!results) return;
 
+  // Always abort the previous in-flight search before starting a new
+  // one. Without this, a slow upstream (yt-dlp can take 1-3s) lands its
+  // response on top of a faster subsequent search, producing the
+  // "previous search's results appear after switching source" bug.
+  if (state.searchAbortController) {
+    try {
+      state.searchAbortController.abort();
+    } catch (_) {
+      /* noop */
+    }
+  }
+  const controller = new AbortController();
+  state.setSearchAbortController(controller);
+
+  // Empty query: render a help/empty state and stop. The backend
+  // returns [] for q='', and the frontend never had a real discovery
+  // payload — surfacing "No results found" here was actively misleading.
+  if (!query) {
+    results.classList.remove('search-results-fetching');
+    results.innerHTML =
+      '<div class="empty-state"><p>Type to search your library, federated peers, and remote sources.</p></div>';
+    state.setCurrentViewList([]);
+    return;
+  }
+
   // Only show the music-loader on the first search (empty container), or
-  // when explicitly resetting from an empty/no-results state. Once we have
-  // real content, keep it on screen while the next request is in-flight —
-  // otherwise every keystroke wipes the panel and produces a visible flash.
+  // when explicitly resetting from an empty/no-results state. Once we
+  // have real content, keep it on screen while the next request is
+  // in-flight — otherwise every keystroke wipes the panel and produces
+  // a visible flash.
   const hasContent =
     results.children.length > 0 &&
     !results.querySelector('.music-loader') &&
@@ -69,57 +98,53 @@ export async function executeSearch(query) {
               <div class="music-bar" style="animation-delay: 0.4s"></div>
           </div>
       </div>`;
-    lucide.createIcons();
+    if (window.lucide?.createIcons) lucide.createIcons();
   } else {
     // Stale-while-revalidate: dim the panel slightly so it's clear that
-    // the user's latest keystroke is being processed, without wiping the
-    // last good results.
+    // the user's latest keystroke is being processed, without wiping
+    // the last good results.
     results.classList.add('search-results-fetching');
   }
 
   try {
-    const url = `${state.API}/search?q=${encodeURIComponent(query)}&source=${state.currentSource}`;
-    console.log('[SEARCH] Fetching from:', url);
-    const res = await fetch(url);
+    const url = `${state.API}/search?q=${encodeURIComponent(query)}&source=${encodeURIComponent(state.currentSource)}`;
+    const res = await fetch(url, { signal: controller.signal });
+
+    if (!res.ok) {
+      const msg =
+        res.status === 401
+          ? 'Your session expired. Reload the page to log in.'
+          : res.status === 429
+            ? 'Too many searches in a row — slow down (limit: 30/min).'
+            : `Search failed (HTTP ${res.status}).`;
+      results.innerHTML = `<div class="empty-state" style="color:#e74c3c;"><p>${ui.escHtml(msg)}</p></div>`;
+      return;
+    }
+
     const data = await res.json();
-    console.log('[SEARCH] Received data:', data);
 
-    if (query) state.setCurrentViewList(data);
+    // Stale-response guard: a newer search may have superseded us
+    // between fetch completion and json() parsing. AbortController
+    // covers the fetch itself; this catches the gap.
+    if (controller.signal.aborted || state.searchAbortController !== controller) return;
 
-    if (!data || data.length === 0) {
-      // Plain empty-state (no glass-panel card) — the flat redesign
-      // language doesn't carry boxes around explanatory text.
-      results.innerHTML =
-        '<div class="empty-state"><p>No results found in your library or remote sources.</p></div>';
+    if (!Array.isArray(data) || data.length === 0) {
+      results.innerHTML = '<div class="empty-state"><p>No results found in your library or remote sources.</p></div>';
+      state.setCurrentViewList([]);
       return;
     }
 
-    // If empty query, render discovery grid
-    if (!query) {
-      console.log('[SEARCH] Rendering discovery sections with', data.length, 'sections');
-      let html = '';
-      data.forEach((section) => {
-        html += `
-                <div class="shelf-section">
-                    <div class="shelf-header">
-                        <h2 class="shelf-title">${ui.escHtml(section.title)}</h2>
-                    </div>
-                    <div class="grid-shelf">${section.items.map((item) => (window.createCard ? window.createCard(item) : '')).join('')}</div>
-                </div>`;
-      });
-      results.innerHTML = html;
-      lucide.createIcons();
-      return;
-    }
-
-    // Render list
+    state.setCurrentViewList(data);
     results.innerHTML = `<div class="track-list"><div class="track-row header"><div class="track-num">#</div><div>Title</div><div>Source</div><div></div><div></div></div>${data.map((item, i) => (window.createTrackRow ? window.createTrackRow(item, i) : '')).join('')}</div>`;
-    lucide.createIcons();
+    if (window.lucide?.createIcons) lucide.createIcons();
   } catch (e) {
+    if (e.name === 'AbortError') return; // expected on supersede
     console.error('[SEARCH] Error:', e);
-    results.innerHTML = `<div class="empty-state" style="color:#e74c3c;">Error: ${e.message}</div>`;
+    results.innerHTML = `<div class="empty-state" style="color:#e74c3c;">Error: ${ui.escHtml(e.message || 'Unknown error')}</div>`;
   } finally {
-    // Always clear the stale-while-revalidate dimmer
+    if (state.searchAbortController === controller) {
+      state.setSearchAbortController(null);
+    }
     results.classList.remove('search-results-fetching');
   }
 }
@@ -135,13 +160,7 @@ export async function downloadUrl() {
     return;
   }
   // Accept all sources the backend actually supports (U-09)
-  const SUPPORTED_DOMAINS = [
-    'youtube.com', 'youtu.be',
-    'spotify.com',
-    'soundcloud.com',
-    'audius.co',
-    'jamendo.com',
-  ];
+  const SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'spotify.com', 'soundcloud.com', 'audius.co', 'jamendo.com'];
   const isSupported = SUPPORTED_DOMAINS.some((d) => url.includes(d));
   if (!isSupported) {
     ui.showToast('Invalid URL. Supported: YouTube, Spotify, SoundCloud, Audius, Jamendo.', 'error');

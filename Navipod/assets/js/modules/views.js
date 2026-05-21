@@ -114,10 +114,10 @@ function initPlaybackPrefs(shell) {
   const XF_KEY = 'navipod.crossfade.seconds';
   const ALLOWED_XF = [0, 2, 4, 6, 8];
 
-  const rgEl    = shell.querySelector('#pref-replaygain');
+  const rgEl = shell.querySelector('#pref-replaygain');
   const chipsEl = shell.querySelector('#pref-crossfade-chips');
   const saveBtn = shell.querySelector('#pref-save-btn');
-  const hintEl  = shell.querySelector('#pref-save-hint');
+  const hintEl = shell.querySelector('#pref-save-hint');
   if (!rgEl || !chipsEl || !saveBtn) return;
 
   let savedRg = false;
@@ -132,10 +132,15 @@ function initPlaybackPrefs(shell) {
   let pendingXf = savedXf;
 
   _prefsState = {
-    rgEl, chipsEl, saveBtn, hintEl,
-    savedRg, savedXf,
+    rgEl,
+    chipsEl,
+    saveBtn,
+    hintEl,
+    savedRg,
+    savedXf,
     pendingXf,
-    RG_KEY, XF_KEY,
+    RG_KEY,
+    XF_KEY
   };
 
   paintCrossfadeChips(pendingXf);
@@ -155,7 +160,7 @@ function paintCrossfadeChips(value) {
 function refreshPlaybackPrefsDirty() {
   if (!_prefsState) return;
   const { rgEl, saveBtn, hintEl, savedRg, savedXf, pendingXf } = _prefsState;
-  const dirty = (rgEl.checked !== savedRg) || (pendingXf !== savedXf);
+  const dirty = rgEl.checked !== savedRg || pendingXf !== savedXf;
   saveBtn.disabled = !dirty;
   if (hintEl) hintEl.textContent = dirty ? 'Unsaved changes' : '';
 }
@@ -180,13 +185,15 @@ export function savePlaybackPrefs() {
     localStorage.setItem(XF_KEY, String(pendingXf));
   } catch (_) {}
   if (window.audioEngineSetReplayGain) window.audioEngineSetReplayGain(rgEl.checked);
-  if (window.audioEngineSetCrossfade)  window.audioEngineSetCrossfade(pendingXf);
+  if (window.audioEngineSetCrossfade) window.audioEngineSetCrossfade(pendingXf);
   _prefsState.savedRg = rgEl.checked;
   _prefsState.savedXf = pendingXf;
   refreshPlaybackPrefsDirty();
   if (hintEl) {
     hintEl.textContent = 'Saved';
-    setTimeout(() => { if (hintEl.textContent === 'Saved') hintEl.textContent = ''; }, 1800);
+    setTimeout(() => {
+      if (hintEl.textContent === 'Saved') hintEl.textContent = '';
+    }, 1800);
   }
 }
 
@@ -267,8 +274,7 @@ export async function loadView(view, param = null, options = {}) {
     else if (view === 'mix') {
       await renderMix(container, param);
       await trackRecentMix(param);
-    }
-    else if (view === 'wrapped') await renderWrapped(container, param);
+    } else if (view === 'wrapped') await renderWrapped(container, param);
     else if (view === 'search') renderSearch(container);
     else if (view === 'public') await playlists.renderPublicPlaylists(container);
     else if (view === 'discover_radios') await radio.renderRadio(container);
@@ -435,9 +441,11 @@ function _renderQuickPicksGrid() {
       return `
         <button class="quick-pick" onclick="loadView('playlist', ${data.id})" title="${name}">
             <div class="quick-pick-cover">
-                ${thumb
-                  ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.outerHTML='<i data-lucide=\\'${fallback}\\'></i>'">`
-                  : `<i data-lucide="${fallback}"></i>`}
+                ${
+                  thumb
+                    ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.outerHTML='<i data-lucide=\\'${fallback}\\'></i>'">`
+                    : `<i data-lucide="${fallback}"></i>`
+                }
             </div>
             <div class="quick-pick-name">${name}</div>
         </button>`;
@@ -449,9 +457,11 @@ function _renderQuickPicksGrid() {
       return `
         <button class="quick-pick" onclick="loadView('mix', '${keyJs}')" title="${name}">
             <div class="quick-pick-cover quick-pick-cover-mix">
-                ${thumb
-                  ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.outerHTML='<i data-lucide=\\'sparkles\\'></i>'">`
-                  : `<i data-lucide="sparkles"></i>`}
+                ${
+                  thumb
+                    ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.outerHTML='<i data-lucide=\\'sparkles\\'></i>'">`
+                    : `<i data-lucide="sparkles"></i>`
+                }
             </div>
             <div class="quick-pick-name">${name}</div>
         </button>`;
@@ -851,17 +861,15 @@ export async function renderLibrary(container) {
     const fallback = pl.source_playlist_id ? 'refresh-cw' : pl.is_public ? 'globe' : 'list-music';
     const tracks = Number(pl.track_count || 0);
     const trackLabel = tracks === 1 ? '1 song' : `${tracks} songs`;
-    const visibility = pl.source_playlist_id
-      ? 'Synced'
-      : pl.is_public
-        ? 'Public'
-        : 'Private';
+    const visibility = pl.source_playlist_id ? 'Synced' : pl.is_public ? 'Public' : 'Private';
     return `
         <div class="library-row" onclick="loadView('playlist', ${pl.id})">
             <div class="library-row-cover">
-                ${hasThumb
-                  ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.outerHTML='<i data-lucide=\\'${fallback}\\'></i>'">`
-                  : `<i data-lucide="${fallback}"></i>`}
+                ${
+                  hasThumb
+                    ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.outerHTML='<i data-lucide=\\'${fallback}\\'></i>'">`
+                    : `<i data-lucide="${fallback}"></i>`
+                }
             </div>
             <div class="library-row-meta">
                 <div class="library-row-name">${name}</div>
@@ -921,7 +929,7 @@ export function createCard(item) {
 
   return `<div class="card" onclick="handleCardClick('${data}', this)">
         <div class="card-img-container cover-loading">
-            <img src="${img}" loading="lazy" decoding="async"
+            <img src="${ui.escHtml(img)}" loading="lazy" decoding="async"
                  onload="this.closest('.cover-loading')?.classList.remove('cover-loading')"
                  onerror="this.closest('.cover-loading')?.classList.remove('cover-loading'); this.src='/static/img/default_cover.png'">
             <div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.7);border-radius:50%;padding:4px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;">
@@ -950,7 +958,7 @@ export function createPlaylistCard(pl) {
 
   return `<div class="card glass-hover" onclick="loadView('playlist', ${pl.id})">
         <div class="card-img-container playlist-card-bg">
-            ${hasThumb ? `<img src="${thumb}" class="card-img" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">` : `<i data-lucide="list-music" class="playlist-icon-large"></i>`}
+            ${hasThumb ? `<img src="${ui.escHtml(thumb)}" class="card-img" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">` : `<i data-lucide="list-music" class="playlist-icon-large"></i>`}
         </div>
         <div class="playlist-card-copy">
             <div class="card-title">${ui.escHtml(pl.name)}</div>
@@ -964,7 +972,7 @@ export function createMixCard(mix) {
   const mixMeta = MIX_META[mix.key] || {};
   return `<div class="card glass-hover" onclick="loadView('mix', '${ui.escHtml(mix.key).replace(/'/g, "\\'")}')">
         <div class="card-img-container playlist-card-bg">
-            <img src="${thumb}" class="card-img mix-cover-img" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
+            <img src="${ui.escHtml(thumb)}" class="card-img mix-cover-img" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
         </div>
         <div class="playlist-card-copy">
             <div class="card-title">${ui.escHtml(mix.title || 'Mix')}</div>
@@ -1020,11 +1028,11 @@ export async function submitTrackDeleteRequest(trackId, buttonEl) {
 // where the dedicated source column is hidden, so we need an inline
 // indicator near the more-vertical button.
 const TRACK_SOURCE_ICONS = {
-  spotify:     { icon: 'music',      color: '#1DB954' },
-  youtube:     { icon: 'tv',         color: '#ff4444' },
-  lastfm:      { icon: 'radio',      color: '#d51007' },
-  musicbrainz: { icon: 'disc-3',     color: '#BA478F' },
-  local:       { icon: 'hard-drive', color: '#9aa3b2' }
+  spotify: { icon: 'music', color: '#1DB954' },
+  youtube: { icon: 'tv', color: '#ff4444' },
+  lastfm: { icon: 'radio', color: '#d51007' },
+  musicbrainz: { icon: 'disc-3', color: '#BA478F' },
+  local: { icon: 'hard-drive', color: '#9aa3b2' }
 };
 
 export function createTrackRow(item, idx, playlistId = null) {
@@ -1048,7 +1056,7 @@ export function createTrackRow(item, idx, playlistId = null) {
       ? `playFederatedTrack('${data}')`
       : `playPreview('${data}')`;
 
-  const _safeTitle  = ui.escHtml(item.title  || 'Unknown').replace(/'/g, "\\'");
+  const _safeTitle = ui.escHtml(item.title || 'Unknown').replace(/'/g, "\\'");
   const _safeArtist = ui.escHtml(item.artist || 'Unknown').replace(/'/g, "\\'");
 
   return `<div class="track-row glass-hover ${isLiked ? 'liked-row' : ''} ${isActive ? 'active-track' : ''}" onclick="${rowClickAction}" data-idx="${idx}">
@@ -1058,15 +1066,19 @@ export function createTrackRow(item, idx, playlistId = null) {
             ${isActive ? '<i data-lucide="bar-chart-2" class="playing-icon"></i>' : ''}
         </div>
         <div class="track-main">
-            <img src="${img}" class="track-cover-sm" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
+            <img src="${ui.escHtml(img)}" class="track-cover-sm" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
             <div class="track-titles">
                 <div class="track-name-sm">
                     ${ui.escHtml(item.title || 'Unknown')}
-                    ${isFederated ? `
+                    ${
+                      isFederated
+                        ? `
                         <span class="fed-source-badge ${item.fed_instance_status === 'degraded' ? 'degraded' : ''}"
                               title="From ${ui.escHtml(item.fed_instance_name || 'remote pool')} (${ui.escHtml(item.fed_instance_status || 'unknown')})">
                             <i data-lucide="globe"></i>${ui.escHtml(item.fed_instance_name || 'remote')}
-                        </span>` : ''}
+                        </span>`
+                        : ''
+                    }
                 </div>
                 <div class="track-artist-sm">
                     <a class="artist-link"
@@ -1120,7 +1132,9 @@ export function closeTrackActionsSheet() {
   sheet.classList.remove('open');
   // Remove after transition; setTimeout as safety net
   sheet.addEventListener('transitionend', () => sheet.remove(), { once: true });
-  setTimeout(() => { if (sheet.parentNode) sheet.remove(); }, 400);
+  setTimeout(() => {
+    if (sheet.parentNode) sheet.remove();
+  }, 400);
 }
 
 export function showTrackActionsSheet(encodedData, playlistId) {
@@ -1131,7 +1145,7 @@ export function showTrackActionsSheet(encodedData, playlistId) {
   const canLike = item.is_local && item.db_id;
   const canAddToPlaylist = item.is_local && item.db_id;
   const img = item.thumbnail || '/static/img/default_cover.png';
-  const safeTitle  = ui.escHtml(item.title  || 'Unknown').replace(/'/g, "\\'");
+  const safeTitle = ui.escHtml(item.title || 'Unknown').replace(/'/g, "\\'");
   const safeArtist = ui.escHtml(item.artist || 'Unknown').replace(/'/g, "\\'");
 
   const actions = [];
@@ -1361,14 +1375,16 @@ function _sidebarPlaylistRow(pl) {
   const name = ui.escHtml(pl.name || 'Playlist');
   const thumb = pl.thumbnail && !pl.thumbnail.includes('default') ? pl.thumbnail : '';
   const fallbackIcon = pl.source_playlist_id ? 'refresh-cw' : pl.is_public ? 'globe' : 'list-music';
-  const sub = pl.source_playlist_id ? 'Synced playlist' : (pl.is_public ? 'Public playlist' : 'Playlist');
+  const sub = pl.source_playlist_id ? 'Synced playlist' : pl.is_public ? 'Public playlist' : 'Playlist';
   return `
     <a class="sidebar-item" data-sb-key="playlist-${pl.id}"
        onclick="loadView('playlist', ${pl.id})" title="${name}">
         <div class="sidebar-cover">
-            ${thumb
-              ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.outerHTML='<i data-lucide=\\'${fallbackIcon}\\'></i>'">`
-              : `<i data-lucide="${fallbackIcon}"></i>`}
+            ${
+              thumb
+                ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.outerHTML='<i data-lucide=\\'${fallbackIcon}\\'></i>'">`
+                : `<i data-lucide="${fallbackIcon}"></i>`
+            }
         </div>
         <div class="sidebar-meta">
             <div class="sidebar-name">${name}</div>
@@ -1403,9 +1419,11 @@ function _sidebarMixRow(m) {
     <a class="sidebar-item" data-sb-key="mix-${keyJs}"
        onclick="loadView('mix', '${keyJs}')" title="${name}">
         <div class="sidebar-cover sidebar-cover-mix">
-            ${thumb
-              ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.outerHTML='<i data-lucide=\\'sparkles\\'></i>'">`
-              : `<i data-lucide="sparkles"></i>`}
+            ${
+              thumb
+                ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.outerHTML='<i data-lucide=\\'sparkles\\'></i>'">`
+                : `<i data-lucide="sparkles"></i>`
+            }
         </div>
         <div class="sidebar-meta">
             <div class="sidebar-name">${name}</div>
@@ -1652,7 +1670,6 @@ export const startHeartbeatSync = sync.startHeartbeatSync;
 export const stopHeartbeatSync = sync.stopHeartbeatSync;
 export const checkSyncState = sync.checkSyncState;
 
-
 // ─── DISCOVERY FEED ─────────────────────────────────────────────────
 //
 // Vertical card stack of recommended remote tracks the user doesn't
@@ -1678,7 +1695,9 @@ function _discoveryKey(item) {
 function _loadDiscoveryDismissed() {
   try {
     return new Set(JSON.parse(localStorage.getItem(DISCOVERY_DISMISSED_KEY) || '[]'));
-  } catch { return new Set(); }
+  } catch {
+    return new Set();
+  }
 }
 
 function _saveDiscoveryDismissed(set) {
@@ -1962,8 +1981,10 @@ export async function renderArtist(container, name) {
   const stats = [
     listenerCount ? `${listenerCount} Last.fm listeners` : '',
     followerCount ? `${followerCount} Spotify followers` : '',
-    `${data.local_tracks.length} tracks in your library`,
-  ].filter(Boolean).join(' · ');
+    `${data.local_tracks.length} tracks in your library`
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   const bio = (data.info && data.info.bio) || '';
 
@@ -1992,7 +2013,7 @@ export async function renderArtist(container, name) {
         <div class="artist-empty">
           <p>You don't have any ${ui.escHtml(name)} tracks yet.</p>
           <button class="btn-primary"
-                  onclick="startSmartRadio('${safe}', '${ui.escHtml(((data.top_tracks||[])[0]||{}).title || '').replace(/'/g, "\\'")}')">
+                  onclick="startSmartRadio('${safe}', '${ui.escHtml(((data.top_tracks || [])[0] || {}).title || '').replace(/'/g, "\\'")}')">
             <i data-lucide="radio"></i> Start a radio
           </button>
         </div>
@@ -2004,9 +2025,9 @@ export async function renderArtist(container, name) {
   const localKeys = new Set(
     data.local_tracks.map((t) => `${(t.title || '').toLowerCase()}|${(t.artist || '').toLowerCase()}`)
   );
-  const topTracks = (data.top_tracks || []).filter((t) =>
-    !localKeys.has(`${(t.title || '').toLowerCase()}|${(t.artist || '').toLowerCase()}`)
-  ).slice(0, 8);
+  const topTracks = (data.top_tracks || [])
+    .filter((t) => !localKeys.has(`${(t.title || '').toLowerCase()}|${(t.artist || '').toLowerCase()}`))
+    .slice(0, 8);
 
   let topBlock = '';
   if (topTracks.length) {
@@ -2016,14 +2037,15 @@ export async function renderArtist(container, name) {
           <h2>Popular tracks you don't have</h2>
         </div>
         <ol class="artist-top-tracks">
-          ${topTracks.map((t, i) => {
-            const safeT = ui.escHtml(t.title || '').replace(/'/g, "\\'");
-            const safeA = ui.escHtml(t.artist || name).replace(/'/g, "\\'");
-            // Resolve cover via existing /api/cover/resolve endpoint —
-            // it caches its own results so we don't add to remote API
-            // pressure even if the user opens many artist views.
-            const cover = `/api/cover/resolve?artist=${encodeURIComponent(t.artist || name)}&title=${encodeURIComponent(t.title || '')}`;
-            return `
+          ${topTracks
+            .map((t, i) => {
+              const safeT = ui.escHtml(t.title || '').replace(/'/g, "\\'");
+              const safeA = ui.escHtml(t.artist || name).replace(/'/g, "\\'");
+              // Resolve cover via existing /api/cover/resolve endpoint —
+              // it caches its own results so we don't add to remote API
+              // pressure even if the user opens many artist views.
+              const cover = `/api/cover/resolve?artist=${encodeURIComponent(t.artist || name)}&title=${encodeURIComponent(t.title || '')}`;
+              return `
               <li>
                 <span class="artist-top-num">${i + 1}</span>
                 <img class="artist-top-cover" src="${cover}" loading="lazy" decoding="async"
@@ -2039,30 +2061,33 @@ export async function renderArtist(container, name) {
                   </button>
                 </span>
               </li>`;
-          }).join('')}
+            })
+            .join('')}
         </ol>
       </section>`;
   }
 
-  const albumsBlock = (data.albums && data.albums.length)
-    ? `
+  const albumsBlock =
+    data.albums && data.albums.length
+      ? `
       <section class="artist-section">
         <div class="artist-section-head"><h2>Discography</h2></div>
         <div class="artist-albums-grid">
           ${data.albums.map(_artistAlbumCard).join('')}
         </div>
       </section>`
-    : '';
+      : '';
 
-  const similarBlock = (data.similar && data.similar.length)
-    ? `
+  const similarBlock =
+    data.similar && data.similar.length
+      ? `
       <section class="artist-section">
         <div class="artist-section-head"><h2>Fans also like</h2></div>
         <div class="artist-similar-grid">
           ${data.similar.map(_artistSimilarCard).join('')}
         </div>
       </section>`
-    : '';
+      : '';
 
   const safeArtistAttr = ui.escHtml(name).replace(/'/g, "\\'");
 
@@ -2074,12 +2099,16 @@ export async function renderArtist(container, name) {
           <h1 class="artist-hero-name">${ui.escHtml(data.name || name)}</h1>
           <p class="artist-hero-stats">${stats}</p>
           <div class="artist-hero-actions">
-            ${data.local_tracks.length ? `
+            ${
+              data.local_tracks.length
+                ? `
               <button class="btn-primary" onclick="playFromView(0)">
                 <i data-lucide="play"></i> Play
-              </button>` : ''}
+              </button>`
+                : ''
+            }
             <button class="btn-secondary"
-                    onclick="startSmartRadio('${safeArtistAttr}', '${ui.escHtml(((data.top_tracks||[])[0]||{}).title || '').replace(/'/g, "\\'")}')">
+                    onclick="startSmartRadio('${safeArtistAttr}', '${ui.escHtml(((data.top_tracks || [])[0] || {}).title || '').replace(/'/g, "\\'")}')">
               <i data-lucide="radio"></i> Radio
             </button>
           </div>
@@ -2091,11 +2120,15 @@ export async function renderArtist(container, name) {
       ${albumsBlock}
       ${similarBlock}
 
-      ${bio ? `
+      ${
+        bio
+          ? `
         <section class="artist-section artist-bio">
           <div class="artist-section-head"><h2>About</h2></div>
           <p>${ui.escHtml(bio)}</p>
-        </section>` : ''}
+        </section>`
+          : ''
+      }
     </div>`;
 
   if (window.lucide) lucide.createIcons();

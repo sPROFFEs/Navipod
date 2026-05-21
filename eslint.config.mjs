@@ -20,6 +20,7 @@ export default [
         Headers: "readonly",
         MediaMetadata: "readonly",
         URL: "readonly",
+        AbortController: "readonly",
         YT: "readonly",
         alert: "readonly",
         atob: "readonly",
