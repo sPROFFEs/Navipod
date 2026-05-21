@@ -57,6 +57,11 @@ export let heartbeatInterval = null;
 
 // === DOWNLOAD MANAGER ===
 export let downloadPolling = null;
+// AbortController for the in-flight /api/jobs refresh. Multiple
+// triggers (modal open, 3s polling tick, post-queue refresh) can
+// race; the latest one must abort the previous so a slow earlier
+// response cannot overwrite the newer rendering.
+export let jobsRefreshController = null;
 
 // === RADIO STATE ===
 export const RADIO_HUBS = ['London', 'Tokyo', 'Berlin', 'Huelva', 'New York', 'Paris', 'Madrid', 'Ibiza'];
@@ -148,6 +153,9 @@ export function setHeartbeatInterval(val) {
 }
 export function setDownloadPolling(val) {
   downloadPolling = val;
+}
+export function setJobsRefreshController(val) {
+  jobsRefreshController = val;
 }
 export function setCurrentRadioHub(val) {
   currentRadioHub = val;

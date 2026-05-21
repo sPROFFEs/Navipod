@@ -159,12 +159,15 @@ async function refreshDeleteResponsesBadge() {
 
 // === OPEN/CLOSE MODAL ===
 
-export function openDownloadsModal() {
+export async function openDownloadsModal() {
   const modal = document.getElementById('downloads-modal');
   if (modal) modal.classList.remove('hidden');
-  refreshJobs();
   refreshDeleteResponsesBadge();
   ensureDownloadPolling();
+  // Await so callers that queue a download and then open the modal
+  // can rely on the freshly-pending row being rendered before they
+  // return — see triggerDownload / executeDownload / handleModalDownload.
+  await refreshJobs();
 }
 
 export function closeDownloadsModal() {
@@ -266,12 +269,52 @@ export async function refreshDeleteResponses() {
 // === REFRESH JOBS LIST ===
 
 export async function refreshJobs() {
+  // Abort any in-flight /api/jobs refresh so a slow earlier response
+  // cannot land after a faster newer one and overwrite the panel.
+  // This is the root cause of the "modal goes empty when triggering
+  // downloads" bug — without the abort, the polling tick that fired
+  // just before a new job was committed comes back later with an
+  // empty/stale list and wipes the freshly-rendered pending job.
+  if (state.jobsRefreshController) {
+    try {
+      state.jobsRefreshController.abort();
+    } catch (_) {
+      /* noop */
+    }
+  }
+  const controller = new AbortController();
+  state.setJobsRefreshController(controller);
+
   try {
     refreshDeleteResponsesBadge();
     if (isDeleteResponsesModalOpen()) refreshDeleteResponses();
 
-    const res = await fetch(`${state.API}/jobs`);
+    const res = await fetch(`${state.API}/jobs`, { signal: controller.signal });
+
+    // Stale-response guard: a newer refreshJobs may have superseded us
+    // between fetch dispatch and resolution. AbortController covers the
+    // fetch itself; this catches the gap between fetch and json().
+    if (controller.signal.aborted || state.jobsRefreshController !== controller) return;
+
+    if (!res.ok) {
+      // 401 happens on session expiry; everything else is a server
+      // problem. Surface both — silent console errors are why this bug
+      // went unreported for so long.
+      const container = document.getElementById('jobs-list');
+      if (container && isDownloadsModalOpen()) {
+        const msg =
+          res.status === 401
+            ? 'Your session expired. Reload the page to log in.'
+            : `Could not load downloads (HTTP ${res.status}).`;
+        container.innerHTML = `<p style="text-align:center; color: #ff9d9d; margin-top:20px;">${ui.escHtml(msg)}</p>`;
+      }
+      return;
+    }
+
     const jobs = await res.json();
+    if (controller.signal.aborted || state.jobsRefreshController !== controller) return;
+    if (!Array.isArray(jobs)) return; // defensive: backend should never send this
+
     const container = document.getElementById('jobs-list');
     const badge = document.getElementById('download-badge');
 
@@ -343,9 +386,14 @@ export async function refreshJobs() {
             </div>`;
       })
       .join('');
-    lucide.createIcons();
+    if (window.lucide?.createIcons) lucide.createIcons();
   } catch (e) {
+    if (e.name === 'AbortError') return; // expected on supersede
     console.error('Refresh jobs failed:', e);
+  } finally {
+    if (state.jobsRefreshController === controller) {
+      state.setJobsRefreshController(null);
+    }
   }
 }
 
@@ -381,7 +429,10 @@ export async function handleModalDownload() {
       const payload = await res.json();
       ui.showToast(payload.message || 'Download queued', 'success');
       ensureDownloadPolling();
-      refreshJobs();
+      // Await so the freshly-queued job is rendered before this
+      // function returns — closes the window where a stale prior
+      // refresh could overwrite the new pending row.
+      await refreshJobs();
     } else {
       const err = await res.json();
       ui.showToast(err.error || 'Failed', 'error');
@@ -420,7 +471,10 @@ export async function triggerDownload(trackData) {
     if (res.ok) {
       const payload = await res.json();
       ui.showToast(payload.message || 'Download queued', 'success');
-      openDownloadsModal();
+      // openDownloadsModal triggers its own refreshJobs; awaiting it
+      // ensures the new pending row lands before the next polling
+      // tick can race against an older in-flight refresh.
+      await openDownloadsModal();
     } else {
       const err = await res.json();
       ui.showToast(err.error || 'Failed', 'error');
@@ -475,7 +529,7 @@ export async function executeDownload(btn, encodedTrack) {
       const payload = await res.json();
       ui.showToast(payload.message || 'Download queued', 'success');
       ui.closeModal();
-      openDownloadsModal();
+      await openDownloadsModal();
     } else {
       const err = await res.json();
       ui.showToast(err.error || 'Failed', 'error');
