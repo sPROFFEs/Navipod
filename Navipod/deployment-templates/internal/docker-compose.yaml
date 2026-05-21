@@ -66,6 +66,15 @@ services:
       - UPDATE_SOURCE_BRANCH=${UPDATE_SOURCE_BRANCH:-main}
       - UPDATE_MANAGED_SERVICES=${UPDATE_MANAGED_SERVICES:-concierge}
       - SELF_CONTAINER_NAME=concierge
+      # Cap glibc malloc to 2 arenas. The default opens one arena per CPU
+      # thread and each one hangs onto freed pages indefinitely, which is
+      # the biggest source of "RAM keeps growing" on long-running Python
+      # workloads on Linux. Zero functional impact.
+      - MALLOC_ARENA_MAX=2
+      # Enable Python's stdlib allocator tracker (10-frame depth). Used by
+      # the ram_audit background task that appends to /workspace/ram_audit.log
+      # so you can see WHICH allocator grows day-to-day.
+      - PYTHONTRACEMALLOC=10
     networks:
       navidrome-net:
         ipv4_address: 172.20.0.5

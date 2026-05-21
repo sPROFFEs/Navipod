@@ -14,6 +14,7 @@ import httpx
 import i18n
 import manager
 import operations_service
+import ram_audit
 import reaper
 import security
 import track_identity
@@ -149,6 +150,11 @@ async def startup_event():
     asyncio.create_task(cache_cleanup_scheduler())
     asyncio.create_task(operations_service.autobackup_scheduler())
     asyncio.create_task(wrapped_daily_scheduler())
+    # Append per-tick RAM stats to /workspace/ram_audit.log (= repo root
+    # on the host via the bind mount) so memory growth can be inspected
+    # after the box has been running for days without needing an
+    # interactive endpoint.
+    asyncio.create_task(ram_audit.audit_scheduler())
 
     # Federation periodic loop (no-op when there are no enabled peers)
     import federation_service

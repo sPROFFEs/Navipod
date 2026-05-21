@@ -26,5 +26,8 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
-# Comando Dev (reload)
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# --reload was a dev-mode filesystem watcher; production doesn't need it.
+# --limit-max-requests recycles the worker after N served requests so any
+# slow-growing leak (yt-dlp extractor cache, glibc fragmentation, etc.)
+# resets on its own instead of accumulating until OOM.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--limit-max-requests", "5000"]
