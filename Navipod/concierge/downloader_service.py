@@ -182,10 +182,25 @@ class DownloadManager:
         try:
             shutil.move(source_path, final_path)
             moved = True
+            # Pull duration from the file itself — the importer does the
+            # same. Without this, every download produced a Track row
+            # with duration=NULL and the playlist UI showed 0:00 for
+            # every song. Non-easy mutagen.File() exposes .info.length;
+            # easy mode does not.
+            duration = None
+            try:
+                audio_info = mutagen.File(final_path)
+                if audio_info and getattr(audio_info, "info", None):
+                    length = getattr(audio_info.info, "length", None)
+                    if length:
+                        duration = int(length)
+            except Exception as exc:
+                logger.warning("Could not read duration from %s: %s", final_path, exc)
             track = database.Track(
                 title=title,
                 artist=artist,
                 album=album,
+                duration=duration,
                 source_id=source_id,
                 file_hash=file_hash,
                 artist_norm=identity["artist_norm"] if identity else None,

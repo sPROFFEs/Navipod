@@ -205,9 +205,13 @@ async def trigger_download(
     db.commit()
     db.refresh(job)
 
-    # Trigger Background Task using the correct service
-    dm = downloader_service.DownloadManager(db, user.id)
-    background_tasks.add_task(dm.process_download, job.id)
+    # Schedule the background task with its own DB session. The
+    # request's `db` is closed by FastAPI's Depends cleanup as soon
+    # as this handler returns, so capturing it inside a long-running
+    # background task left the downloader operating on a closed
+    # session. run_download_in_background opens a fresh SessionLocal
+    # for the task's lifetime — the form endpoint already uses it.
+    background_tasks.add_task(run_download_in_background, job.id, user.id)
 
     message = "Download queued"
     if resolution_mode == "spotify-resolved":
