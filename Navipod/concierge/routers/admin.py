@@ -5,6 +5,7 @@ import stat
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote_plus
 
 import auth
 import database
@@ -339,7 +340,9 @@ async def resolve_song_delete_request(
                     )
 
         db.commit()
-        deletion_result = _delete_track_from_library(db, track_id) if track_id > 0 else {"success": True, "not_found": True}
+        deletion_result = (
+            _delete_track_from_library(db, track_id) if track_id > 0 else {"success": True, "not_found": True}
+        )
         if not deletion_result.get("success") and not deletion_result.get("not_found"):
             msg = deletion_result.get("message") or "Track deletion failed"
             return RedirectResponse(f"/admin/song-delete-requests?error={msg}", status_code=303)
@@ -682,7 +685,9 @@ async def regenerate_wrapped_now(
     admin: database.User = Depends(get_current_admin),
 ):
     target_year = wrapped_service.get_operational_wrapped_year(db)
-    acquired, existing_lock = wrapped_service.acquire_wrapped_regeneration_lock(target_year, triggered_by=admin.username)
+    acquired, existing_lock = wrapped_service.acquire_wrapped_regeneration_lock(
+        target_year, triggered_by=admin.username
+    )
     if not acquired:
         existing_job_id = int((existing_lock or {}).get("job_id") or 0)
         if existing_job_id > 0:
@@ -754,11 +759,17 @@ async def force_clean_update_workspace(
     """Emergency recovery: clear stale index.lock, release stuck operation lock, and reset
     the working tree to HEAD so that subsequent update attempts can proceed."""
     result = operations_service.force_clean_workspace(triggered_by=admin.username)
-    if result.get("ok"):
-        msg = "Workspace+lock reset successfully. You can now apply updates."
-    else:
-        msg = f"Force clean partially failed: {result.get('message', 'unknown error')}"
-    return RedirectResponse(f"/admin/system?msg={msg}", status_code=303)
+    message = result.get("message") or ("ok" if result.get("ok") else "unknown error")
+    # Route failures into the red toast — previously both branches used
+    # ?msg= which the template renders as a green success banner, so a
+    # genuine git/permission failure looked indistinguishable from
+    # success. URL-encode the value so stderr containing & # or = (very
+    # likely in git error messages) can't break the redirect.
+    query_param = "msg" if result.get("ok") else "error"
+    return RedirectResponse(
+        f"/admin/system?{query_param}={quote_plus(message)}",
+        status_code=303,
+    )
 
 
 @router.get("/system/updates/jobs/{job_id}")

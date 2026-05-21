@@ -190,33 +190,67 @@ def force_clean_workspace(triggered_by: str | None = None) -> dict:
 
     Use this when the apply-update pipeline is stuck due to a dirty working
     tree or a stale index.lock left by an interrupted container restart.
+
+    Returns a dict with `ok` (bool), `message` (human summary suitable for
+    the toast) and `steps` — a per-step audit so the UI can show exactly
+    which part failed instead of an opaque "didn't work".
     """
     db = database.SessionLocal()
-    results = {}
+    steps: list[dict] = []
+
+    # 1. Remove stale index.lock. Even if .git is unreachable (permission
+    # problems on the bind mount, missing dir) we record what happened.
     try:
-        # 1. Remove stale index.lock
-        results["index_lock_cleared"] = _clear_git_index_lock()
-
-        # 2. Force-release the operation lock so subsequent operations can proceed
-        release_lock(db)
-        results["operation_lock_released"] = True
-
-        # 3. Reset workspace to HEAD (discards any tracked local modifications)
-        reset = _run_git(["reset", "--hard", "HEAD"], include_details=True)
-        results["git_reset"] = reset if isinstance(reset, dict) else {"ok": bool(reset)}
-
-        results["ok"] = bool(results["git_reset"].get("ok"))
-        results["message"] = (
-            "Workspace reset to HEAD successfully."
-            if results["ok"]
-            else f"git reset failed: {results['git_reset'].get('stderr', 'unknown error')}"
+        cleared = _clear_git_index_lock()
+        steps.append(
+            {
+                "name": "index_lock",
+                "ok": True,
+                "detail": "removed stale .git/index.lock" if cleared else "no stale lock present",
+            }
         )
-    except Exception as e:
-        results["ok"] = False
-        results["message"] = f"Force clean failed: {e}"
-    finally:
-        db.close()
-    return results
+    except Exception as exc:
+        steps.append({"name": "index_lock", "ok": False, "detail": f"unlink failed: {exc}"})
+
+    # 2. Release the operation lock so subsequent admin actions can run.
+    # Always attempt this, even if step 1 failed — they're independent.
+    try:
+        release_lock(db)
+        steps.append({"name": "operation_lock", "ok": True, "detail": "released"})
+    except Exception as exc:
+        steps.append({"name": "operation_lock", "ok": False, "detail": f"release failed: {exc}"})
+
+    # 3. Reset workspace to HEAD. This is the step most likely to fail in
+    # the wild — a non-writable /workspace bind mount, a missing .git, an
+    # exotic git safe.directory error. Capture stderr verbatim.
+    try:
+        reset = _run_git(["reset", "--hard", "HEAD"], include_details=True)
+        if isinstance(reset, dict) and reset.get("ok"):
+            steps.append({"name": "git_reset", "ok": True, "detail": "git reset --hard HEAD"})
+        else:
+            stderr = (reset or {}).get("stderr", "") if isinstance(reset, dict) else ""
+            steps.append(
+                {
+                    "name": "git_reset",
+                    "ok": False,
+                    "detail": f"git reset failed: {stderr or 'unknown error'}",
+                }
+            )
+    except Exception as exc:
+        steps.append({"name": "git_reset", "ok": False, "detail": f"exception: {exc}"})
+
+    db.close()
+
+    overall_ok = all(s["ok"] for s in steps)
+    if overall_ok:
+        message = "Workspace reset to HEAD. You can now apply updates."
+    else:
+        # Surface every failing step so a single click tells the operator
+        # exactly which layer is broken (perm? git? lock?).
+        failed = [f"{s['name']}: {s['detail']}" for s in steps if not s["ok"]]
+        message = "Force clean failed — " + "; ".join(failed)
+
+    return {"ok": overall_ok, "message": message, "steps": steps}
 
 
 def _fetch_update_tracking_ref():
