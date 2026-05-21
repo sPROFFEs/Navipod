@@ -309,6 +309,16 @@
     grid-template-areas: none !important;
 }
 
+/* When no track is loaded, the JS adds .player-hidden to the footer.
+ * The desktop sheet's display:none for that class is bare (no !important)
+ * and loses to the display:flex !important above, which left a 64 px
+ * full-width invisible strip pinned above the bottom nav — tapping
+ * anywhere on it opened an empty fullscreen player via the cover's
+ * onclick handler. Re-assert the hide with !important so cascade wins. */
+.player-footer.player-hidden {
+    display: none !important;
+}
+
 /* Left segment: cover + info + like, takes all the available width */
 .player-left {
     flex: 1 1 auto !important;
