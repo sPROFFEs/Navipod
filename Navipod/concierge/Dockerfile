@@ -27,7 +27,11 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 # --reload was a dev-mode filesystem watcher; production doesn't need it.
-# --limit-max-requests recycles the worker after N served requests so any
-# slow-growing leak (yt-dlp extractor cache, glibc fragmentation, etc.)
-# resets on its own instead of accumulating until OOM.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--limit-max-requests", "5000"]
+# NOTE: --limit-max-requests is INTENTIONALLY OMITTED. uvicorn in
+# single-worker mode treats that limit as a hard process termination,
+# which under `restart: unless-stopped` creates a 1-3s outage window
+# where Cloudflare returns a 1033. MALLOC_ARENA_MAX=2 (set in the
+# compose env) is the primary leak mitigation; if the ram_audit log
+# shows growth that mitigation can't keep up with, schedule a daily
+# `docker compose restart concierge` from cron instead.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

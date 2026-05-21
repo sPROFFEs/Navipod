@@ -27,9 +27,18 @@ import tracemalloc
 
 logger = logging.getLogger(__name__)
 
-AUDIT_PATH = os.getenv("RAM_AUDIT_PATH", "/workspace/ram_audit.log")
+# Two candidate paths. We *prefer* /workspace because that's the host's
+# repo root (mounted via docker-compose's `..:/workspace`) — convenient
+# to find. But host bind mounts can be unwritable under userns-remap or
+# restrictive host ACLs, so we fall back to /saas-data (always RW, the
+# app already writes there) — host-visible at /opt/saas-data.
+AUDIT_PATH_PRIMARY = os.getenv("RAM_AUDIT_PATH", "/workspace/ram_audit.log")
+AUDIT_PATH_FALLBACK = os.getenv("RAM_AUDIT_PATH_FALLBACK", "/saas-data/ram_audit.log")
 AUDIT_INTERVAL_SECONDS = int(os.getenv("RAM_AUDIT_INTERVAL_SECONDS", "1800"))
 AUDIT_TOP_N = int(os.getenv("RAM_AUDIT_TOP_N", "10"))
+
+# Resolved at startup by _resolve_audit_path(). Set to None until then.
+_active_audit_path: str | None = None
 
 # Single header line so the file is greppable / spreadsheet-importable.
 # `top_allocators` is a pipe-separated list of `file:line:size_kb` entries.
@@ -108,35 +117,58 @@ def _snapshot_row(start_time: float) -> str:
     return f"{iso},{uptime},{rss},{vms},{threads},{fds},{current_kb},{peak_kb},{top_str}\n"
 
 
-def _write_header_if_missing() -> None:
+def _try_initialize(path: str) -> bool:
+    """Attempt to create the directory and write the CSV header. Returns
+    True on success; False if the path is unwritable for any reason."""
     try:
-        if not os.path.exists(AUDIT_PATH) or os.path.getsize(AUDIT_PATH) == 0:
-            os.makedirs(os.path.dirname(AUDIT_PATH) or ".", exist_ok=True)
-            with open(AUDIT_PATH, "a") as f:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        needs_header = not os.path.exists(path) or os.path.getsize(path) == 0
+        # Open in append so an existing file is preserved; if we don't
+        # have permission this raises immediately.
+        with open(path, "a") as f:
+            if needs_header:
                 f.write(CSV_HEADER + "\n")
+        return True
     except Exception as exc:
-        # Header is a nice-to-have. If we can't write it (read-only mount,
-        # missing dir), the rows below would have failed too — but we
-        # don't want one bad mount to crash the worker.
-        logger.warning("ram_audit: could not initialize %s: %s", AUDIT_PATH, exc)
+        logger.warning("ram_audit: cannot use %s (%s)", path, exc)
+        return False
+
+
+def _resolve_audit_path() -> str | None:
+    """Pick the first writable candidate. Returns None if both fail —
+    in which case the scheduler still runs (so logs aren't full of
+    repeating tracebacks) but writes nothing."""
+    for candidate in (AUDIT_PATH_PRIMARY, AUDIT_PATH_FALLBACK):
+        if not candidate:
+            continue
+        if _try_initialize(candidate):
+            return candidate
+    return None
 
 
 async def audit_scheduler() -> None:
+    global _active_audit_path
     start_time = time.time()
-    _write_header_if_missing()
-    logger.info(
-        "ram_audit: writing to %s every %ss (tracemalloc=%s)",
-        AUDIT_PATH,
-        AUDIT_INTERVAL_SECONDS,
-        "on" if tracemalloc.is_tracing() else "off",
-    )
-    # First row immediately so we anchor the "fresh boot" baseline at the
-    # repo root — otherwise the first sample wouldn't land for 30 min.
+    _active_audit_path = _resolve_audit_path()
+    if _active_audit_path:
+        logger.info(
+            "ram_audit: writing to %s every %ss (tracemalloc=%s)",
+            _active_audit_path,
+            AUDIT_INTERVAL_SECONDS,
+            "on" if tracemalloc.is_tracing() else "off",
+        )
+    else:
+        logger.warning(
+            "ram_audit: no writable path found (tried %s, %s) — audit disabled",
+            AUDIT_PATH_PRIMARY,
+            AUDIT_PATH_FALLBACK,
+        )
     while True:
-        try:
-            row = _snapshot_row(start_time)
-            with open(AUDIT_PATH, "a") as f:
-                f.write(row)
-        except Exception as exc:
-            logger.warning("ram_audit tick failed: %s", exc)
+        if _active_audit_path:
+            try:
+                row = _snapshot_row(start_time)
+                with open(_active_audit_path, "a") as f:
+                    f.write(row)
+            except Exception as exc:
+                logger.warning("ram_audit tick failed: %s", exc)
         await asyncio.sleep(AUDIT_INTERVAL_SECONDS)
