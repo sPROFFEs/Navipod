@@ -292,6 +292,31 @@ export function openPlaylistCoverUpload(playlistId) {
   document.getElementById(`playlist-cover-input-${playlistId}`)?.click();
 }
 
+// After a cover change, replace the cached thumbnail URL in
+// state.userPlaylists and state.recentPlaylists with a freshly-versioned
+// one so every subsequent render (sidebar quick-picks, library cards,
+// home tiles) fetches the new image. The backend now returns a
+// mtime-versioned URL via _playlist_cover_url, but its 1-second
+// resolution means rapid updates can collide on the same ?v= value,
+// and any intermediate cache (browser, CDN, proxy) can keep serving
+// the old bytes for an unchanged URL. A client-side Date.now() bust
+// is monotonic per-update and overrides whatever the server sent.
+function _bustPlaylistCoverInState(playlistId) {
+  const versionedThumb = (thumb) => {
+    if (!thumb || thumb.includes('default')) return thumb;
+    const base = thumb.split('?')[0];
+    return `${base}?v=${Date.now()}`;
+  };
+  const bump = (list) => list.map((p) => (p.id !== playlistId ? p : { ...p, thumbnail: versionedThumb(p.thumbnail) }));
+  state.setUserPlaylists(bump(state.userPlaylists));
+  state.setRecentPlaylists(bump(state.recentPlaylists));
+  // Push the new URL into the sidebar DOM immediately. loadUserData
+  // also re-renders the sidebar, but doing it again here ensures any
+  // path (cover upload / pick from track / reset to auto) that may
+  // skip loadUserData still updates the sidebar.
+  if (window.renderSidebarPlaylists) window.renderSidebarPlaylists();
+}
+
 export async function handlePlaylistCoverUpload(playlistId, input) {
   const file = input?.files?.[0];
   if (!file) return;
@@ -311,6 +336,7 @@ export async function handlePlaylistCoverUpload(playlistId, input) {
     }
     ui.showToast('Playlist cover updated', 'success');
     if (window.loadUserData) await window.loadUserData();
+    _bustPlaylistCoverInState(playlistId);
     if (window.loadView) window.loadView('playlist', playlistId);
   } catch (e) {
     ui.showToast('Failed to update cover', 'error');
@@ -370,6 +396,7 @@ export async function setPlaylistCoverFromTrack(playlistId, trackId) {
     ui.closeModal();
     ui.showToast('Playlist cover updated', 'success');
     if (window.loadUserData) await window.loadUserData();
+    _bustPlaylistCoverInState(playlistId);
     if (window.loadView) window.loadView('playlist', playlistId);
   } catch (e) {
     ui.showToast('Failed to update cover', 'error');
@@ -386,6 +413,7 @@ export async function resetPlaylistCover(playlistId) {
     }
     ui.showToast('Playlist cover reset', 'success');
     if (window.loadUserData) await window.loadUserData();
+    _bustPlaylistCoverInState(playlistId);
     if (window.loadView) window.loadView('playlist', playlistId);
   } catch (e) {
     ui.showToast('Failed to reset cover', 'error');
