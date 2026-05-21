@@ -23,6 +23,12 @@ from job_service import acquire_lock, create_admin_job, get_active_operation_loc
 COMPOSE_UPDATE_TIMEOUT_SECONDS = 1000
 DOCKER_PRUNE_TIMEOUT_SECONDS = 120
 HEALTH_CHECK_TIMEOUT_SECONDS = 180
+# How long an admin job can sit at status="running" without progressing
+# before apply-update treats it as a zombie and forcibly reclaims its
+# lock. Real apply-update runs in 2-5 minutes; the default 30 min leaves
+# plenty of headroom for a slow backup or fetch while still unblocking
+# the operator far sooner than the 120-min hard lock timeout.
+ADMIN_LOCK_ZOMBIE_SECONDS = int(os.getenv("ADMIN_LOCK_ZOMBIE_SECONDS", "1800"))
 
 
 def get_internal_updater_token():
@@ -182,75 +188,6 @@ def _clear_git_index_lock() -> bool:
         except OSError:
             pass
     return False
-
-
-def force_clean_workspace(triggered_by: str | None = None) -> dict:
-    """Emergency recovery: clear stale git lock, release operation lock,
-    and reset the workspace to HEAD.
-
-    Use this when the apply-update pipeline is stuck due to a dirty working
-    tree or a stale index.lock left by an interrupted container restart.
-
-    Returns a dict with `ok` (bool), `message` (human summary suitable for
-    the toast) and `steps` — a per-step audit so the UI can show exactly
-    which part failed instead of an opaque "didn't work".
-    """
-    db = database.SessionLocal()
-    steps: list[dict] = []
-
-    # 1. Remove stale index.lock. Even if .git is unreachable (permission
-    # problems on the bind mount, missing dir) we record what happened.
-    try:
-        cleared = _clear_git_index_lock()
-        steps.append(
-            {
-                "name": "index_lock",
-                "ok": True,
-                "detail": "removed stale .git/index.lock" if cleared else "no stale lock present",
-            }
-        )
-    except Exception as exc:
-        steps.append({"name": "index_lock", "ok": False, "detail": f"unlink failed: {exc}"})
-
-    # 2. Release the operation lock so subsequent admin actions can run.
-    # Always attempt this, even if step 1 failed — they're independent.
-    try:
-        release_lock(db)
-        steps.append({"name": "operation_lock", "ok": True, "detail": "released"})
-    except Exception as exc:
-        steps.append({"name": "operation_lock", "ok": False, "detail": f"release failed: {exc}"})
-
-    # 3. Reset workspace to HEAD. This is the step most likely to fail in
-    # the wild — a non-writable /workspace bind mount, a missing .git, an
-    # exotic git safe.directory error. Capture stderr verbatim.
-    try:
-        reset = _run_git(["reset", "--hard", "HEAD"], include_details=True)
-        if isinstance(reset, dict) and reset.get("ok"):
-            steps.append({"name": "git_reset", "ok": True, "detail": "git reset --hard HEAD"})
-        else:
-            stderr = (reset or {}).get("stderr", "") if isinstance(reset, dict) else ""
-            steps.append(
-                {
-                    "name": "git_reset",
-                    "ok": False,
-                    "detail": f"git reset failed: {stderr or 'unknown error'}",
-                }
-            )
-    except Exception as exc:
-        steps.append({"name": "git_reset", "ok": False, "detail": f"exception: {exc}"})
-
-    db.close()
-
-    overall_ok = all(s["ok"] for s in steps)
-    if overall_ok:
-        message = "Workspace reset to HEAD. You can now apply updates."
-    else:
-        # Surface every failing step so a single click tells the operator
-        # exactly which layer is broken (perm? git? lock?).
-        failed = [f"{s['name']}: {s['detail']}" for s in steps if not s["ok"]]
-        message = "Force clean failed — " + "; ".join(failed)
-
-    return {"ok": overall_ok, "message": message, "steps": steps}
 
 
 def _fetch_update_tracking_ref():
@@ -623,10 +560,86 @@ def _run_compose_update(job_id: int, changed_files: list[str]):
     return rebuild_required, health_result, normalized_changed_files, rebuild_targets
 
 
+def _reclaim_zombie_admin_lock(db, threshold_seconds: int = ADMIN_LOCK_ZOMBIE_SECONDS) -> dict | None:
+    """If the global admin lock is held by a job that's been at
+    status='running' for longer than `threshold_seconds`, mark that job
+    failed, release the lock, and clear any leftover .git/index.lock.
+
+    This is the option-3 replacement for the deleted Force Clean Workspace
+    button. Crashes / interrupted apply-update runs left their job stuck
+    at 'running' (because the dying process couldn't update its own status
+    to 'failed'), and the lock then survived until its 120-min expiry.
+    Apply-update now auto-recovers on the next invocation instead, by
+    treating any job that's been 'running' beyond the threshold as a
+    zombie. The threshold is much longer than a real apply-update so we
+    don't trample a slow-but-legitimate backup/fetch.
+
+    Runs in the updater container (root, can write /workspace), so the
+    index-lock cleanup actually succeeds — that was the deal-breaker
+    when the equivalent code ran in the concierge container.
+
+    Returns a small report dict if it reclaimed something, otherwise None.
+    """
+    lock = (
+        db.query(database.AdminOperationLock)
+        .filter(database.AdminOperationLock.name == "admin-global-operation")
+        .first()
+    )
+    if not lock or not lock.job_id:
+        return None
+    held_job = db.query(database.AdminJob).filter(database.AdminJob.id == lock.job_id).first()
+    if not held_job or held_job.status in {"completed", "failed"}:
+        # acquire_lock's existing self-healing path already handles this.
+        return None
+    if not lock.acquired_at:
+        return None
+    # acquired_at is timezone-aware (server_default=func.now()); coerce to UTC.
+    acquired = lock.acquired_at if lock.acquired_at.tzinfo else lock.acquired_at.replace(tzinfo=timezone.utc)
+    age_seconds = (datetime.now(timezone.utc) - acquired).total_seconds()
+    if age_seconds < threshold_seconds:
+        return None
+
+    held_job.status = "failed"
+    held_job.finished_at = datetime.now(timezone.utc)
+    held_job.message = (
+        f"Reclaimed by apply-update preflight after {int(age_seconds)}s of inactivity "
+        f"(threshold {threshold_seconds}s). Original job did not finish cleanly."
+    )
+    db.commit()
+    release_lock(db)
+    cleared_index = _clear_git_index_lock()
+    return {
+        "reclaimed_job_id": held_job.id,
+        "age_seconds": int(age_seconds),
+        "index_lock_cleared": cleared_index,
+    }
+
+
 def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
     db = database.SessionLocal()
     temp_path = None
     try:
+        # Preflight: free up a stuck/crashed previous apply-update run so
+        # this new invocation isn't blocked for 120 min waiting on the
+        # hard lock timeout. See _reclaim_zombie_admin_lock for the full
+        # rationale — this replaces the deleted Force Clean Workspace
+        # button with automatic recovery on the next apply-update click.
+        reclaim_report = _reclaim_zombie_admin_lock(db)
+        if reclaim_report:
+            update_admin_job_progress(
+                job_id,
+                message=(
+                    f"Reclaimed stale lock from job #{reclaim_report['reclaimed_job_id']} "
+                    f"({reclaim_report['age_seconds']}s inactive"
+                    + (", cleared stale .git/index.lock" if reclaim_report["index_lock_cleared"] else "")
+                    + ")"
+                ),
+                status="running",
+                phase="preflight",
+                progress=1,
+                extra=reclaim_report,
+            )
+
         if not acquire_lock(db, job_id):
             update_admin_job_progress(job_id, message="Another admin operation is already running", status="failed", progress=100, finished=True)
             return

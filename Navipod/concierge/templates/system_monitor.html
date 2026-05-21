@@ -123,9 +123,6 @@
                 <form action="/admin/system/updates/apply" method="post" class="monitor-form" data-confirm="Apply the update from GitHub main? A backup will be created first and the managed services will be recreated." data-title="Apply update">
                     <button type="submit" class="monitor-warning"><i data-lucide="download-cloud"></i><span>Apply Update</span></button>
                 </form>
-                <form action="/admin/system/updates/force-clean" method="post" class="monitor-form" data-confirm="This will clear any stale git lock file, release a stuck operation lock, and reset the working tree to HEAD (git reset --hard HEAD). Only use this if updates are blocked by a dirty tree or a stuck lock." data-title="Force clean workspace">
-                    <button type="submit" class="{{ 'monitor-danger' if updates.current.dirty else 'monitor-secondary' }}"><i data-lucide="shield-alert"></i><span>Force Clean Workspace</span></button>
-                </form>
             </div>
         </div>
         <div class="monitor-panel-body">

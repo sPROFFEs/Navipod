@@ -15,7 +15,6 @@ from job_service import (
 )
 from ops_core import apply_schema_migrations, get_schema_status
 from update_service import (
-    force_clean_workspace,
     get_internal_updater_token,
     get_update_monitor_path,
     get_update_monitor_token,
@@ -30,7 +29,6 @@ __all__ = [
     "apply_schema_migrations",
     "autobackup_scheduler",
     "create_admin_job",
-    "force_clean_workspace",
     "get_active_operation_lock",
     "get_admin_job",
     "get_backup_state",

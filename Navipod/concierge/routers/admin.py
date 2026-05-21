@@ -5,7 +5,6 @@ import stat
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import quote_plus
 
 import auth
 import database
@@ -750,26 +749,6 @@ async def apply_updates(
 ):
     job_id = operations_service.queue_apply_update(admin.username)
     return RedirectResponse(f"/admin/system/updates/jobs/{job_id}", status_code=303)
-
-
-@router.post("/system/updates/force-clean")
-async def force_clean_update_workspace(
-    request: Request, db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)
-):
-    """Emergency recovery: clear stale index.lock, release stuck operation lock, and reset
-    the working tree to HEAD so that subsequent update attempts can proceed."""
-    result = operations_service.force_clean_workspace(triggered_by=admin.username)
-    message = result.get("message") or ("ok" if result.get("ok") else "unknown error")
-    # Route failures into the red toast — previously both branches used
-    # ?msg= which the template renders as a green success banner, so a
-    # genuine git/permission failure looked indistinguishable from
-    # success. URL-encode the value so stderr containing & # or = (very
-    # likely in git error messages) can't break the redirect.
-    query_param = "msg" if result.get("ok") else "error"
-    return RedirectResponse(
-        f"/admin/system?{query_param}={quote_plus(message)}",
-        status_code=303,
-    )
 
 
 @router.get("/system/updates/jobs/{job_id}")
