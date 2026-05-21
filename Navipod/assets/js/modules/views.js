@@ -1124,6 +1124,59 @@ export function createTrackRow(item, idx, playlistId = null) {
     </div>`;
 }
 
+// === PLAYLIST-VIEW TRACK ROW ===
+// Spotify-style five-column row used by the playlist detail page:
+// number, title (cover + title + artist), album, source badge, duration.
+// Lives alongside createTrackRow rather than replacing it because other
+// surfaces (search, mix, library) use a narrower 3-column layout and
+// would not benefit from the extra columns.
+export function createPlaylistTrackRow(item, idx, playlistId = null) {
+  const img = item.thumbnail || '/static/img/default_cover.png';
+  const data = btoa(encodeURIComponent(JSON.stringify(item)));
+  const src = item.source || 'local';
+  const isLiked = state.userFavorites.has(item.db_id || item.id);
+  const canAddToPlaylist = item.is_local && item.db_id;
+  const isActive = item.id === state.currentTrack?.id;
+
+  const _safeTitle = ui.escHtml(item.title || 'Unknown').replace(/'/g, "\\'");
+  const _safeArtist = ui.escHtml(item.artist || 'Unknown').replace(/'/g, "\\'");
+  const duration = ui.fmtTime(item.duration);
+
+  return `<div class="track-row playlist-row glass-hover ${isLiked ? 'liked-row' : ''} ${isActive ? 'active-track' : ''}" onclick="playFromView(${idx})" data-idx="${idx}">
+        <div class="track-num">
+            <span class="num-text">${idx + 1}</span>
+            <i data-lucide="play" class="hover-play-icon"></i>
+            ${isActive ? '<i data-lucide="bar-chart-2" class="playing-icon"></i>' : ''}
+        </div>
+        <div class="track-main">
+            <img src="${ui.escHtml(img)}" class="track-cover-sm" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
+            <div class="track-titles">
+                <div class="track-name-sm">${ui.escHtml(item.title || 'Unknown')}</div>
+                <div class="track-artist-sm">
+                    <a class="artist-link"
+                       onclick="event.stopPropagation(); loadView('artist', '${_safeArtist}')"
+                    >${ui.escHtml(item.artist || 'Unknown')}</a>
+                </div>
+            </div>
+        </div>
+        <div class="track-album-col" title="${ui.escHtml(item.album || '')}">${ui.escHtml(item.album || '')}</div>
+        <div class="track-source-col"><span class="source-badge ${src}">${src}</span></div>
+        <div class="track-duration-col" onclick="event.stopPropagation()">
+            <button class="action-btn-inline ${isLiked ? 'liked' : ''}" onclick="event.stopPropagation(); toggleFavorite(${item.db_id || item.id}, this)" title="${isLiked ? 'Unlike' : 'Like'}">
+                <i data-lucide="heart"></i>
+            </button>
+            ${canAddToPlaylist ? `<button class="action-btn-inline" onclick="event.stopPropagation(); showAddToPlaylistModal(${item.db_id})" title="Add to playlist"><i data-lucide="plus"></i></button>` : ''}
+            ${playlistId ? `<button class="action-btn-inline danger" onclick="event.stopPropagation(); showRemoveFromPlaylistModal(${playlistId}, ${item.id}, '${_safeTitle}')" title="Remove from playlist"><i data-lucide="trash-2"></i></button>` : ''}
+            <span class="track-duration">${duration}</span>
+            <button class="action-btn action-btn-more"
+                    onclick="event.stopPropagation(); showTrackActionsSheet('${data}', ${playlistId || 'null'})"
+                    title="More options">
+                <i data-lucide="more-vertical"></i>
+            </button>
+        </div>
+    </div>`;
+}
+
 // === MOBILE TRACK ACTIONS BOTTOM SHEET ===
 
 export function closeTrackActionsSheet() {

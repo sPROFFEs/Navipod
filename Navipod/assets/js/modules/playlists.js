@@ -41,6 +41,18 @@ export async function renderPlaylist(container, playlistId) {
   const visibilityBadge = isPublic
     ? '<span class="source-badge spotify" style="margin-left:8px;">Public</span>'
     : '<span class="source-badge local" style="margin-left:8px;">Private</span>';
+  // Total playlist duration. Tracks without a duration just don't
+  // contribute; the worst case is a "n songs" stat with no time.
+  const totalSeconds = (data.tracks || []).reduce((acc, t) => acc + (Number(t.duration) || 0), 0);
+  const fmtTotal = (s) => {
+    if (!s) return '';
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    if (h > 0) return `${h} h ${m} min`;
+    if (m > 0) return `${m} min`;
+    return '< 1 min';
+  };
+  const totalLabel = fmtTotal(totalSeconds);
   const safePlaylistName = ui.escHtml(data.name || 'Playlist').replace(/'/g, "\\'");
   const ownerControls =
     isOwner && isEditable
@@ -117,18 +129,21 @@ export async function renderPlaylist(container, playlistId) {
                     <h1 class="playlist-title" id="playlist-title-${playlistId}">${ui.escHtml(data.name || 'Playlist')}</h1>
                     ${ownerControls}
                 </div>
-                <p class="playlist-stats">${trackCount} songs ${ownerLabel}${visibilityBadge}${sourceBadge}</p>
+                <p class="playlist-stats">
+                    ${ownerLabel ? `<span>${ownerLabel}</span><span class="playlist-stats-dot">·</span>` : ''}
+                    <span>${trackCount} ${trackCount === 1 ? 'song' : 'songs'}</span>
+                    ${totalLabel ? `<span class="playlist-stats-dot">·</span><span>${totalLabel}</span>` : ''}
+                    ${visibilityBadge}${sourceBadge}
+                </p>
                 <div class="playlist-actions">
                     ${
                       trackCount > 0
                         ? `
-                    <button onclick="playPlaylistInOrder()" class="btn-primary-lg playlist-action-btn" title="Play" aria-label="Play">
-                        <i data-lucide="play" width="20" height="20"></i>
-                        <span class="playlist-btn-label">Play</span>
+                    <button onclick="playPlaylistInOrder()" class="btn-play-circle" title="Play" aria-label="Play">
+                        <i data-lucide="play" width="22" height="22"></i>
                     </button>
-                    <button onclick="playPlaylistShuffle()" class="btn-secondary-lg playlist-action-btn" title="Shuffle" aria-label="Shuffle">
-                        <i data-lucide="shuffle" width="20" height="20"></i>
-                        <span class="playlist-btn-label">Shuffle</span>
+                    <button onclick="playPlaylistShuffle()" class="btn-icon-pill" title="Shuffle" aria-label="Shuffle">
+                        <i data-lucide="shuffle" width="18" height="18"></i>
                     </button>
                     `
                         : ''
@@ -142,7 +157,26 @@ export async function renderPlaylist(container, playlistId) {
         </div>
         ${
           trackCount > 0
-            ? `<div class="track-list">${state.currentViewList.map((t, i) => (window.createTrackRow ? window.createTrackRow({ ...t, is_local: true, source: 'local' }, i, isEditable ? playlistId : null) : '')).join('')}</div>`
+            ? `<div class="track-list playlist-track-list">
+                <div class="track-row header playlist-row">
+                    <div class="track-num">#</div>
+                    <div>Title</div>
+                    <div class="track-album-col">Album</div>
+                    <div class="track-source-col">Source</div>
+                    <div class="track-duration-col"><i data-lucide="clock" width="16" height="16"></i></div>
+                </div>
+                ${state.currentViewList
+                  .map((t, i) =>
+                    window.createPlaylistTrackRow
+                      ? window.createPlaylistTrackRow(
+                          { ...t, is_local: true, source: 'local' },
+                          i,
+                          isEditable ? playlistId : null
+                        )
+                      : ''
+                  )
+                  .join('')}
+              </div>`
             : '<div class="empty-state glass-panel"><p>This playlist is empty.</p></div>'
         }`;
   lucide.createIcons();
@@ -170,8 +204,16 @@ function initPlaylistDragDrop(container, playlistId) {
     handle.innerHTML = gripSvg;
     // Only activate draggable on mousedown on the handle itself so normal
     // row clicks (play) still work.
-    handle.addEventListener('mousedown', () => { row.draggable = true; });
-    handle.addEventListener('touchstart', () => { row.draggable = true; }, { passive: true });
+    handle.addEventListener('mousedown', () => {
+      row.draggable = true;
+    });
+    handle.addEventListener(
+      'touchstart',
+      () => {
+        row.draggable = true;
+      },
+      { passive: true }
+    );
     row.prepend(handle);
     row.dataset.dragIndex = index;
   });
@@ -231,7 +273,9 @@ function initPlaylistDragDrop(container, playlistId) {
     state.setCurrentViewList(newOrder);
 
     // Update drag indices
-    trackList.querySelectorAll('.track-row').forEach((r, i) => { r.dataset.dragIndex = i; });
+    trackList.querySelectorAll('.track-row').forEach((r, i) => {
+      r.dataset.dragIndex = i;
+    });
 
     // Persist to server
     const items = newOrder.map((t, i) => ({ track_id: t.db_id || t.id, position: i }));

@@ -129,6 +129,7 @@ window.createCard = views.createCard;
 window.createMixCard = views.createMixCard;
 window.createPlaylistCard = views.createPlaylistCard;
 window.createTrackRow = views.createTrackRow;
+window.createPlaylistTrackRow = views.createPlaylistTrackRow;
 window.handleCardClick = views.handleCardClick;
 window.playPreview = views.playPreview;
 window.renderSidebarPlaylists = views.renderSidebarPlaylists;
@@ -237,7 +238,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // (a non-blocking inline <script> that runs before this deferred module).
   // We are the *only* caller of loadView on page load — the template no longer
   // calls it a second time, eliminating the double-render (fix Q-10).
-  const _serverView  = window.NAVIPOD_INITIAL_VIEW  ?? 'home';
+  const _serverView = window.NAVIPOD_INITIAL_VIEW ?? 'home';
   const _serverParam = window.NAVIPOD_INITIAL_PARAM ?? null;
 
   if (window.location.pathname === '/' || window.location.pathname === '/index.html') {
@@ -266,7 +267,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Register PWA service worker
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(err => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((err) => {
       console.warn('[SW] Registration failed:', err);
     });
   }

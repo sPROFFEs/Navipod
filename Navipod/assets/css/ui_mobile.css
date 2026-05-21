@@ -277,6 +277,25 @@
         display: none !important;
     }
 
+    /* Playlist-specific Spotify-style table: Album, Source, inline
+       actions and the column header all disappear at this width. The
+       trailing column collapses to just the 3-dots menu so rows stay
+       readable on a phone. */
+    .playlist-track-list .track-row,
+    .playlist-track-list.playlist-draggable-list .track-row {
+        grid-template-columns: 28px minmax(0, 1fr) auto !important;
+    }
+
+    .playlist-track-list .track-album-col,
+    .playlist-track-list .track-duration,
+    .playlist-track-list .action-btn-inline {
+        display: none !important;
+    }
+
+    .playlist-track-list .track-duration-col {
+        gap: 4px;
+    }
+
     .track-list .track-main {
         display: grid;
         grid-template-columns: 40px minmax(0, 1fr);

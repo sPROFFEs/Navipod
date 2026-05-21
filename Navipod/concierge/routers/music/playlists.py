@@ -204,9 +204,7 @@ def serialize_playlist_summary(db: Session, playlist, viewer_id: int | None = No
 
     # Use a scalar COUNT instead of loading the full items relationship (P-01)
     track_count = (
-        db.query(func.count(database.PlaylistItem.id))
-        .filter(database.PlaylistItem.playlist_id == playlist.id)
-        .scalar()
+        db.query(func.count(database.PlaylistItem.id)).filter(database.PlaylistItem.playlist_id == playlist.id).scalar()
         or 0
     )
     return {
@@ -527,6 +525,7 @@ async def get_playlist(playlist_id: int, request: Request, db: Session = Depends
             "title": t.title,
             "artist": t.artist,
             "album": t.album,
+            "duration": t.duration,
             "thumbnail": f"/api/cover/{t.id}",
             "position": item.position,
         }

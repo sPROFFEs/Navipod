@@ -1437,6 +1437,118 @@ body {
     border-radius: 0;
 }
 
+/* ── Playlist detail track table — Spotify-style ──────────────────────
+   Adds two more columns to the standard .track-row grid: Album (after
+   Title) and Duration (rightmost). The Source badge column stays so
+   the LOCAL/Federation/etc. tag remains visible. The drag-handle
+   variant (.playlist-draggable-list) prepends its own 20 px column
+   on top.                                                              */
+
+.playlist-track-list .track-row {
+    grid-template-columns: 40px minmax(0, 1.6fr) minmax(0, 1.2fr) 100px minmax(180px, 0.8fr);
+    gap: 14px;
+    padding: 8px 16px;
+}
+
+.playlist-draggable-list.playlist-track-list .track-row {
+    grid-template-columns: 20px 40px minmax(0, 1.6fr) minmax(0, 1.2fr) 100px minmax(180px, 0.8fr);
+}
+
+.playlist-track-list .track-row.header {
+    cursor: default;
+    border-bottom: 1px solid var(--glass-border);
+    border-top: 0;
+    padding: 6px 16px;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    color: var(--text-sub);
+}
+
+.playlist-track-list .track-row.header:hover {
+    background: transparent;
+    border-color: transparent;
+    border-bottom-color: var(--glass-border);
+}
+
+.playlist-track-list .track-row.header .track-num {
+    text-align: left;
+    padding-left: 6px;
+}
+
+.playlist-track-list .track-album-col {
+    color: var(--text-sub);
+    font-size: 0.88rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.playlist-track-list .track-row.header .track-duration-col {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    color: var(--text-sub);
+}
+
+/* Right-aligned cell that bundles inline action buttons + the
+   duration label + the mobile 3-dots menu. Actions sit hidden
+   until hover so the duration is the dominant visual element by
+   default — same approach Spotify uses for the trailing column. */
+.playlist-track-list .track-duration-col {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    color: var(--text-sub);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.88rem;
+}
+
+.playlist-track-list .track-duration {
+    min-width: 3ch;
+    text-align: right;
+}
+
+.action-btn-inline {
+    background: transparent;
+    border: 0;
+    padding: 4px;
+    margin: 0;
+    cursor: pointer;
+    color: var(--text-sub);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.action-btn-inline i,
+.action-btn-inline svg {
+    width: 16px;
+    height: 16px;
+}
+
+.playlist-track-list .track-row:hover .action-btn-inline {
+    opacity: 1;
+}
+
+.action-btn-inline:hover {
+    color: white;
+    transform: scale(1.1);
+}
+
+.action-btn-inline.liked {
+    opacity: 1;
+    color: var(--accent);
+}
+
+.action-btn-inline.danger:hover {
+    color: #ef4444;
+}
+
 .source-badge {
     text-transform: uppercase;
     font-size: 0.65rem;
@@ -2299,12 +2411,83 @@ body {
     color: var(--text-sub);
     font-weight: 600;
     margin-bottom: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.playlist-stats-dot {
+    opacity: 0.6;
+    padding: 0 2px;
 }
 
 .playlist-actions {
     display: flex;
     align-items: center;
     gap: 16px;
+}
+
+/* Big circular Play button — the dominant CTA on the playlist surface,
+   matching Spotify's primary affordance. Same accent gradient as the
+   existing btn-primary-lg, but circular and slightly larger so it
+   reads as the primary action regardless of label. */
+.btn-play-circle {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent);
+    color: white;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 6px 18px rgba(168, 85, 247, 0.35);
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.btn-play-circle:hover {
+    transform: scale(1.06);
+    box-shadow: 0 8px 22px rgba(168, 85, 247, 0.45);
+}
+
+.btn-play-circle:active {
+    transform: scale(0.96);
+}
+
+.btn-play-circle i,
+.btn-play-circle svg {
+    /* Nudge the triangle a hair right so it looks optically centred. */
+    margin-left: 2px;
+}
+
+/* Secondary icon-only pill — used for shuffle and the rest of the
+   playlist actions next to the big play button. Keeps the action row
+   visually quiet so the Play CTA stays dominant. */
+.btn-icon-pill {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-sub);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.btn-icon-pill:hover {
+    color: white;
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.25);
+    transform: scale(1.05);
+}
+
+.btn-icon-pill:active {
+    transform: scale(0.95);
 }
 
 /* --- BUTTONS & INPUTS --- */
