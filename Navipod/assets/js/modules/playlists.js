@@ -608,6 +608,20 @@ export async function addToPlaylist(playlistId, trackId) {
       body: JSON.stringify({ track_id: trackId })
     });
     if (res.ok) {
+      const payload = await res.json().catch(() => ({}));
+      // Update the cached state.userPlaylists track_count for this
+      // playlist so a rapid second open of the Add-to-Playlist modal
+      // shows the updated count immediately instead of the pre-add
+      // value. Backend now returns the authoritative count in the
+      // response; falling back to a +1 increment if it's missing
+      // (older backend) keeps the UX consistent.
+      const next = state.userPlaylists.map((p) => {
+        if (p.id !== playlistId) return p;
+        const newCount =
+          typeof payload.track_count === 'number' ? payload.track_count : (Number(p.track_count) || 0) + 1;
+        return { ...p, track_count: newCount };
+      });
+      state.setUserPlaylists(next);
       ui.closeModal();
       ui.showToast('Added to playlist!', 'success');
     } else {

@@ -93,8 +93,24 @@ def _playlist_cover_dir(username: str) -> str:
     return cover_dir
 
 
-def _playlist_cover_url(playlist_id: int) -> str:
-    return f"/api/playlists/{playlist_id}/cover"
+def _playlist_cover_url(playlist_id: int, cover_path: str | None = None) -> str:
+    """Build the public cover URL for a playlist with a cache-buster.
+
+    The cover endpoint (`/api/playlists/{id}/cover`) is a stable path, so
+    when a user replaces their playlist cover the browser keeps showing
+    the previously-cached image until a hard reload. Appending the file
+    mtime as `?v=` makes the URL change with the underlying file — the
+    server still serves the same path, but the browser fetches it fresh.
+    Falls back to the bare URL when no path / file is available (the
+    default-cover and track-cover code paths derive URLs elsewhere).
+    """
+    base = f"/api/playlists/{playlist_id}/cover"
+    if cover_path:
+        try:
+            return f"{base}?v={int(os.path.getmtime(cover_path))}"
+        except OSError:
+            pass
+    return base
 
 
 def _validate_playlist_cover_bytes(file_content: bytes, content_type: str) -> bool:
@@ -113,7 +129,7 @@ def _remove_playlist_cover_file(playlist) -> None:
 
 def get_playlist_thumbnail(db: Session, playlist) -> str:
     if playlist.cover_path:
-        return _playlist_cover_url(playlist.id)
+        return _playlist_cover_url(playlist.id, playlist.cover_path)
     if playlist.cover_track_id:
         return f"/api/cover/{playlist.cover_track_id}"
     first_item = (
@@ -176,7 +192,7 @@ def fetch_playlist_summaries(
                 "id": row.id,
                 "name": row.name,
                 "track_count": int(row.track_count or 0),
-                "thumbnail": _playlist_cover_url(row.id)
+                "thumbnail": _playlist_cover_url(row.id, row.cover_path)
                 if (row.cover_path or row.cover_track_id or int(row.track_count or 0) > 0)
                 else "/static/img/default_cover.png",
                 "is_public": bool(row.is_public),
@@ -639,7 +655,7 @@ async def upload_playlist_cover(
     playlist.cover_track_id = None
     db.commit()
 
-    return JSONResponse({"status": "ok", "thumbnail": _playlist_cover_url(playlist.id)})
+    return JSONResponse({"status": "ok", "thumbnail": _playlist_cover_url(playlist.id, cover_path)})
 
 
 @router.post("/api/playlists/{playlist_id}/cover/track")
@@ -783,7 +799,15 @@ async def add_to_playlist(playlist_id: int, req: AddToPlaylistRequest, request: 
     schedule_playlist_sync(db, user)
     schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
 
-    return JSONResponse({"status": "added", "position": max_pos + 1})
+    # Return the live track count so the frontend can update its cached
+    # state.userPlaylists optimistically without waiting for the next
+    # /api/playlists round trip — otherwise the user adds song A, opens
+    # the modal again to add song B, and still sees the old count.
+    track_count = (
+        db.query(func.count(database.PlaylistItem.id)).filter(database.PlaylistItem.playlist_id == playlist_id).scalar()
+        or 0
+    )
+    return JSONResponse({"status": "added", "position": max_pos + 1, "track_count": int(track_count)})
 
 
 @router.delete("/api/playlists/{playlist_id}/remove/{track_id}")
