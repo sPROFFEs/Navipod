@@ -142,6 +142,16 @@ async def startup_event():
         refreshed_identities = track_identity.sync_track_identities(db)
         if refreshed_identities:
             logger.info("Synced track identities: %s tracks", refreshed_identities)
+        # Mark any download job that was mid-flight when the previous
+        # concierge process exited as failed. The BackgroundTasks worker
+        # that was driving it died with the process; without this sweep
+        # the row stays at status="processing" forever and the Downloads
+        # Manager keeps showing it.
+        from routers.music.downloads import mark_stuck_download_jobs_failed
+
+        stuck = mark_stuck_download_jobs_failed(db)
+        if stuck:
+            logger.info("Marked %s stuck download job(s) as failed on startup", stuck)
     finally:
         db.close()
 

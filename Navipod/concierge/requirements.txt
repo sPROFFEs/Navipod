@@ -12,7 +12,7 @@ jinja2>=3.1.0
 # Pinning downloader versions avoids rebuild-to-rebuild regressions in YouTube/Spotify resolution.
 yt-dlp[default]==2026.3.17
 spotdl==4.4.3
-SpotiFLAC
+SpotiFLAC==0.7.0
 Pillow>=10.0.0
 spotipy>=2.23.0
 ytmusicapi>=1.5.0

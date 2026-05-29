@@ -163,6 +163,36 @@ def _prune_terminal_download_jobs(db: Session, user_id: int, keep: int = DOWNLOA
     return deleted
 
 
+# Statuses that represent "the previous concierge process said this job
+# was actively in flight." After a restart the BackgroundTasks worker
+# that was driving them is gone, so every row in one of these states is
+# by definition a zombie — there's no live process behind it.
+NON_TERMINAL_DOWNLOAD_STATUSES = ("pending", "processing", "downloading")
+
+
+def mark_stuck_download_jobs_failed(db: Session) -> int:
+    """Sweep any DownloadJob still flagged as in-flight from a previous
+    concierge process and mark it failed. Called from main.startup_event
+    on every boot so the Downloads Manager stops showing rows that can
+    never finish.
+
+    Returns the number of rows updated. Idempotent — safe to call
+    repeatedly; once a row is "failed" it's no longer matched.
+    """
+    stuck = db.query(database.DownloadJob).filter(database.DownloadJob.status.in_(NON_TERMINAL_DOWNLOAD_STATUSES)).all()
+    for job in stuck:
+        job.status = "failed"
+        job.error_type = job.error_type or "interrupted_by_restart"
+        job.error_log = (
+            "Marked failed at concierge startup: the BackgroundTasks worker "
+            "that was driving this job did not survive the previous process "
+            "exit. Retry the download from the source."
+        )
+    if stuck:
+        db.commit()
+    return len(stuck)
+
+
 # --- ENDPOINTS ---
 
 
