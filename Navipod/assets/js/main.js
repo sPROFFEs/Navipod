@@ -134,6 +134,7 @@ window.handleCardClick = views.handleCardClick;
 window.playPreview = views.playPreview;
 window.renderSidebarPlaylists = views.renderSidebarPlaylists;
 window.refreshRecentActivity = views.refreshRecentActivity;
+window.trackRecentPlaylist = views.trackRecentPlaylist;
 window.loadUserData = views.loadUserData;
 window.showSaveMixModal = views.showSaveMixModal;
 window.discoveryTogglePreview = views.discoveryTogglePreview;

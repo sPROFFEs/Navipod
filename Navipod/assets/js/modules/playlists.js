@@ -617,7 +617,16 @@ export async function createPlaylist(trackIdToAdd = null) {
     if (res.ok) {
       const playlists = [...state.userPlaylists, pl];
       state.setUserPlaylists(playlists);
-      if (window.renderSidebarPlaylists) window.renderSidebarPlaylists();
+      // Push the new playlist into recent-activity so it shows up in
+      // the sidebar immediately. Without this, the sidebar (which only
+      // renders state.recentPlaylists) ignores the new entry until the
+      // user opens it via the playlist detail view — but the user can't
+      // open it because it isn't in the sidebar. trackRecentPlaylist
+      // POSTs to /api/recent-activity/playlist and then refetches
+      // /api/recent-activity, which re-renders the sidebar with the new
+      // playlist included.
+      if (window.trackRecentPlaylist) await window.trackRecentPlaylist(pl.id);
+      else if (window.renderSidebarPlaylists) window.renderSidebarPlaylists();
       ui.closeModal();
       ui.showToast('Playlist created!', 'success');
       if (state.currentViewName === 'library' && window.loadView) window.loadView('library');
