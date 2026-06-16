@@ -11,6 +11,21 @@
  */
 
 const CACHE = 'navipod-shell-v1';
+const REVALIDATE_AFTER_MS = 24 * 60 * 60 * 1000; // 24h
+
+// Asset URLs already carry ?v=<hash> busting (see app_shell.html / base.html),
+// so a cached entry under a given URL is by definition the right bytes for
+// that URL. The only reason to revalidate is to evict entries the user no
+// longer references. 24h is plenty — anything older falls through to a fresh
+// fetch. Without this gate, every warm hit fires a parallel background
+// request, doubling asset traffic on mobile for no benefit.
+function _shouldRevalidate(response) {
+  const dateHeader = response.headers.get('date');
+  if (!dateHeader) return false;
+  const parsed = Date.parse(dateHeader);
+  if (Number.isNaN(parsed)) return false;
+  return (Date.now() - parsed) >= REVALIDATE_AFTER_MS;
+}
 
 // ── Install ────────────────────────────────────────────────────────────────
 // No pre-caching: avoids any async failure that would leave the SW in the
@@ -51,11 +66,13 @@ self.addEventListener('fetch', event => {
 
   event.respondWith(
     caches.match(request).then(cached => {
-      // Serve from cache; in parallel, refresh in background
+      // Serve from cache; revalidate ONLY if the cached entry is >24h old.
       if (cached) {
-        fetch(request).then(res => {
-          if (res.ok) caches.open(CACHE).then(c => c.put(request, res));
-        }).catch(() => {});
+        if (_shouldRevalidate(cached)) {
+          fetch(request).then(res => {
+            if (res.ok) caches.open(CACHE).then(c => c.put(request, res));
+          }).catch(() => {});
+        }
         return cached;
       }
       // Not cached yet: fetch, cache, and return

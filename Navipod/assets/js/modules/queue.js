@@ -64,39 +64,37 @@ export function toggleShuffle() {
 
 // === REPEAT MODE ===
 
+// Render BOTH the footer and fullscreen repeat buttons in lockstep.
+// Previously the footer was updated inline here, lucide was invoked over
+// the whole document, and only then was the FS button updated by a second
+// pass — leaving the FS button visually out of sync on iOS Safari, where
+// the user reported repeat-one / repeat-all "not working" from fullscreen.
+function _renderRepeatButton(btn, mode) {
+  if (!btn) return;
+  const icon = mode === 'one' ? 'repeat-1' : 'repeat';
+  const style = mode === 'off' ? '' : ' style="color:var(--accent);"';
+  btn.innerHTML = `<i data-lucide="${icon}"${style}></i>`;
+  btn.classList.toggle('active-control', mode !== 'off');
+}
+
 export function toggleRepeat() {
-  const btn = document.getElementById('btn-repeat');
+  const next = state.repeatMode === 'off' ? 'all' : state.repeatMode === 'all' ? 'one' : 'off';
+  state.setRepeatMode(next);
 
-  if (state.repeatMode === 'off') {
-    state.setRepeatMode('all');
-    if (btn) {
-      btn.innerHTML = `<i data-lucide="repeat" style="color:var(--accent);"></i>`;
-      btn.classList.add('active-control');
-    }
-  } else if (state.repeatMode === 'all') {
-    state.setRepeatMode('one');
-    if (btn) {
-      btn.innerHTML = `<i data-lucide="repeat-1" style="color:var(--accent);"></i>`;
-      btn.classList.add('active-control');
-    }
-  } else {
-    state.setRepeatMode('off');
-    if (btn) {
-      btn.innerHTML = `<i data-lucide="repeat"></i>`;
-      btn.classList.remove('active-control');
-    }
-  }
-  lucide.createIcons();
+  if (state.audio) state.audio.loop = next === 'one';
 
-  if (state.audio) {
-    state.audio.loop = state.repeatMode === 'one';
-    if (state.repeatMode === 'one') ui.showToast('Repeat One');
-    else if (state.repeatMode === 'all') ui.showToast('Repeat All');
-    else ui.showToast('Repeat Off');
-  }
+  const footerBtn = document.getElementById('btn-repeat');
+  _renderRepeatButton(footerBtn, next);
+  ui.refreshIcons(footerBtn || document);
+
+  // FS button rendered + icons refreshed inside updateFullscreenPlayButton.
+  ui.updateFullscreenPlayButton();
+
+  if (next === 'one') ui.showToast('Repeat One');
+  else if (next === 'all') ui.showToast('Repeat All');
+  else ui.showToast('Repeat Off');
 
   player.persistPlaybackSession();
-  ui.updateFullscreenPlayButton();
 }
 
 // === QUEUE PANEL ===

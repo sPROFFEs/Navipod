@@ -224,15 +224,16 @@ export async function loadView(view, param = null, options = {}) {
   const { pushHistory = true, replaceHistory = false } = options;
 
   // ── Soft cross-fade between views ────────────────────────────────
-  // Fade the current content out, then back in once the new view is in
-  // place. Skipped on the very first load (nothing to fade FROM) and on
-  // search (it has its own near-instant inline transition handled in
-  // handleTopbarSearch). The total perceived added latency is ~120ms.
+  // Previously: opacity-0 → await setTimeout(120) → new content. That 120ms
+  // sleep was visible on iOS Safari where the next render is also expensive
+  // (lucide + huge innerHTML). CSS-only crossfade: set opacity-0 with the
+  // existing 120ms transition, swap content in the SAME frame, then
+  // requestAnimationFrame back to opacity-1. The fade animates while the
+  // browser is rendering the new content — no wall-clock penalty.
   const hasOldContent = container.children.length > 0 && view !== 'search';
   if (hasOldContent) {
     container.style.transition = 'opacity 120ms ease';
     container.style.opacity = '0';
-    await new Promise((r) => setTimeout(r, 120));
   }
 
   // Skip the music-loader for `search`: the view is synchronous and tiny
@@ -250,7 +251,13 @@ export async function loadView(view, param = null, options = {}) {
               <div class="music-bar" style="animation-delay: 0.4s"></div>
           </div>
       </div>`;
-    lucide.createIcons();
+    // Music-loader has no [data-lucide] elements — no icon refresh needed
+    // here. Each view's renderer refreshes its own icons after innerHTML.
+  }
+  if (hasOldContent) {
+    requestAnimationFrame(() => {
+      container.style.opacity = '1';
+    });
   }
 
   // Active-state highlighting now lives on the home tab pills (which are
@@ -544,7 +551,8 @@ export async function renderHome(container) {
   }
 
   container.innerHTML = html;
-  lucide.createIcons();
+  // Scope to the home container only — see ui.refreshIcons rationale.
+  ui.refreshIcons(container);
 }
 
 function createWrappedHomeCard(wrapped) {
@@ -1268,7 +1276,7 @@ export function showTrackActionsSheet(encodedData, playlistId) {
     <div class="tas-sheet">
       <div class="tas-handle-bar"></div>
       <div class="tas-track-info">
-        <img src="${img}" class="tas-cover" onerror="this.src='/static/img/default_cover.png'">
+        <img src="${img}" class="tas-cover" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
         <div class="tas-track-meta">
           <div class="tas-title">${ui.escHtml(item.title || 'Unknown')}</div>
           <div class="tas-artist">${ui.escHtml(item.artist || 'Unknown')}</div>
@@ -1628,28 +1636,38 @@ export async function trackRecentMix(mixKey) {
 
 export async function loadUserData() {
   try {
-    const [favsRes, playlistsRes, recentsRes] = await Promise.all([
+    // CRITICAL PATH: only favorites + playlists block first paint. The
+    // sidebar's "Recent" section is not visible above the fold on mobile
+    // and is harmless if it populates a few hundred ms later — defer it.
+    const [favsRes, playlistsRes] = await Promise.all([
       fetch(`${state.API}/favorites`),
-      fetch(`${state.API}/playlists`),
-      fetch(`${state.API}/recent-activity`)
+      fetch(`${state.API}/playlists`)
     ]);
     const favs = await favsRes.json();
     const pls = await playlistsRes.json();
-    const recents = recentsRes.ok ? await recentsRes.json() : { playlists: [], radios: [] };
 
     state.setUserFavorites(new Set(favs.map((f) => f.id)));
     state.setUserPlaylists(pls);
-    state.setRecentPlaylists(Array.isArray(recents.playlists) ? recents.playlists : []);
-    state.setRecentRadios(Array.isArray(recents.radios) ? recents.radios : []);
-    state.setRecentMixes(Array.isArray(recents.mixes) ? recents.mixes : []);
-
-    renderSidebarRecents();
 
     sync.setSyncHandlers({
       renderSidebarPlaylists,
       refreshRecentActivity
     });
     sync.startHeartbeatSync();
+
+    // Lazy: kick recent-activity off after the boot promise resolves so it
+    // doesn't compete with the home view's own /api/* fan-out.
+    setTimeout(() => {
+      fetch(`${state.API}/recent-activity`)
+        .then((r) => (r.ok ? r.json() : { playlists: [], radios: [] }))
+        .then((recents) => {
+          state.setRecentPlaylists(Array.isArray(recents.playlists) ? recents.playlists : []);
+          state.setRecentRadios(Array.isArray(recents.radios) ? recents.radios : []);
+          state.setRecentMixes(Array.isArray(recents.mixes) ? recents.mixes : []);
+          renderSidebarRecents();
+        })
+        .catch((e) => console.error('Recent activity (deferred) failed:', e));
+    }, 0);
   } catch (e) {
     console.error('Failed to load user data:', e);
   }

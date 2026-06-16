@@ -94,14 +94,13 @@ export function setCrossfadeSeconds(seconds) {
 export function ensureInitialized() {
   if (_initialized || _initFailed) return _initialized;
   if (!state.audio) return false;
-  // Hard skip on iOS — see the _IS_IOS comment above. We mark as
-  // failed so subsequent calls short-circuit cheaply.
+  // Hard skip on iOS — see the _IS_IOS comment above. Silently disable;
+  // users repeatedly asked us not to surface a toast for this since the
+  // feature was never available to them and the message read like a
+  // recurring error. console.info keeps a breadcrumb for support.
   if (_IS_IOS) {
     _initFailed = true;
-    _notifyInitFailure(
-      'ReplayGain / Crossfade are disabled on iOS — they would break background playback. ' +
-      'Regular playback continues unaffected.'
-    );
+    console.info('[AUDIO_ENGINE] ReplayGain / Crossfade disabled on iOS (background-playback safety).');
     return false;
   }
   try {

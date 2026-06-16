@@ -6,30 +6,9 @@
 import * as state from './state.js';
 import * as sync from './sync.js';
 
-// === USER DATA LOADING ===
-
-export async function loadUserData() {
-  try {
-    const [favsRes, playlistsRes] = await Promise.all([
-      fetch(`${state.API}/favorites`),
-      fetch(`${state.API}/playlists`)
-    ]);
-    const favs = await favsRes.json();
-    const pls = await playlistsRes.json();
-
-    state.setUserFavorites(new Set(favs.map((f) => f.id)));
-    state.setUserPlaylists(pls);
-
-    // These will be called from views.js
-    if (window.renderSidebarPlaylists) window.renderSidebarPlaylists();
-    if (window.loadSidebarRadios) window.loadSidebarRadios();
-
-    sync.startHeartbeatSync();
-    sync.requestSyncRefresh();
-  } catch (e) {
-    console.error('Failed to load user data:', e);
-  }
-}
+// NOTE: loadUserData lives in views.js — it owns the canonical sidebar/recent
+// rendering and is the only path called from main.js. The duplicate that
+// previously lived here was dead code and shipped 19 LOC to every browser.
 
 export const startHeartbeatSync = sync.startHeartbeatSync;
 export const stopHeartbeatSync = sync.stopHeartbeatSync;

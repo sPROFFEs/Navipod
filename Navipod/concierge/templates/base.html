@@ -421,7 +421,8 @@
 
     <script>
         window.USER_DATA = {
-            username: "{{ username }}"
+            username: "{{ username }}",
+            is_admin: {{ 'true' if is_admin else 'false' }}
         };
 
         /* ── Sidebar two-mode toggle ───────────────────────────────────────
@@ -522,7 +523,9 @@
         };
     </script>
     <script type="module" src="/assets/js/main.js?v={{ range(1, 99999) | random }}"></script>
+    {% if is_admin %}
     <script type="module" src="/assets/js/modules/admin_system.js?v={{ range(1, 99999) | random }}"></script>
+    {% endif %}
     {% block scripts %}{% endblock %}
 </body>
 

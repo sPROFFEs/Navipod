@@ -23,6 +23,20 @@ export function escHtml(str) {
   return str ? str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') : '';
 }
 
+// Scoped lucide icon refresh. lucide.createIcons() with no args walks the
+// WHOLE document — on a freshly-rendered home page (hundreds of cards) that
+// triggers a layout/reflow Safari iOS can't keep up with → the freeze.
+// Pass an Element to scope the work to its subtree.
+export function refreshIcons(scope) {
+  if (!window.lucide?.createIcons) return;
+  if (scope && scope.querySelectorAll) {
+    const nodes = scope.querySelectorAll('[data-lucide]');
+    if (nodes.length) window.lucide.createIcons({ nodes });
+    return;
+  }
+  window.lucide.createIcons();
+}
+
 /**
  * Spotify-style tab bar shown at the top of every Browse-level surface
  * (Home / Public / Discover / Radios) so users can flip between them
@@ -189,7 +203,7 @@ export function toggleFullscreenPlayer() {
   if (state.isFullscreenPlayerOpen) {
     panel.classList.add('open');
     updateFullscreenPlayButton();
-    lucide.createIcons();
+    refreshIcons(panel);
   } else {
     panel.classList.remove('open');
   }
@@ -230,7 +244,11 @@ export function updateFullscreenPlayButton() {
     }
   }
 
-  lucide.createIcons();
+  // Scoped to the fullscreen panel — refreshes ONLY the icons we just
+  // rewrote, not every [data-lucide] in the document. Prevents the
+  // double-pass race that left the FS repeat/shuffle button stale.
+  const fsPanel = document.getElementById('fullscreen-player');
+  refreshIcons(fsPanel || document);
 }
 
 // === PLAY BUTTON ===
@@ -242,7 +260,9 @@ export function updatePlayButton() {
     btn.classList.toggle('is-playing', state.isPlaying);
   }
   updateFullscreenPlayButton();
-  lucide.createIcons();
+  // updateFullscreenPlayButton already refreshes the fullscreen panel.
+  // Bottom button is one element — scope to it.
+  refreshIcons(btn || document);
 }
 
 // === PROGRESS UPDATE ===

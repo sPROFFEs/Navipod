@@ -15,7 +15,8 @@ import * as favorites from './modules/favorites.js';
 import * as playlists from './modules/playlists.js';
 import * as downloads from './modules/downloads.js';
 import * as views from './modules/views.js';
-import * as admin from './modules/admin.js';
+// admin.js is dynamically imported below for is_admin users only.
+// Saves ~24 KB on every non-admin page load.
 import * as lyrics from './modules/lyrics.js';
 import * as audioEngine from './modules/audio_engine.js';
 
@@ -180,27 +181,32 @@ window.startSearchAndDownload = async function (query) {
   }
 };
 
-// Admin
-window.toggleReset = admin.toggleReset;
-window.adminAction = admin.adminAction;
-window.handleAdminForm = admin.handleAdminForm;
-window.deleteUser = admin.deleteUser;
-window.createUser = admin.createUser;
-window.resetPassword = admin.resetPassword;
-window.adminSearchLibrary = admin.adminSearchLibrary;
-window.adminFindDuplicates = admin.adminFindDuplicates;
-window.showDeleteTrackModal = admin.showDeleteTrackModal;
-window.adminDeleteTrack = admin.adminDeleteTrack;
+// Admin — dynamically loaded for is_admin users only so non-admins don't
+// pay the ~24 KB admin.js cost on every page load.
+if (window.USER_DATA?.is_admin) {
+  import('./modules/admin.js').then((admin) => {
+    window.toggleReset = admin.toggleReset;
+    window.adminAction = admin.adminAction;
+    window.handleAdminForm = admin.handleAdminForm;
+    window.deleteUser = admin.deleteUser;
+    window.createUser = admin.createUser;
+    window.resetPassword = admin.resetPassword;
+    window.adminSearchLibrary = admin.adminSearchLibrary;
+    window.adminFindDuplicates = admin.adminFindDuplicates;
+    window.showDeleteTrackModal = admin.showDeleteTrackModal;
+    window.adminDeleteTrack = admin.adminDeleteTrack;
 
-// Federation admin panel
-window.federationAddInstance = admin.federationAddInstance;
-window.federationSyncNow = admin.federationSyncNow;
-window.federationToggleEnabled = admin.federationToggleEnabled;
-window.federationDeleteInstance = admin.federationDeleteInstance;
-window.federationIssueToken = admin.federationIssueToken;
-window.federationRevokeOutbound = admin.federationRevokeOutbound;
-window.federationDeleteOutbound = admin.federationDeleteOutbound;
-window.initAdminFederationPanel = admin.initAdminFederationPanel;
+    // Federation admin panel
+    window.federationAddInstance = admin.federationAddInstance;
+    window.federationSyncNow = admin.federationSyncNow;
+    window.federationToggleEnabled = admin.federationToggleEnabled;
+    window.federationDeleteInstance = admin.federationDeleteInstance;
+    window.federationIssueToken = admin.federationIssueToken;
+    window.federationRevokeOutbound = admin.federationRevokeOutbound;
+    window.federationDeleteOutbound = admin.federationDeleteOutbound;
+    window.initAdminFederationPanel = admin.initAdminFederationPanel;
+  });
+}
 
 // === YOUTUBE API CALLBACK ===
 window.onYouTubeIframeAPIReady = () => {
