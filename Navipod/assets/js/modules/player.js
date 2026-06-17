@@ -1071,6 +1071,21 @@ export function setupPlayer() {
   });
 
   state.audio.addEventListener('ended', () => {
+    // Repeat-one: audio.loop=true SHOULD prevent 'ended' from firing, but
+    // iOS Safari (and Android Chrome after background suspension) ignore
+    // loop=true reliably. Without this short-circuit the track advances
+    // — user-reported as "repeat-one doesn't work in fullscreen".
+    if (state.repeatMode === 'one' && state.currentTrack) {
+      state.audio.currentTime = 0;
+      state.audio.play().catch(() => {});
+      finalizeListenSession('repeat-one');
+      beginListenSession(state.currentTrack);
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'playing';
+      }
+      return;
+    }
+
     _trackTransitionInFlight = hasUpcomingTrack();
     state.audio._endHandled = true;
     finalizeListenSession('ended');
