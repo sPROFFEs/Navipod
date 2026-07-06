@@ -12,6 +12,7 @@
 
 const CACHE = 'navipod-shell-v1';
 const REVALIDATE_AFTER_MS = 24 * 60 * 60 * 1000; // 24h
+const EVICT_AFTER_MS = 7 * 24 * 60 * 60 * 1000; // 7d
 
 // Asset URLs already carry ?v=<hash> busting (see app_shell.html / base.html),
 // so a cached entry under a given URL is by definition the right bytes for
@@ -37,12 +38,32 @@ self.addEventListener('install', () => {
 
 // ── Activate ───────────────────────────────────────────────────────────────
 
+// Evict entries not refreshed in 7 days. Live assets get their stored
+// response (and Date header) replaced by the 24h revalidate path below, so
+// they never age past 7d. Dead ?v=<hash> URLs from old deploys are never
+// requested again, never refreshed, and would otherwise pile up forever —
+// iOS answers that storage pressure by evicting the WHOLE cache.
+async function _evictStaleEntries() {
+  const cache = await caches.open(CACHE);
+  const requests = await cache.keys();
+  await Promise.all(requests.map(async request => {
+    const cached = await cache.match(request);
+    const dateHeader = cached && cached.headers.get('date');
+    const parsed = dateHeader ? Date.parse(dateHeader) : NaN;
+    if (!Number.isNaN(parsed) && (Date.now() - parsed) >= EVICT_AFTER_MS) {
+      await cache.delete(request);
+    }
+  }));
+}
+
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
       .then(keys => Promise.all(
         keys.filter(k => k !== CACHE).map(k => caches.delete(k))
       ))
+      .then(() => _evictStaleEntries())
+      .catch(() => {})
       .then(() => self.clients.claim())
   );
 });

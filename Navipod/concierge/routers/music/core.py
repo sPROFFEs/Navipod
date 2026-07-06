@@ -44,8 +44,11 @@ def get_current_user_safe(db: Session, request: Request):
 
 
 @router.get("/api/proxy-image")
-async def proxy_image(url: str):
-    """Proxy and optimize external images"""
+async def proxy_image(url: str, request: Request, db: Session = Depends(get_db)):
+    """Proxy and optimize external images (authenticated users only —
+    otherwise this is an open bandwidth relay for anyone on the network)."""
+    if not get_current_user_safe(db, request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
     if not utils.is_safe_url(url):
         return JSONResponse({"error": "URL not allowed"}, status_code=400)
 

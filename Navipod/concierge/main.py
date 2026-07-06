@@ -112,6 +112,13 @@ def _assert_secure_runtime_settings() -> None:
         raise RuntimeError(
             "Insecure SECRET_KEY detected. Configure a strong SECRET_KEY in environment before starting Navipod."
         )
+    # Warn (don't hard-fail — existing deployments must keep booting) when
+    # the concierge↔Navidrome internal password is still the shipped default.
+    if (settings.NAVIDROME_INTERNAL_PASSWORD or "").strip() == "enc:000000":
+        logger.critical(
+            "NAVIDROME_INTERNAL_PASSWORD is still the shipped default. "
+            "Set a strong value via the env file (navipod.env)."
+        )
 
 
 @app.middleware("http")
@@ -194,6 +201,9 @@ async def cache_cleanup_scheduler():
             removed = await asyncio.to_thread(cache_maintenance.purge_expired_cache_files)
             if removed:
                 logger.info("Removed expired cache files: %s", removed)
+            pruned_tokens = await asyncio.to_thread(auth.prune_token_blacklist)
+            if pruned_tokens:
+                logger.info("Pruned %s expired token-blacklist row(s)", pruned_tokens)
             await asyncio.sleep(cache_maintenance.CACHE_CLEAN_INTERVAL_SECONDS)
         except Exception as e:
             logger.exception("Cache cleanup failed: %s", e)

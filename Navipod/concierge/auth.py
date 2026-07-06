@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 from typing import Optional
 from jose import JWTError, jwt
@@ -36,7 +36,7 @@ def create_user_in_db(db: Session, username: str, password: str):
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -96,6 +96,30 @@ def is_token_blacklisted(db: Session, token: str) -> bool:
     if not token: return False
     exists = db.query(database.TokenBlacklist).filter(database.TokenBlacklist.token == token).first()
     return exists is not None
+
+def prune_token_blacklist(max_age_hours: int = 48) -> int:
+    """Delete blacklist rows older than max_age_hours. Tokens expire after
+    ACCESS_TOKEN_EXPIRE_MINUTES (24h) anyway, so a row past 48h can never
+    match a still-valid token — it is dead weight scanned on every request.
+    Opens its own session: called from a background scheduler, never from
+    a request handler."""
+    # blacklisted_at is naive UTC (SQLite CURRENT_TIMESTAMP) — compare naive.
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=max_age_hours)
+    db = database.SessionLocal()
+    try:
+        removed = (
+            db.query(database.TokenBlacklist)
+            .filter(database.TokenBlacklist.blacklisted_at < cutoff)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        return removed
+    except Exception as e:
+        db.rollback()
+        logger.warning("Token blacklist prune failed: %s", e)
+        return 0
+    finally:
+        db.close()
 
 def is_password_strong(password: str) -> bool:
     password = (password or "").strip()

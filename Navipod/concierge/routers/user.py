@@ -33,6 +33,10 @@ def get_current_user(request: Request, db: Session = Depends(get_db)):
     token = request.cookies.get("access_token")
     if not token:
         return None
+    # Same blacklist check as auth.get_current_user — without it, revoked
+    # (logged-out) tokens kept working on every endpoint in this router.
+    if auth.is_token_blacklisted(db, token):
+        return None
     username = auth.get_username_from_token(token)
     return auth.get_user_by_username(db, username)
 
