@@ -6,6 +6,28 @@
 import * as state from './state.js';
 import * as ui from './ui.js';
 
+// Jobs seen in an active state, so we can toast exactly once when each
+// flips to a terminal state — even while the downloads modal is closed
+// (polling keeps running while any job is active).
+const activeJobTracker = new Map();
+
+function notifyFinishedJobs(jobs) {
+  for (const j of jobs) {
+    const uiState = getJobUiState(j);
+    const title = j.resolved_track_title || j.resolved_title || j.track_title || j.url || 'Download';
+    if (uiState.active) {
+      activeJobTracker.set(j.id, title);
+    } else if (activeJobTracker.has(j.id)) {
+      activeJobTracker.delete(j.id);
+      if (uiState.badge === 'completed') {
+        ui.showToast(`Downloaded: ${title}`, 'success');
+      } else if (uiState.badge === 'failed') {
+        ui.showToast(`Download failed: ${title}`, 'error');
+      }
+    }
+  }
+}
+
 function getJobUiState(job) {
   const status = (job.status || '').toLowerCase();
 
@@ -315,6 +337,8 @@ export async function refreshJobs() {
     if (controller.signal.aborted || state.jobsRefreshController !== controller) return;
     if (!Array.isArray(jobs)) return; // defensive: backend should never send this
 
+    notifyFinishedJobs(jobs);
+
     const container = document.getElementById('jobs-list');
     const badge = document.getElementById('download-badge');
 
@@ -381,6 +405,13 @@ export async function refreshJobs() {
                         <i data-lucide="${statusIcon}" width="14" height="14" ${isSpinning}></i>
                         <span>${Math.max(0, Math.min(100, j.progress || 0))}% completion</span>
                     </div>
+                    ${
+                      uiState.badge === 'failed'
+                        ? `<button class="modal-btn-cancel" style="padding:4px 12px; font-size:0.8rem;" onclick="retryDownload(${Number(j.id)})">
+                             <i data-lucide="rotate-ccw" width="13" height="13"></i> Retry
+                           </button>`
+                        : ''
+                    }
                     <span>${new Date(j.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
             </div>`;
@@ -394,6 +425,25 @@ export async function refreshJobs() {
     if (state.jobsRefreshController === controller) {
       state.setJobsRefreshController(null);
     }
+  }
+}
+
+// === RETRY FAILED DOWNLOAD ===
+
+export async function retryDownload(jobId) {
+  ui.showToast('Retrying download...');
+  try {
+    const res = await fetch(`${state.API}/downloads/${jobId}/retry`, { method: 'POST' });
+    if (res.ok) {
+      ui.showToast('Download requeued', 'success');
+      ensureDownloadPolling();
+      await refreshJobs();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      ui.showToast(err.error || 'Retry failed', 'error');
+    }
+  } catch (e) {
+    ui.showToast('Network error', 'error');
   }
 }
 

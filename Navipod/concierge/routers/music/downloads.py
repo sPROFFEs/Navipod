@@ -258,6 +258,56 @@ async def trigger_download(
     }
 
 
+@router.post("/api/downloads/{job_id}/retry")
+async def retry_download(
+    job_id: int, background_tasks: BackgroundTasks, request: Request, db: Session = Depends(get_db)
+):
+    """Requeue a failed download as a new job (same URL, same target playlist)."""
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    job = (
+        db.query(database.DownloadJob)
+        .filter(database.DownloadJob.id == job_id, database.DownloadJob.user_id == user.id)
+        .first()
+    )
+    if not job:
+        return JSONResponse({"error": "Download not found"}, status_code=404)
+    if (job.status or "").lower() not in ("failed", "error"):
+        return JSONResponse({"error": "Only failed downloads can be retried"}, status_code=400)
+
+    pool_usage = manager.get_pool_status(db)
+    if pool_usage[0] >= pool_usage[1]:
+        return JSONResponse(
+            {"error": f"Global pool limit reached ({pool_usage[1]}GB). Please delete some tracks."}, status_code=403
+        )
+
+    _prune_terminal_download_jobs(db, user.id)
+
+    new_job = database.DownloadJob(
+        user_id=user.id,
+        input_url=job.input_url,
+        original_input_url=job.original_input_url or job.input_url,
+        requested_title=job.requested_title,
+        requested_artist=job.requested_artist,
+        requested_album=job.requested_album,
+        requested_source=job.requested_source,
+        resolution_mode=job.resolution_mode,
+        status="pending",
+        progress_percent=0.0,
+        new_playlist_name=job.new_playlist_name,
+        target_modern_playlist_id=job.target_modern_playlist_id,
+        current_file="Queued for retry",
+    )
+    db.add(new_job)
+    db.commit()
+    db.refresh(new_job)
+
+    background_tasks.add_task(run_download_in_background, new_job.id, user.id)
+    return {"status": "queued", "job_id": new_job.id, "message": "Download requeued"}
+
+
 @router.get("/api/downloads/status")
 async def downloads_status(request: Request, db: Session = Depends(get_db)):
     """Get status of recent downloads"""

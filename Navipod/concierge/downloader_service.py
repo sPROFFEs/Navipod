@@ -836,8 +836,8 @@ class DownloadManager:
             folder,
             "--service",
             "tidal",
-            "spoti",
             "qobuz",
+            "deezer",
             "amazon",
         ]
         try:
@@ -1007,7 +1007,10 @@ class DownloadManager:
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             stdout, stderr = process.communicate(timeout=2400)
             
-            if process.returncode == 0: 
+            # spotdl exits 0 even when every song fails (LookupError, YouTube
+            # blocks) — trusting the returncode alone skipped the yt-dlp
+            # fallback chain. Require actual audio output, like SpotiFLAC.
+            if process.returncode == 0 and self._has_downloaded_audio(folder):
                 self._set_last_reason("")
                 return True
             else:
@@ -1022,6 +1025,11 @@ class DownloadManager:
                 elif "keyerror: 'genres'" in combined.lower() or 'keyerror: "genres"' in combined.lower():
                     self._set_last_reason("spotDL hit the upstream Spotify metadata bug: missing 'genres'.")
                     logger.warning("SpotDL metadata parsing bug detected: missing 'genres'")
+                elif process.returncode == 0:
+                    self._set_last_reason(
+                        combined or "spotDL finished without producing an audio file."
+                    )
+                    logger.warning(f"SpotDL exited 0 but produced no audio. Output: {combined[:300]}")
                 else:
                     self._set_last_reason(combined or f"spotDL exited with code {process.returncode}.")
                     if combined:

@@ -50,10 +50,10 @@ export function refreshIcons(scope) {
  */
 export function homeTabsBar(activeTab) {
   const tabs = [
-    { key: 'all',             label: 'All',       view: 'home' },
-    { key: 'public',          label: 'Public',    view: 'public' },
-    { key: 'discovery',       label: 'Discover',  view: 'discovery' },
-    { key: 'discover_radios', label: 'Radios',    view: 'discover_radios' }
+    { key: 'all', label: 'All', view: 'home' },
+    { key: 'public', label: 'Public', view: 'public' },
+    { key: 'discovery', label: 'Discover', view: 'discovery' },
+    { key: 'discover_radios', label: 'Radios', view: 'discover_radios' }
   ];
   return `
     <div class="home-tabs">
@@ -108,6 +108,63 @@ export function toggleMute() {
   if (volumeKnob) volumeKnob.style.left = `${pct}%`;
 
   lucide.createIcons();
+}
+
+// === VOLUME NUDGE (keyboard shortcuts) ===
+
+export function nudgeVolume(delta) {
+  state.audio.volume = Math.max(0, Math.min(1, state.audio.volume + delta));
+
+  const volumeFill = document.querySelector('.volume-bar-fill');
+  const volumeKnob = document.querySelector('.volume-knob');
+  const pct = state.audio.volume * 100;
+  if (volumeFill) volumeFill.style.width = `${pct}%`;
+  if (volumeKnob) volumeKnob.style.left = `${pct}%`;
+}
+
+// === SLEEP TIMER ===
+// Cycles Off → 15 → 30 → 60 min → Off. When it fires, playback pauses.
+// ponytail: plain setTimeout — survives view changes (module-level), not reloads.
+
+const SLEEP_STEPS_MIN = [15, 30, 60];
+let sleepTimerId = null;
+let sleepTimerMinutes = 0;
+
+function _setSleepButtonState(active) {
+  document.querySelectorAll('#fs-btn-sleep').forEach((btn) => {
+    btn.classList.toggle('active', active);
+    btn.style.color = active ? 'var(--accent, #1DB954)' : '';
+  });
+}
+
+export function cycleSleepTimer() {
+  if (sleepTimerId) {
+    clearTimeout(sleepTimerId);
+    sleepTimerId = null;
+  }
+
+  const idx = SLEEP_STEPS_MIN.indexOf(sleepTimerMinutes);
+  const next = idx === -1 ? SLEEP_STEPS_MIN[0] : SLEEP_STEPS_MIN[idx + 1] || 0;
+  sleepTimerMinutes = next;
+
+  if (!next) {
+    _setSleepButtonState(false);
+    showToast('Sleep timer off');
+    return;
+  }
+
+  sleepTimerId = setTimeout(
+    () => {
+      sleepTimerId = null;
+      sleepTimerMinutes = 0;
+      _setSleepButtonState(false);
+      if (!state.audio.paused) state.audio.pause();
+      showToast('Sleep timer: playback paused');
+    },
+    next * 60 * 1000
+  );
+  _setSleepButtonState(true);
+  showToast(`Sleep timer: ${next} min`);
 }
 
 // === DRAGGABLE CONTROLS ===

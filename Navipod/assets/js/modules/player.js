@@ -9,8 +9,8 @@ import * as api from './api.js';
 import * as audioEngine from './audio_engine.js';
 
 // Background playback lock references
-let _webLockRelease = null;        // resolves the navigator.locks promise
-let _screenWakeLock = null;        // navigator.wakeLock sentinel (only valid while visible)
+let _webLockRelease = null; // resolves the navigator.locks promise
+let _screenWakeLock = null; // navigator.wakeLock sentinel (only valid while visible)
 let _mediaSessionInitialised = false;
 let _activeListenSession = null;
 let _sessionPersistInterval = null;
@@ -38,12 +38,11 @@ function sendTrackingEvent(eventType, session, extra = {}) {
   const playedSeconds = Number.isFinite(extra.played_seconds)
     ? Number(extra.played_seconds)
     : Math.max(0, Number(session.maxPositionSeconds || currentTimeSeconds || 0));
-  const durationSeconds =
-    Number.isFinite(extra.duration_seconds)
-      ? Number(extra.duration_seconds)
-      : Number.isFinite(state.audio.duration) && state.audio.duration > 0
-        ? Number(state.audio.duration)
-        : Number(session.durationSeconds || 0);
+  const durationSeconds = Number.isFinite(extra.duration_seconds)
+    ? Number(extra.duration_seconds)
+    : Number.isFinite(state.audio.duration) && state.audio.duration > 0
+      ? Number(state.audio.duration)
+      : Number(session.durationSeconds || 0);
 
   api.recordListenEvent({
     event_type: eventType,
@@ -81,7 +80,9 @@ async function acquirePlaybackLock() {
   try {
     if ('locks' in navigator) {
       navigator.locks.request('navipod-playback', { mode: 'exclusive' }, () => {
-        return new Promise((resolve) => { _webLockRelease = resolve; });
+        return new Promise((resolve) => {
+          _webLockRelease = resolve;
+        });
       });
     }
   } catch (e) {
@@ -91,7 +92,9 @@ async function acquirePlaybackLock() {
   try {
     if ('wakeLock' in navigator && document.visibilityState === 'visible') {
       _screenWakeLock = await navigator.wakeLock.request('screen');
-      _screenWakeLock.addEventListener?.('release', () => { _screenWakeLock = null; });
+      _screenWakeLock.addEventListener?.('release', () => {
+        _screenWakeLock = null;
+      });
     }
   } catch (e) {
     // Common when the tab is hidden — not actionable.
@@ -100,11 +103,19 @@ async function acquirePlaybackLock() {
 
 function releasePlaybackLock() {
   if (_webLockRelease) {
-    try { _webLockRelease(); } catch (e) { /* noop */ }
+    try {
+      _webLockRelease();
+    } catch (e) {
+      /* noop */
+    }
     _webLockRelease = null;
   }
   if (_screenWakeLock) {
-    try { _screenWakeLock.release(); } catch (e) { /* noop */ }
+    try {
+      _screenWakeLock.release();
+    } catch (e) {
+      /* noop */
+    }
     _screenWakeLock = null;
   }
 }
@@ -264,7 +275,11 @@ function ensureMediaSessionHandlers() {
 
   const ms = navigator.mediaSession;
   const safeSet = (action, handler) => {
-    try { ms.setActionHandler(action, handler); } catch (e) { /* unsupported */ }
+    try {
+      ms.setActionHandler(action, handler);
+    } catch (e) {
+      /* unsupported */
+    }
   };
 
   safeSet('play', () => {
@@ -318,7 +333,7 @@ function updateMediaSessionMetadata(track) {
       artist: track.artist || 'Unknown',
       album: track.album || '',
       artwork: [
-        { src: artworkUrl, sizes: '96x96',   type: inferArtworkMime(artworkUrl) },
+        { src: artworkUrl, sizes: '96x96', type: inferArtworkMime(artworkUrl) },
         { src: artworkUrl, sizes: '256x256', type: inferArtworkMime(artworkUrl) },
         { src: artworkUrl, sizes: '512x512', type: inferArtworkMime(artworkUrl) }
       ]
@@ -330,7 +345,9 @@ function updateMediaSessionMetadata(track) {
           position: Math.min(state.audio.currentTime || 0, state.audio.duration),
           playbackRate: state.audio.playbackRate || 1
         });
-      } catch (e) { /* unsupported */ }
+      } catch (e) {
+        /* unsupported */
+      }
     }
   } catch (e) {
     console.warn('[BG-PLAY] Failed to set MediaSession metadata:', e);
@@ -1119,6 +1136,7 @@ export function setupPlayer() {
       const xfDur = audioEngine.getCrossfadeSeconds();
       if (
         xfDur > 0 &&
+        state.repeatMode !== 'one' &&
         state.audio.duration &&
         !state.audio._fadeOutStarted &&
         state.audio.currentTime >= state.audio.duration - xfDur - 0.1 &&
@@ -1132,6 +1150,12 @@ export function setupPlayer() {
     }
 
     if (state.audio.duration && state.audio.currentTime >= state.audio.duration - 0.5) {
+      // Repeat-one: audio.loop (or the 'ended' short-circuit on browsers
+      // that ignore loop) restarts this track. With loop=true 'ended'
+      // never fires, so this fallback was the FIRST thing to run at the
+      // end of the track — and it advanced to the next song, which is
+      // why the repeat button "didn't work" everywhere loop is honored.
+      if (state.repeatMode === 'one') return;
       if (!state.audio._endHandled) {
         state.audio._endHandled = true;
         console.log('[BG-PLAY] Fallback triggered, advancing to next');
@@ -1232,10 +1256,7 @@ export function setupPlayer() {
       // trustworthy on iOS resume.
       const dur = Number.isFinite(state.audio.duration) ? state.audio.duration : 0;
       const cur = Number.isFinite(state.audio.currentTime) ? state.audio.currentTime : 0;
-      const reallyEnded =
-        state.audio.ended &&
-        dur > 0 &&
-        cur >= dur - 1.0;   // within the last 1s of the actual track
+      const reallyEnded = state.audio.ended && dur > 0 && cur >= dur - 1.0; // within the last 1s of the actual track
 
       if (reallyEnded && !state.audio._endHandled) {
         console.log('[BG-PLAY] Track ended while backgrounded, advancing...');
@@ -1244,7 +1265,11 @@ export function setupPlayer() {
       } else if (state.audio.ended && !reallyEnded) {
         // iOS bogus 'ended' state — log so we can spot the symptom in
         // user reports without taking action.
-        console.log('[BG-PLAY] audio.ended=true but currentTime=%s/%s; ignoring (likely iOS resume artifact)', cur, dur);
+        console.log(
+          '[BG-PLAY] audio.ended=true but currentTime=%s/%s; ignoring (likely iOS resume artifact)',
+          cur,
+          dur
+        );
       }
 
       // Re-acquire screen wake lock (cannot be requested while hidden).
@@ -1287,7 +1312,9 @@ export function setupPlayer() {
         try {
           updateMediaSessionMetadata(state.currentTrack);
           navigator.mediaSession.playbackState = state.audio.paused ? 'paused' : 'playing';
-        } catch (e) { /* best-effort */ }
+        } catch (e) {
+          /* best-effort */
+        }
       }
     });
   }

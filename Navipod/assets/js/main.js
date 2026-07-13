@@ -38,6 +38,70 @@ function initUserMenu() {
   });
 }
 
+// === GLOBAL KEYBOARD SHORTCUTS ===
+// Space = play/pause, ←/→ = seek ±10s, ↑/↓ = volume, / = focus search.
+// All skipped while typing in an input/textarea/select or with modifiers held.
+
+function isTypingTarget(el) {
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+}
+
+function initKeyboardShortcuts() {
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (isTypingTarget(e.target)) return;
+
+    if (e.key === '/') {
+      e.preventDefault();
+      const input = document.getElementById('search-input');
+      if (input) {
+        input.focus();
+      } else {
+        Promise.resolve(views.loadView('search')).then(() => {
+          document.getElementById('search-input')?.focus();
+        });
+      }
+      return;
+    }
+
+    if (!state.currentTrack) return;
+
+    if (e.code === 'Space') {
+      // Let a focused button keep its native Space behavior.
+      if (e.target?.tagName === 'BUTTON') return;
+      e.preventDefault();
+      document.getElementById('play-pause-btn')?.click();
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      state.audio.currentTime = Math.max(0, state.audio.currentTime - 10);
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      if (state.audio.duration) {
+        state.audio.currentTime = Math.min(state.audio.duration - 0.5, state.audio.currentTime + 10);
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      ui.nudgeVolume(0.05);
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      ui.nudgeVolume(-0.05);
+    }
+  });
+}
+
+// === OFFLINE AWARENESS ===
+
+function initOfflineAwareness() {
+  window.addEventListener('offline', () => {
+    ui.showToast('You are offline — streaming and downloads will not work.', 'error');
+  });
+  window.addEventListener('online', () => {
+    ui.showToast('Back online.', 'success');
+  });
+}
+
 // === EXPOSE FUNCTIONS TO WINDOW FOR HTML ONCLICK HANDLERS ===
 
 // State
@@ -50,6 +114,7 @@ window.toggleFullscreenPlayer = ui.toggleFullscreenPlayer;
 window.toggleMute = ui.toggleMute;
 window.fmtTime = ui.fmtTime;
 window.escHtml = ui.escHtml;
+window.cycleSleepTimer = ui.cycleSleepTimer;
 
 // Player
 window.playTrack = player.playTrack;
@@ -123,6 +188,7 @@ window.handleModalDownload = downloads.handleModalDownload;
 window.triggerDownload = downloads.triggerDownload;
 window.showDownloadConfirmModal = downloads.showDownloadConfirmModal;
 window.executeDownload = downloads.executeDownload;
+window.retryDownload = downloads.retryDownload;
 
 // Views
 window.loadView = views.loadView;
@@ -218,6 +284,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   console.log('[MAIN] Navipod ES6 Modules Initialized');
 
   initUserMenu();
+  initKeyboardShortcuts();
+  initOfflineAwareness();
   views.initSpaHistory();
 
   // YouTube IFrame API is loaded lazily on first preview to avoid an

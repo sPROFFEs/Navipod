@@ -400,8 +400,10 @@ def get_library_shelves(db: Session, user, limit_per_shelf: int = 12) -> list[di
     items shaped as local tracks (is_local: True, source: "local") so
     the existing track-row renderer handles them unchanged.
 
-    Three shelves, all skipped silently when there isn't enough signal:
+    Shelves, all skipped silently when there isn't enough signal:
 
+      - "Recently played": last distinct tracks the user actually listened
+        to (>= 20s), newest first.
       - "On repeat lately": tracks played most in the last 30 days.
       - "Rediscover": tracks the user used to love (>= 5 historical plays)
         but hasn't touched in 60+ days.
@@ -446,6 +448,22 @@ def get_library_shelves(db: Session, user, limit_per_shelf: int = 12) -> list[di
 
     try:
         with _connect(user.username) as conn:
+            # 0. "Recently played": last distinct tracks with a real listen.
+            recently_played_ids = [
+                int(row["track_id"])
+                for row in conn.execute(
+                    """
+                    SELECT track_id, MAX(recorded_at) AS last_at
+                    FROM listen_events
+                    WHERE played_seconds >= 20
+                    GROUP BY track_id
+                    ORDER BY last_at DESC
+                    LIMIT ?
+                    """,
+                    (limit_per_shelf,),
+                ).fetchall()
+            ]
+
             # 1. "On repeat lately": top-played in last 30d.
             on_repeat_ids = [
                 int(row["track_id"])
@@ -502,6 +520,10 @@ def get_library_shelves(db: Session, user, limit_per_shelf: int = 12) -> list[di
     except Exception as e:
         logger.warning("Library shelves query failed for %s: %s", user.username, e)
         return []
+
+    recently_played = _hydrate_local(recently_played_ids)
+    if recently_played:
+        shelves.append({"title": "Recently played", "items": recently_played})
 
     on_repeat = _hydrate_local(on_repeat_ids)
     if on_repeat:

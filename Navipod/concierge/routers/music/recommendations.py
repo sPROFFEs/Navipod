@@ -268,6 +268,7 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
     # in the cache to drop on each refresh (always recomputed live).
     LIVE_SHELF_TITLES = {
         "Recently Added to Library",
+        "Recently played",
         "On repeat lately",
         "Rediscover",
         "From artists you used to play",
@@ -505,6 +506,7 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
         # Library-driven shelves are always live, never cached.
         live_titles = {
             "Recently Added to Library",
+            "Recently played",
             "On repeat lately",
             "Rediscover",
             "From artists you used to play",
@@ -552,6 +554,7 @@ async def discovery_feed(request: Request, db: Session = Depends(get_db), limit:
             # the user's library so they don't belong in a discovery feed.
             local_section_titles = (
                 "Recently Added",
+                "Recently played",
                 "On repeat",
                 "Rediscover",
                 "From artists you used",
