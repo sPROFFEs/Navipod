@@ -89,7 +89,18 @@ def get_timezone_options():
         grouped["Other"] = [{"value": "UTC", "label": "UTC"}] + grouped.get("Other", [])
 
     ordered_groups = []
-    preferred_order = ["UTC", "Europe", "America", "Asia", "Africa", "Australia", "Pacific", "Indian", "Atlantic", "Other"]
+    preferred_order = [
+        "UTC",
+        "Europe",
+        "America",
+        "Asia",
+        "Africa",
+        "Australia",
+        "Pacific",
+        "Indian",
+        "Atlantic",
+        "Other",
+    ]
     for group in preferred_order:
         if group == "UTC":
             ordered_groups.append({"group": "UTC", "zones": [{"value": "UTC", "label": "UTC"}]})

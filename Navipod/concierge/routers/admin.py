@@ -44,14 +44,8 @@ def get_db():
 
 # SECURITY DEPENDENCY
 def get_current_admin(request: Request, db: Session = Depends(get_db)):
-    token = request.cookies.get("access_token")
-    if not token:
-        raise HTTPException(status_code=401)
-
-    username = auth.get_username_from_token(token)
-    user = auth.get_user_by_username(db, username)
-
-    if not user or not user.is_admin:
+    user = auth.get_current_user(request, db)
+    if not user.is_admin:
         raise HTTPException(status_code=403, detail="Access denied.")
     return user
 
@@ -373,6 +367,9 @@ async def create_user(
 ):
     # 1. IF HERE (Validate complexity before creating)
     password = (password or "").strip()
+    username = (username or "").strip()
+    if not auth.is_valid_username(username):
+        return {"error": "Username must be 2-32 letters, numbers, underscores, or hyphens"}
     if not auth.is_password_strong(password):
         return {"error": "Weak password: use 8 chars, uppercase, lowercase, numbers and symbols"}
 
@@ -454,6 +451,7 @@ async def reset_user_password(
 
     # Hash and update
     user_to_edit.hashed_password = auth.get_password_hash(new_password)
+    user_to_edit.session_version = int(user_to_edit.session_version or 0) + 1
     db.commit()
 
     return {"msg": f"Password for {user_to_edit.username} updated successfully"}
@@ -514,22 +512,12 @@ async def system_monitor(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/api/system-stats")
-async def api_system_stats(request: Request, db: Session = Depends(get_db)):
+async def api_system_stats(
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: database.User = Depends(get_current_admin),
+):
     """JSON endpoint for live stats polling"""
-    # Quick auth check
-    token = request.cookies.get("access_token")
-    if not token:
-        return {"error": "Unauthorized"}
-
-    try:
-        username = auth.get_username_from_token(token)
-        user = auth.get_user_by_username(db, username)
-        if not user or not user.is_admin:
-            return {"error": "Forbidden"}
-    except Exception as e:
-        logger.debug("System stats auth check failed: %s", e)
-        return {"error": "Unauthorized"}
-
     # Collect stats (faster CPU interval for polling)
     pool_used, pool_limit, pool_pct = manager.get_pool_status(db)
 
@@ -1034,8 +1022,8 @@ def _query_tracks_with_fts(db, raw_query: str, limit: int):
 
 
 def _delete_track_from_library(db: Session, track_id: int):
-    from database import Track
     import cover_cache
+    from database import Track
 
     track = db.query(Track).filter(Track.id == track_id).first()
     if not track:

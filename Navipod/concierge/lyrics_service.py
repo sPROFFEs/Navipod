@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 LRCLIB_BASE = "https://lrclib.net/api"
 USER_AGENT = "Navipod/0.1 (https://github.com/navipod) lyrics-fetcher"
 
-LYRICS_HIT_TTL = 30 * 24 * 3600   # 30 days
-LYRICS_MISS_TTL = 24 * 3600       # 1 day — give lrclib a chance to add it
+LYRICS_HIT_TTL = 30 * 24 * 3600  # 30 days
+LYRICS_MISS_TTL = 24 * 3600  # 1 day — give lrclib a chance to add it
 
 
 def _is_fresh(payload: dict, ttl: int) -> bool:
@@ -75,7 +75,10 @@ async def get_lyrics(
         if _is_fresh(cached, ttl):
             if cached.get("miss"):
                 return {
-                    "synced": "", "plain": "", "instrumental": False, "source": "cache_miss",
+                    "synced": "",
+                    "plain": "",
+                    "instrumental": False,
+                    "source": "cache_miss",
                 }
             return {
                 "synced": cached.get("synced", ""),

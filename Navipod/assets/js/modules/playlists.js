@@ -32,11 +32,15 @@ export async function renderPlaylist(container, playlistId) {
   const isPublic = Boolean(data.is_public);
   const isOwner = Boolean(data.is_owner);
   const isEditable = Boolean(data.is_editable);
+  const isSmart = Boolean(data.is_smart);
   const isSyncedCopy = Boolean(data.source_playlist_id);
   const sourcePlaylistAvailable = Boolean(data.source_playlist_exists && data.source_playlist_public);
   const ownerLabel = data.owner_username ? `By ${ui.escHtml(data.owner_username)}` : '';
   const sourceBadge = isSyncedCopy
     ? '<span class="source-badge musicbrainz" style="margin-left:8px;">Synced copy</span>'
+    : '';
+  const smartBadge = isSmart
+    ? '<span class="source-badge local" style="margin-left:8px;"><i data-lucide="sparkles" width="12"></i> Smart</span>'
     : '';
   const visibilityBadge = isPublic
     ? '<span class="source-badge spotify" style="margin-left:8px;">Public</span>'
@@ -109,6 +113,12 @@ export async function renderPlaylist(container, playlistId) {
         </button>`
         }`
       : '';
+  const smartRefreshButton =
+    isOwner && isSmart
+      ? `<button onclick="refreshSmartPlaylist(${playlistId}).then(() => loadView('playlist', ${playlistId}))" class="btn-secondary-lg playlist-action-btn" title="Refresh smart rules">
+          <i data-lucide="refresh-cw" width="20" height="20"></i><span class="playlist-btn-label">Refresh</span>
+        </button>`
+      : '';
   const deleteButton = isOwner
     ? `
         <button onclick="event.stopPropagation(); showDeletePlaylistModal(${playlistId}, '${ui.escHtml(data.name || 'Playlist')}')" class="btn-danger-outline playlist-action-btn" title="Delete" aria-label="Delete">
@@ -124,7 +134,7 @@ export async function renderPlaylist(container, playlistId) {
                 ${coverControls}
             </div>
             <div class="playlist-info">
-                <p class="playlist-type">Playlist</p>
+                <p class="playlist-type">${isSmart ? 'Smart playlist' : 'Playlist'}</p>
                 <div class="playlist-title-row">
                     <h1 class="playlist-title" id="playlist-title-${playlistId}">${ui.escHtml(data.name || 'Playlist')}</h1>
                     ${ownerControls}
@@ -133,7 +143,7 @@ export async function renderPlaylist(container, playlistId) {
                     ${ownerLabel ? `<span>${ownerLabel}</span><span class="playlist-stats-dot">·</span>` : ''}
                     <span>${trackCount} ${trackCount === 1 ? 'song' : 'songs'}</span>
                     ${totalLabel ? `<span class="playlist-stats-dot">·</span><span>${totalLabel}</span>` : ''}
-                    ${visibilityBadge}${sourceBadge}
+                    ${visibilityBadge}${sourceBadge}${smartBadge}
                 </p>
                 <div class="playlist-actions">
                     ${
@@ -151,6 +161,7 @@ export async function renderPlaylist(container, playlistId) {
                     ${publishButton}
                     ${copyButton}
                     ${syncButton}
+                    ${smartRefreshButton}
                     ${deleteButton}
                 </div>
             </div>

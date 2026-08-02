@@ -1,5 +1,6 @@
+from typing import Dict, List
+
 import httpx
-from typing import Dict, List, Optional
 
 
 class LastFmService:
@@ -120,7 +121,7 @@ class LastFmService:
                 return {}
             data = resp.json()
             track_data = data.get("track", {})
-            
+
             # Extract album image (track.getInfo includes album with images)
             album_info = track_data.get("album", {})
             image_url = ""
@@ -133,7 +134,7 @@ class LastFmService:
                             break
                     if image_url:
                         break
-            
+
             return {
                 "album": album_info.get("title", ""),
                 "image": image_url,
@@ -179,18 +180,19 @@ class LastFmService:
                                 break
                         if image_url:
                             break
-                out.append({
-                    "id": f"lastfm:{artist}:{title}",
-                    "name": title,
-                    "artist": artist,
-                    "album": "",
-                    "image": image_url,
-                    "source": "lastfm",
-                })
+                out.append(
+                    {
+                        "id": f"lastfm:{artist}:{title}",
+                        "name": title,
+                        "artist": artist,
+                        "album": "",
+                        "image": image_url,
+                        "source": "lastfm",
+                    }
+                )
             return out
         except Exception:
             return []
-
 
     async def get_similar_artists(self, api_key: str, artist: str, limit: int = 12) -> List[Dict]:
         """artist.getSimilar — used to power 'Fans also like' on the artist
@@ -234,12 +236,14 @@ class LastFmService:
                     match = float(a.get("match") or 0)
                 except Exception:
                     match = 0.0
-                out.append({
-                    "name": name,
-                    "match": match,
-                    "image": image_url,
-                    "url": a.get("url"),
-                })
+                out.append(
+                    {
+                        "name": name,
+                        "match": match,
+                        "image": image_url,
+                        "url": a.get("url"),
+                    }
+                )
             return out
         except Exception:
             return []
@@ -309,12 +313,14 @@ class LastFmService:
                     continue
                 artist_info = t.get("artist", {})
                 artist_name = artist_info.get("name") if isinstance(artist_info, dict) else (artist_info or artist)
-                out.append({
-                    "title": title,
-                    "artist": artist_name,
-                    "playcount": t.get("playcount", ""),
-                    "url": t.get("url", ""),
-                })
+                out.append(
+                    {
+                        "title": title,
+                        "artist": artist_name,
+                        "playcount": t.get("playcount", ""),
+                        "url": t.get("url", ""),
+                    }
+                )
             return out
         except Exception:
             return []
@@ -355,11 +361,13 @@ class LastFmService:
                     match = float(t.get("match") or 0)
                 except Exception:
                     match = 0.0
-                out.append({
-                    "title": title,
-                    "artist": artist_name,
-                    "match": match,
-                })
+                out.append(
+                    {
+                        "title": title,
+                        "artist": artist_name,
+                        "match": match,
+                    }
+                )
             return out
         except Exception:
             return []

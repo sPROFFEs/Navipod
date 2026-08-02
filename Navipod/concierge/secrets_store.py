@@ -3,7 +3,6 @@ import hashlib
 from functools import lru_cache
 
 from cryptography.fernet import Fernet, InvalidToken
-
 from navipod_config import settings
 
 ENC_PREFIX = "enc:v1:"
@@ -28,13 +27,12 @@ def encrypt_secret(value: str | None) -> str | None:
     return f"{ENC_PREFIX}{token}"
 
 
-
 def decrypt_secret(value: str | None) -> str | None:
     if value is None:
         return None
     if not value.startswith(ENC_PREFIX):
         return value
-    token = value[len(ENC_PREFIX):]
+    token = value[len(ENC_PREFIX) :]
     try:
         return _get_fernet().decrypt(token.encode("utf-8")).decode("utf-8")
     except InvalidToken:

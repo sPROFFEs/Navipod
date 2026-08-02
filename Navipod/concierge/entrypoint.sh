@@ -34,11 +34,11 @@ if [ "$(id -u)" = "0" ]; then
     echo "[ENTRYPOINT] Ensuring /saas-data is owned by appuser (UID 1000)..."
     mkdir -p /saas-data/cache /saas-data/users
     
-    # FORCE RECURSIVE CHOWN
-    # We always run this because subfiles might be root-owned even if the parent dir is correct.
-    echo "[ENTRYPOINT] Fixing permissions recursively on /saas-data..."
+    # Repair ownership without making credentials and databases group-writable.
+    echo "[ENTRYPOINT] Fixing ownership on /saas-data..."
     chown -R appuser:appuser /saas-data
-    chmod -R 775 /saas-data
+    find /saas-data -type d -exec chmod 750 {} +
+    find /saas-data -type f -exec chmod 640 {} +
 fi
 
 # 3. DROP PRIVILEGES AND RUN COMMAND
@@ -53,5 +53,4 @@ else
     echo "[ENTRYPOINT] Already running as non-root. Warning: Permissions might be broken."
     exec "$@"
 fi
-
 

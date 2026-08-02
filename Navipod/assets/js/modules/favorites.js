@@ -164,7 +164,9 @@ export async function renderFavorites(container) {
             </div>
             <p class="playlist-stats">${subtitle}</p>
             <div class="playlist-actions">
-                ${trackCount > 0 ? `
+                ${
+                  trackCount > 0
+                    ? `
                 <button onclick="playPlaylistInOrder()" class="btn-primary-lg playlist-action-btn"
                         title="Play" aria-label="Play">
                     <i data-lucide="play" width="20" height="20"></i>
@@ -174,22 +176,26 @@ export async function renderFavorites(container) {
                         title="Shuffle" aria-label="Shuffle">
                     <i data-lucide="shuffle" width="20" height="20"></i>
                     <span class="playlist-btn-label">Shuffle</span>
-                </button>` : ''}
+                </button>`
+                    : ''
+                }
             </div>
         </div>
     </div>
-    ${trackCount > 0
-      ? `<div class="track-list">${favs
+    ${
+      trackCount > 0
+        ? `<div class="track-list">${favs
             .map((t, i) =>
               window.createTrackRow
                 ? window.createTrackRow({ ...t, is_local: true, source: 'local', db_id: t.id }, i)
                 : ''
             )
             .join('')}</div>`
-      : `<div class="empty-state glass-panel">
+        : `<div class="empty-state glass-panel">
             <i data-lucide="heart" class="empty-icon"></i>
             <p>Like some tracks to see them here!</p>
-         </div>`}
+         </div>`
+    }
   `;
   lucide.createIcons();
 }

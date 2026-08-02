@@ -41,13 +41,13 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
-HEALTH_INTERVAL_S = 60          # ping every 60s
-SYNC_INTERVAL_S = 30 * 60       # full re-sync pass every 30 min (delta is cheap)
+HEALTH_INTERVAL_S = 60  # ping every 60s
+SYNC_INTERVAL_S = 30 * 60  # full re-sync pass every 30 min (delta is cheap)
 SYNC_PAGE_SIZE = 100
-SYNC_PAGE_DELAY_S = 2.0         # courteous gap between pages
-SYNC_INSTANCE_DELAY_S = 5.0     # gap between peers in the same sweep
-HEALTHY_WINDOW_S = 60           # last_seen <60s = healthy
-DEGRADED_WINDOW_S = 15 * 60     # 60s..15min = degraded; >15min = offline
+SYNC_PAGE_DELAY_S = 2.0  # courteous gap between pages
+SYNC_INSTANCE_DELAY_S = 5.0  # gap between peers in the same sweep
+HEALTHY_WINDOW_S = 60  # last_seen <60s = healthy
+DEGRADED_WINDOW_S = 15 * 60  # 60s..15min = degraded; >15min = offline
 
 CONNECT_TIMEOUT_S = 5.0
 READ_TIMEOUT_S = 15.0
@@ -83,12 +83,16 @@ def _client(token: Optional[str]) -> httpx.AsyncClient:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=CONNECT_TIMEOUT_S, read=READ_TIMEOUT_S, write=READ_TIMEOUT_S, pool=READ_TIMEOUT_S),
+        timeout=httpx.Timeout(
+            connect=CONNECT_TIMEOUT_S, read=READ_TIMEOUT_S, write=READ_TIMEOUT_S, pool=READ_TIMEOUT_S
+        ),
         headers=headers,
     )
 
 
-async def _fetch_json_bounded(client: httpx.AsyncClient, url: str, *, params: Optional[dict] = None) -> tuple[int, Optional[dict]]:
+async def _fetch_json_bounded(
+    client: httpx.AsyncClient, url: str, *, params: Optional[dict] = None
+) -> tuple[int, Optional[dict]]:
     """GET `url` and JSON-decode at most MAX_RESPONSE_BYTES of body.
 
     Why not just `client.get(...).json()`?
@@ -109,7 +113,8 @@ async def _fetch_json_bounded(client: httpx.AsyncClient, url: str, *, params: Op
             if len(buf) > MAX_RESPONSE_BYTES:
                 logger.warning(
                     "Federation peer at %s exceeded %d-byte response cap, aborting",
-                    url, MAX_RESPONSE_BYTES,
+                    url,
+                    MAX_RESPONSE_BYTES,
                 )
                 return resp.status_code, None
         if resp.status_code != 200:
@@ -123,6 +128,7 @@ async def _fetch_json_bounded(client: httpx.AsyncClient, url: str, *, params: Op
 
 
 # === STATUS HELPERS =========================================================
+
 
 def compute_status(last_seen_at: Optional[datetime]) -> str:
     if not last_seen_at:
@@ -146,6 +152,7 @@ def status_is_playable(status: str) -> bool:
 
 # === HEALTH =================================================================
 
+
 async def check_instance_health(db, instance: database.FederatedInstance) -> str:
     """Hit /api/federation/health on the peer. Updates `status`,
     `last_seen_at`, `last_error`. Returns the new status string."""
@@ -168,6 +175,7 @@ async def check_instance_health(db, instance: database.FederatedInstance) -> str
 
 
 # === SYNC ===================================================================
+
 
 async def sync_instance(db, instance: database.FederatedInstance) -> dict:
     """Pull new pages of /api/federation/catalog and UPSERT into

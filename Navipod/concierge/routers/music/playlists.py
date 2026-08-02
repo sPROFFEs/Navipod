@@ -4,6 +4,7 @@ Playlist management and Navidrome sync.
 
 import asyncio
 import io
+import json
 import logging
 import os
 import uuid
@@ -84,12 +85,12 @@ def get_playlist_or_404(db: Session, playlist_id: int, user):
 
 
 def playlist_is_editable_by_user(playlist, user) -> bool:
-    return playlist.owner_id == user.id and playlist.source_playlist_id is None
+    return playlist.owner_id == user.id and playlist.source_playlist_id is None and playlist.smart_rules_json is None
 
 
 def _playlist_cover_dir(username: str) -> str:
     cover_dir = f"{settings.MUSIC_ROOT}/{username}/playlists/.covers"
-    os.makedirs(cover_dir, mode=0o777, exist_ok=True)
+    os.makedirs(cover_dir, mode=0o750, exist_ok=True)
     return cover_dir
 
 
@@ -166,6 +167,8 @@ def fetch_playlist_summaries(
             database.Playlist.source_playlist_id.label("source_playlist_id"),
             database.Playlist.cover_path.label("cover_path"),
             database.Playlist.cover_track_id.label("cover_track_id"),
+            database.Playlist.smart_rules_json.label("smart_rules_json"),
+            database.Playlist.smart_updated_at.label("smart_updated_at"),
             database.User.username.label("owner_username"),
             source_owner.username.label("source_owner_username"),
             func.coalesce(count_subquery.c.track_count, 0).label("track_count"),
@@ -200,9 +203,13 @@ def fetch_playlist_summaries(
                 "owner_username": owner_username,
                 "source_owner_username": source_owner_username,
                 "is_owner": viewer_id == row.owner_id if viewer_id is not None else False,
-                "is_editable": row.source_playlist_id is None and viewer_id == row.owner_id
+                "is_editable": row.source_playlist_id is None
+                and viewer_id == row.owner_id
+                and row.smart_rules_json is None
                 if viewer_id is not None
                 else False,
+                "is_smart": row.smart_rules_json is not None,
+                "smart_updated_at": row.smart_updated_at.isoformat() if row.smart_updated_at else None,
             }
         )
     return summaries
@@ -233,9 +240,13 @@ def serialize_playlist_summary(db: Session, playlist, viewer_id: int | None = No
         "owner_username": owner_name,
         "source_owner_username": source_owner_name,
         "is_owner": viewer_id == playlist.owner_id if viewer_id is not None else False,
-        "is_editable": playlist.source_playlist_id is None and viewer_id == playlist.owner_id
+        "is_editable": playlist.source_playlist_id is None
+        and playlist.smart_rules_json is None
+        and viewer_id == playlist.owner_id
         if viewer_id is not None
         else False,
+        "is_smart": playlist.smart_rules_json is not None,
+        "smart_updated_at": playlist.smart_updated_at.isoformat() if playlist.smart_updated_at else None,
     }
 
 
@@ -276,9 +287,9 @@ def generate_m3u_for_playlist(db: Session, playlist, username: str):
     """Generate M3U file for a playlist so Navidrome can read it"""
     try:
         playlist_dir = f"{settings.MUSIC_ROOT}/{username}/music/playlists"
-        os.makedirs(playlist_dir, mode=0o777, exist_ok=True)
+        os.makedirs(playlist_dir, mode=0o750, exist_ok=True)
         try:
-            os.chmod(playlist_dir, 0o777)
+            os.chmod(playlist_dir, 0o750)
         except OSError as e:
             logger.debug("Could not chmod playlist directory %s: %s", playlist_dir, e)
 
@@ -565,6 +576,9 @@ async def get_playlist(playlist_id: int, request: Request, db: Session = Depends
             "is_read_only": not playlist_is_editable_by_user(playlist, user),
             "cover_track_id": playlist.cover_track_id,
             "has_custom_cover": bool(playlist.cover_path),
+            "is_smart": playlist.smart_rules_json is not None,
+            "smart_rules": json.loads(playlist.smart_rules_json) if playlist.smart_rules_json else None,
+            "smart_updated_at": playlist.smart_updated_at.isoformat() if playlist.smart_updated_at else None,
         }
     )
 

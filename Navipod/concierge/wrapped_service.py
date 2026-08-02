@@ -86,7 +86,10 @@ def _best_thumbnail_url(thumbnails: Any) -> str:
     valid = [thumb for thumb in thumbnails if isinstance(thumb, dict) and thumb.get("url")]
     if not valid:
         return ""
-    valid.sort(key=lambda item: ((item.get("width") or 0) * (item.get("height") or 0), item.get("preference") or 0), reverse=True)
+    valid.sort(
+        key=lambda item: ((item.get("width") or 0) * (item.get("height") or 0), item.get("preference") or 0),
+        reverse=True,
+    )
     return str(valid[0].get("url") or "")
 
 
@@ -162,11 +165,7 @@ def _resolve_artist_images(artist_names: list[str], *, allow_fetch: bool) -> dic
         if isinstance(cached, dict):
             image_url = str(cached.get("image_url") or "").strip()
             checked_at = int(cached.get("checked_at") or 0)
-            ttl = (
-                WRAPPED_ARTIST_IMAGE_POSITIVE_TTL_SECONDS
-                if image_url
-                else WRAPPED_ARTIST_IMAGE_NEGATIVE_TTL_SECONDS
-            )
+            ttl = WRAPPED_ARTIST_IMAGE_POSITIVE_TTL_SECONDS if image_url else WRAPPED_ARTIST_IMAGE_NEGATIVE_TTL_SECONDS
             if checked_at and checked_at + ttl > now_ts:
                 if image_url:
                     resolved[normalized] = image_url
@@ -358,7 +357,9 @@ def get_wrapped_settings(db: Session) -> dict[str, Any]:
     next_year_start_utc = datetime(operational_year + 1, 1, 1, 0, 0, 0, tzinfo=scheduler_tz).astimezone(timezone.utc)
     visible_from = _parse_visibility_dt(settings.wrapped_visible_from)
     visible_until = _parse_visibility_dt(settings.wrapped_visible_until)
-    manual_window_open = (visible_from is None or visible_from <= now) and (visible_until is None or visible_until >= now)
+    manual_window_open = (visible_from is None or visible_from <= now) and (
+        visible_until is None or visible_until >= now
+    )
     yearly_window_open = year_start_utc <= now < next_year_start_utc
     window_open = manual_window_open and yearly_window_open
     enabled = bool(settings.wrapped_enabled)
@@ -494,7 +495,9 @@ def _fetch_legacy_activity_rows(username: str, year: int) -> list[dict[str, Any]
             return [
                 {
                     "id": int(row["id"] or 0),
-                    "event_type": "play_complete" if int(row["completed"] or 0) else ("skip" if int(row["skipped_early"] or 0) else "play_30s"),
+                    "event_type": "play_complete"
+                    if int(row["completed"] or 0)
+                    else ("skip" if int(row["skipped_early"] or 0) else "play_30s"),
                     "track_id": int(row["track_id"] or 0),
                     "session_id": "",
                     "played_seconds": _safe_played_seconds(row["played_seconds"]),
@@ -526,7 +529,9 @@ def _fetch_canonical_tracking_rows(username: str, year: int) -> list[dict[str, A
                 "track_id": int(row["track_id"] or 0),
                 "session_id": str(row["session_id"] or ""),
                 "played_seconds": _safe_played_seconds((row["played_ms"] or 0) / 1000.0),
-                "duration_seconds": _safe_played_seconds((row["duration_ms"] or 0) / 1000.0) if row["duration_ms"] else 0.0,
+                "duration_seconds": _safe_played_seconds((row["duration_ms"] or 0) / 1000.0)
+                if row["duration_ms"]
+                else 0.0,
                 "timestamp_utc": str(row["timestamp_utc"] or ""),
                 "context_type": str(row["context_type"] or ""),
                 "context_key": str(row["context_key"] or ""),
@@ -558,9 +563,9 @@ def _collect_terminal_instances(rows: list[dict[str, Any]]) -> list[dict[str, An
         if candidate_priority > existing_priority:
             grouped[instance_key] = dict(row)
             continue
-        if candidate_priority == existing_priority and _safe_played_seconds(row.get("played_seconds")) > _safe_played_seconds(
-            existing.get("played_seconds")
-        ):
+        if candidate_priority == existing_priority and _safe_played_seconds(
+            row.get("played_seconds")
+        ) > _safe_played_seconds(existing.get("played_seconds")):
             grouped[instance_key] = dict(row)
     return list(grouped.values())
 
@@ -825,7 +830,9 @@ def _is_user_aggregate_stale(user: database.User, year: int, cached: dict[str, A
     stats = personalization_service.get_user_tracking_stats(user.username, year)
     cached_latest = str(cached.get("source_latest_event_at") or "")
     cached_raw_count = int(cached.get("raw_event_count") or 0)
-    return cached_latest != str(stats.get("latest_event_at") or "") or cached_raw_count != int(stats.get("raw_event_count") or 0)
+    return cached_latest != str(stats.get("latest_event_at") or "") or cached_raw_count != int(
+        stats.get("raw_event_count") or 0
+    )
 
 
 def get_or_build_user_wrapped_summary(
@@ -856,12 +863,16 @@ def build_party_summary(db: Session, year: int | None = None) -> dict[str, Any]:
     active_summaries = [
         summary
         for summary in summaries
-        if _safe_played_seconds(summary.get("played_seconds")) > 0 and int(summary.get("qualified_event_count") or 0) > 0
+        if _safe_played_seconds(summary.get("played_seconds")) > 0
+        and int(summary.get("qualified_event_count") or 0) > 0
     ]
 
     minutes_ranking = sorted(
         active_summaries,
-        key=lambda item: (_safe_played_seconds(item.get("played_seconds")), int(item.get("qualified_event_count") or 0)),
+        key=lambda item: (
+            _safe_played_seconds(item.get("played_seconds")),
+            int(item.get("qualified_event_count") or 0),
+        ),
         reverse=True,
     )
     top_song_fans = []
@@ -1255,7 +1266,15 @@ def _finalize_regeneration_audit(
             SET completed_at = ?, status = ?, raw_event_count = ?, qualified_event_count = ?, user_count = ?, message = ?
             WHERE id = ?
             """,
-            (_iso_now(), status, int(raw_event_count), int(qualified_event_count), int(user_count), message or None, int(audit_id)),
+            (
+                _iso_now(),
+                status,
+                int(raw_event_count),
+                int(qualified_event_count),
+                int(user_count),
+                message or None,
+                int(audit_id),
+            ),
         )
         conn.commit()
 
@@ -1441,14 +1460,20 @@ def reset_user_wrapped_data(db: Session, username: str, *, purge_tracking: bool 
 
     ensure_wrapped_summary_db()
     with _connect_summary() as conn:
-        deleted_user_aggregates = conn.execute(
-            "DELETE FROM user_wrapped_aggregate WHERE user_id = ? OR username = ?",
-            (int(target.id), str(target.username)),
-        ).rowcount or 0
-        deleted_user_snapshots = conn.execute(
-            "DELETE FROM wrapped_yearly_snapshots WHERE user_id = ? OR username = ?",
-            (int(target.id), str(target.username)),
-        ).rowcount or 0
+        deleted_user_aggregates = (
+            conn.execute(
+                "DELETE FROM user_wrapped_aggregate WHERE user_id = ? OR username = ?",
+                (int(target.id), str(target.username)),
+            ).rowcount
+            or 0
+        )
+        deleted_user_snapshots = (
+            conn.execute(
+                "DELETE FROM wrapped_yearly_snapshots WHERE user_id = ? OR username = ?",
+                (int(target.id), str(target.username)),
+            ).rowcount
+            or 0
+        )
         # Party aggregates are derived from user aggregates, so clear cache for deterministic rebuild.
         deleted_party_aggregates = conn.execute("DELETE FROM wrapped_party_aggregate").rowcount or 0
         conn.commit()

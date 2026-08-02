@@ -331,28 +331,34 @@ function _fedEscape(str) {
 }
 function _fedFmtDate(iso) {
   if (!iso) return '—';
-  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
+  }
 }
 function _fedStatusBadge(status) {
-  const cls = ({
-    healthy: 'fed-status-healthy',
-    degraded: 'fed-status-degraded',
-    offline: 'fed-status-offline',
-    unknown: 'fed-status-unknown',
-    online: 'fed-status-healthy',
-    idle: 'fed-status-degraded',
-    never: 'fed-status-unknown',
-    revoked: 'fed-status-revoked',
-  })[status] || 'fed-status-unknown';
+  const cls =
+    {
+      healthy: 'fed-status-healthy',
+      degraded: 'fed-status-degraded',
+      offline: 'fed-status-offline',
+      unknown: 'fed-status-unknown',
+      online: 'fed-status-healthy',
+      idle: 'fed-status-degraded',
+      never: 'fed-status-unknown',
+      revoked: 'fed-status-revoked'
+    }[status] || 'fed-status-unknown';
   return `<span class="fed-status-badge ${cls}">${_fedEscape(status || 'unknown')}</span>`;
 }
 
 function _fedRenderInbound(inst) {
-  const pct = inst.sync_total > 0
-    ? Math.min(100, Math.round((inst.sync_done / inst.sync_total) * 100)) : null;
+  const pct = inst.sync_total > 0 ? Math.min(100, Math.round((inst.sync_done / inst.sync_total) * 100)) : null;
   const errorLine = inst.last_error ? `<div class="fed-row-error">⚠ ${_fedEscape(inst.last_error)}</div>` : '';
-  const progressBar = pct !== null
-    ? `<div class="fed-progress-bar"><div class="fed-progress-fill" style="width:${pct}%"></div></div>` : '';
+  const progressBar =
+    pct !== null
+      ? `<div class="fed-progress-bar"><div class="fed-progress-fill" style="width:${pct}%"></div></div>`
+      : '';
   return `
     <div class="fed-row" data-id="${inst.id}">
       <div class="fed-row-head">
@@ -447,12 +453,13 @@ function _fedRenderOutbound(peer) {
   const urlLine = peer.peer_url
     ? `<span class="fed-row-url">${_fedEscape(peer.peer_url)}</span>`
     : `<span class="fed-row-url fed-row-url-missing">no URL set</span>`;
-  const ipLine = peer.last_seen_ip
-    ? `<span>From: <code>${_fedEscape(peer.last_seen_ip)}</code></span>` : '';
+  const ipLine = peer.last_seen_ip ? `<span>From: <code>${_fedEscape(peer.last_seen_ip)}</code></span>` : '';
   const ua = peer.last_seen_user_agent
-    ? `<span class="fed-row-ua" title="${_fedEscape(peer.last_seen_user_agent)}">UA: ${_fedEscape(peer.last_seen_user_agent.slice(0, 40))}${peer.last_seen_user_agent.length > 40 ? '…' : ''}</span>` : '';
+    ? `<span class="fed-row-ua" title="${_fedEscape(peer.last_seen_user_agent)}">UA: ${_fedEscape(peer.last_seen_user_agent.slice(0, 40))}${peer.last_seen_user_agent.length > 40 ? '…' : ''}</span>`
+    : '';
   const revokedBanner = peer.revoked
-    ? `<div class="fed-row-error">Token revoked${peer.revoked_at ? ' on ' + _fedFmtDate(peer.revoked_at) : ''}.</div>` : '';
+    ? `<div class="fed-row-error">Token revoked${peer.revoked_at ? ' on ' + _fedFmtDate(peer.revoked_at) : ''}.</div>`
+    : '';
   const actions = peer.revoked
     ? `<button class="admin-danger-btn" onclick="federationDeleteOutbound(${peer.id})">
          <i data-lucide="trash-2" width="14" height="14"></i> Delete record
@@ -517,7 +524,7 @@ export async function federationAddInstance(e) {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, base_url, api_token, enabled: true }),
+    body: JSON.stringify({ name, base_url, api_token, enabled: true })
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -528,7 +535,9 @@ export async function federationAddInstance(e) {
   document.getElementById('fed-add-url').value = '';
   document.getElementById('fed-add-token').value = '';
   const created = await res.json();
-  try { await fetch('/api/admin/federation/instances/' + created.id + '/sync', { method: 'POST', credentials: 'include' }); } catch {}
+  try {
+    await fetch('/api/admin/federation/instances/' + created.id + '/sync', { method: 'POST', credentials: 'include' });
+  } catch {}
   _fedRefreshInbound();
 }
 
@@ -542,7 +551,7 @@ export async function federationToggleEnabled(id, enable) {
     method: 'PATCH',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled: enable }),
+    body: JSON.stringify({ enabled: enable })
   });
   _fedRefreshInbound();
 }
@@ -557,13 +566,16 @@ export async function federationIssueToken(e) {
   e.preventDefault();
   const name = document.getElementById('fed-issue-name').value.trim();
   const peer_url = document.getElementById('fed-issue-url').value.trim();
-  if (!name) { alert('Peer name is required.'); return; }
+  if (!name) {
+    alert('Peer name is required.');
+    return;
+  }
 
   const res = await fetch('/api/admin/federation/outbound', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, peer_url: peer_url || null }),
+    body: JSON.stringify({ name, peer_url: peer_url || null })
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -583,7 +595,12 @@ export async function federationIssueToken(e) {
 }
 
 export async function federationRevokeOutbound(id) {
-  if (!confirm('Revoke this token? The remote will lose access immediately. The row stays so you can still see when the peer was last online.')) return;
+  if (
+    !confirm(
+      'Revoke this token? The remote will lose access immediately. The row stays so you can still see when the peer was last online.'
+    )
+  )
+    return;
   await fetch('/api/admin/federation/outbound/' + id + '/revoke', { method: 'POST', credentials: 'include' });
   _fedRefreshOutbound();
 }

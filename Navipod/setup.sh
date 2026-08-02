@@ -49,8 +49,9 @@ sudo mkdir -p "$DATA_ROOT/backups"
 sudo mkdir -p "$CONFIG_ROOT"
 sudo mkdir -p "$IMPORT_STAGE"
 sudo chown -R "$USER:$USER" "$DATA_ROOT"
-sudo chmod -R 777 "$DATA_ROOT"
-sudo chmod -R 777 "$IMPORT_STAGE"
+sudo find "$DATA_ROOT" -type d -exec chmod 750 {} +
+sudo find "$DATA_ROOT" -type f -exec chmod 640 {} +
+sudo chmod 750 "$IMPORT_STAGE"
 
 # 2. Setup Environment Variables
 if [ ! -f "$CONFIG_ENV" ]; then
@@ -93,33 +94,14 @@ if [[ "$CREATE_ADMIN" == "y" || "$CREATE_ADMIN" == "Y" ]]; then
 
     echo "Creating admin user in database..."
 
-    docker compose --env-file "$CONFIG_ENV" exec -T concierge python -c "
-import database, auth
-try:
-    db = database.SessionLocal()
-    user = '$ADMIN_USER'
-    pw = '$ADMIN_PASS'
-    existing = db.query(database.User).filter(database.User.username == user).first()
-    if existing:
-        print(f'User {user} already exists.')
-    else:
-        hashed = auth.get_password_hash(pw)
-        new_user = database.User(username=user, hashed_password=hashed, is_admin=True, is_active=True)
-        db.add(new_user)
-        db.flush()
-        settings = database.DownloadSettings(user_id=new_user.id, audio_quality='320')
-        db.add(settings)
+    export NAVIPOD_ADMIN_USERNAME="$ADMIN_USER"
+    export NAVIPOD_ADMIN_PASSWORD="$ADMIN_PASS"
 
-        if not db.query(database.SystemSettings).first():
-            db.add(database.SystemSettings(pool_limit_gb=100))
-
-        db.commit()
-        print(f'Admin {user} created successfully.')
-except Exception as e:
-    print(f'Error creating admin: {e}')
-finally:
-    db.close()
-"
+    docker compose --env-file "$CONFIG_ENV" exec -T \
+        -e NAVIPOD_ADMIN_USERNAME \
+        -e NAVIPOD_ADMIN_PASSWORD \
+        concierge python create_admin.py
+    unset ADMIN_PASS NAVIPOD_ADMIN_USERNAME NAVIPOD_ADMIN_PASSWORD
 fi
 
 # 5. Interactive: Import Music

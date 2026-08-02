@@ -30,7 +30,13 @@ RG_HEADERS = {
 async def fetch_saved_radios_for_user(user):
     target_ip = manager.get_or_spawn_container(user.username)
     url = f"http://{target_ip}:4533/{user.username}/rest/getInternetRadioStations"
-    params = {"u": user.username, "p": settings.NAVIDROME_INTERNAL_PASSWORD, "v": "1.16.1", "c": "navipod-concierge", "f": "json"}
+    params = {
+        "u": user.username,
+        "p": settings.NAVIDROME_INTERNAL_PASSWORD,
+        "v": "1.16.1",
+        "c": "navipod-concierge",
+        "f": "json",
+    }
     headers = {"x-navidrome-user": user.username}
 
     resp = await http_client.get(url, params=params, headers=headers, timeout=5.0)

@@ -1,15 +1,18 @@
-import os
 import logging
+import os
 import shutil
 import subprocess
 import time
+
 import reaper
+
 logger = logging.getLogger(__name__)
 
 # CONFIGURACIÓN
 USERS_ROOT = "/saas-data/users"
 TRASH_EXTENSIONS = [".part", ".ytdl", ".tmp", ".cache"]
 DIRECTORIES_TO_CLEAN = ["/tmp", "/app/temp"]
+
 
 def purge_storage():
     logger.info("Starting disk purge at %s", time.ctime())
@@ -23,7 +26,8 @@ def purge_storage():
                     try:
                         freed += os.path.getsize(fp)
                         os.remove(fp)
-                    except: pass
+                    except:
+                        pass
 
     # 2. Buscar basura en usuarios
     for root, dirs, files in os.walk(USERS_ROOT):
@@ -33,16 +37,19 @@ def purge_storage():
                 try:
                     freed += os.path.getsize(fp)
                     os.remove(fp)
-                except: pass
-        
+                except:
+                    pass
+
         for d in dirs:
             if d == ".spotdl-cache":
                 dp = os.path.join(root, d)
                 try:
                     shutil.rmtree(dp)
-                except: pass
-    
+                except:
+                    pass
+
     logger.info("Disk purge completed; freed %.3f GB", freed / (1024**3))
+
 
 def flush_ram():
     logger.info("Attempting RAM flush at %s", time.ctime())
@@ -58,6 +65,7 @@ def flush_ram():
                 logger.info("RAM flush skipped: drop_caches permission denied")
     except Exception as e:
         logger.warning("RAM flush failed: %s", e)
+
 
 if __name__ == "__main__":
     purge_storage()

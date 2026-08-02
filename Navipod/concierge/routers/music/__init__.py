@@ -8,9 +8,10 @@ from . import (
     artist,
     core,
     delete_requests,
-    lyrics,
     downloads,
     favorites,
+    library,
+    lyrics,
     personalization,
     playback_state,
     playlists,
@@ -18,6 +19,7 @@ from . import (
     recent_activity,
     recommendations,
     search,
+    smart_playlists,
     streaming,
     sync,
     wrapped,
@@ -43,6 +45,8 @@ router.include_router(playback_state.router)
 router.include_router(wrapped.router)
 router.include_router(artist.router)
 router.include_router(lyrics.router)
+router.include_router(library.router)
+router.include_router(smart_playlists.router)
 
 # Re-export the combined router
 __all__ = ["router"]

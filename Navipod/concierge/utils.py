@@ -8,29 +8,31 @@ from navipod_config import settings
 
 BASE_DOWNLOADS_DIR = Path(settings.MUSIC_ROOT).resolve()
 
+
 def get_secure_path(base_dir: Path | str, user_input_path: str) -> Path:
     """
     Ensures that the final path is within the base_dir.
     Prevents Path Traversal attacks (e.g. ../../etc/passwd)
     """
     base = Path(base_dir).resolve()
-    
+
     # 1. Clean basic path noise
     clean_input = os.path.normpath(user_input_path)
     if clean_input.startswith("/") or clean_input.startswith("\\"):
-         # Remove leading slashes to prevent absolute path override
-         clean_input = clean_input.lstrip("/\\")
-         
+        # Remove leading slashes to prevent absolute path override
+        clean_input = clean_input.lstrip("/\\")
+
     # 2. Resolve final absolute path
     target = (base / clean_input).resolve()
-    
+
     # 3. Jail Check
     try:
         target.relative_to(base)
     except ValueError:
         raise ValueError(f"Path Traversal Attempt Detected: {user_input_path}")
-        
+
     return target
+
 
 def is_safe_url(url: str) -> bool:
     """

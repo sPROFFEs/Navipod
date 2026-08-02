@@ -1,2 +1,3 @@
 -r Navipod/concierge/requirements.txt
+pytest>=8.0.0
 ruff==0.15.10

@@ -42,9 +42,7 @@ async def get_sync_state(request: Request, db: Session = Depends(get_db)):
 
         # Get playlist rows — derive playlist_count from len() same reason.
         playlists = (
-            db.query(database.Playlist.id, database.Playlist.name)
-            .filter(database.Playlist.owner_id == user.id)
-            .all()
+            db.query(database.Playlist.id, database.Playlist.name).filter(database.Playlist.owner_id == user.id).all()
         )
         playlist_count = len(playlists)
         playlist_ids = [row[0] for row in playlists]

@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from typing import Dict
+
 logger = logging.getLogger(__name__)
 
 # Global dictionary to hold loaded translations including nested keys
@@ -10,6 +11,7 @@ translations: Dict[str, Dict[str, str]] = {}
 
 DEFAULT_LANG = "en"
 SUPPORTED_LANGS = ["en"]
+
 
 def load_translations(locales_dir: str = "locales"):
     """Loads all JSON files from the locales directory."""
@@ -30,6 +32,7 @@ def load_translations(locales_dir: str = "locales"):
             except Exception as e:
                 logger.warning("Error loading locale file %s: %s", filename, e)
 
+
 def get_text(key: str, lang: str = DEFAULT_LANG) -> str:
     """
     Retrieves the translation for a given key in the specified language.
@@ -40,7 +43,7 @@ def get_text(key: str, lang: str = DEFAULT_LANG) -> str:
     # if key == "login.title": print(f"[I18N-DEBUG] Looking up '{key}' in '{lang}'. Loaded: {list(translations.keys())}")
     if lang in translations and key in translations[lang]:
         return translations[lang][key]
-    
+
     # 2. Try default language fallback
     if lang != DEFAULT_LANG and DEFAULT_LANG in translations and key in translations[DEFAULT_LANG]:
         return translations[DEFAULT_LANG][key]

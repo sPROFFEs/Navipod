@@ -1,13 +1,12 @@
-from fastapi import FastAPI, Header, HTTPException, Query
-from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel
 import asyncio
 import html
 import secrets
 
 import database
 import operations_service
-
+from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel
 
 app = FastAPI()
 
@@ -59,11 +58,11 @@ async def job_progress_page(job_id: int, access: str | None = Query(default=None
     success_url = html.escape("/admin/system?msg=Update applied successfully", quote=True)
     fallback_url = html.escape("/admin/system", quote=True)
     logs_html = "".join(
-        f"<div class=\"update-log-item\"><time>{html.escape((item or {}).get('at') or '', quote=False)}</time><div>{html.escape((item or {}).get('message') or '', quote=False)}</div></div>"
+        f'<div class="update-log-item"><time>{html.escape((item or {}).get("at") or "", quote=False)}</time><div>{html.escape((item or {}).get("message") or "", quote=False)}</div></div>'
         for item in (job.get("details") or {}).get("logs", [])
     )
     if not logs_html:
-        logs_html = "<div class=\"update-log-item\"><time></time><div>Waiting for first update event...</div></div>"
+        logs_html = '<div class="update-log-item"><time></time><div>Waiting for first update event...</div></div>'
 
     return f"""<!DOCTYPE html>
 <html lang="en">

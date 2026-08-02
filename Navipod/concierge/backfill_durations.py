@@ -42,9 +42,7 @@ def backfill(dry_run: bool = False) -> dict[str, int]:
         # Only touch rows that look unpopulated. duration=0 is treated
         # as "not yet extracted" — a real 0-second track is impossible.
         candidates = (
-            db.query(database.Track)
-            .filter((database.Track.duration.is_(None)) | (database.Track.duration == 0))
-            .all()
+            db.query(database.Track).filter((database.Track.duration.is_(None)) | (database.Track.duration == 0)).all()
         )
         logger.info("Found %d candidate tracks", len(candidates))
 

@@ -7,11 +7,9 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
-from sqlalchemy.orm import Session
-
 import database
 from navipod_config import settings
-
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +25,15 @@ class M3UService:
 
     def create_playlist(self, name: str, source_url: str = None) -> database.Playlist:
         safe_name = self._sanitize_name(name) or f"Playlist_{self.user.id}"
-        existing = self.db.query(database.Playlist).filter(
-            database.Playlist.owner_id == self.user.id,
-            database.Playlist.name == safe_name,
-            database.Playlist.source_playlist_id.is_(None),
-        ).first()
+        existing = (
+            self.db.query(database.Playlist)
+            .filter(
+                database.Playlist.owner_id == self.user.id,
+                database.Playlist.name == safe_name,
+                database.Playlist.source_playlist_id.is_(None),
+            )
+            .first()
+        )
         if existing:
             return existing
 
@@ -60,9 +62,12 @@ class M3UService:
         return True
 
     def get_user_playlists(self) -> List[database.Playlist]:
-        return self.db.query(database.Playlist).filter(
-            database.Playlist.owner_id == self.user.id
-        ).order_by(database.Playlist.name).all()
+        return (
+            self.db.query(database.Playlist)
+            .filter(database.Playlist.owner_id == self.user.id)
+            .order_by(database.Playlist.name)
+            .all()
+        )
 
     def add_track_to_playlist(self, playlist_id: int, track_id: int, position: int = None) -> bool:
         playlist = self._get_user_playlist(playlist_id)
@@ -73,10 +78,14 @@ class M3UService:
         if not track:
             return False
 
-        existing = self.db.query(database.PlaylistItem).filter(
-            database.PlaylistItem.playlist_id == playlist_id,
-            database.PlaylistItem.track_id == track_id,
-        ).first()
+        existing = (
+            self.db.query(database.PlaylistItem)
+            .filter(
+                database.PlaylistItem.playlist_id == playlist_id,
+                database.PlaylistItem.track_id == track_id,
+            )
+            .first()
+        )
         if existing:
             return True
 
@@ -100,10 +109,14 @@ class M3UService:
         if not playlist:
             return False
 
-        item = self.db.query(database.PlaylistItem).filter(
-            database.PlaylistItem.playlist_id == playlist_id,
-            database.PlaylistItem.track_id == track_id,
-        ).first()
+        item = (
+            self.db.query(database.PlaylistItem)
+            .filter(
+                database.PlaylistItem.playlist_id == playlist_id,
+                database.PlaylistItem.track_id == track_id,
+            )
+            .first()
+        )
         if not item:
             return False
 
@@ -118,9 +131,12 @@ class M3UService:
         if not playlist:
             return []
 
-        items = self.db.query(database.PlaylistItem).filter(
-            database.PlaylistItem.playlist_id == playlist_id
-        ).order_by(database.PlaylistItem.position).all()
+        items = (
+            self.db.query(database.PlaylistItem)
+            .filter(database.PlaylistItem.playlist_id == playlist_id)
+            .order_by(database.PlaylistItem.position)
+            .all()
+        )
         return [item.track for item in items if item.track]
 
     def regenerate_all_m3u(self):
@@ -132,9 +148,12 @@ class M3UService:
         m3u_path = self._build_m3u_path(safe_name)
         m3u_path.parent.mkdir(parents=True, exist_ok=True)
 
-        items = self.db.query(database.PlaylistItem).filter(
-            database.PlaylistItem.playlist_id == playlist.id
-        ).order_by(database.PlaylistItem.position).all()
+        items = (
+            self.db.query(database.PlaylistItem)
+            .filter(database.PlaylistItem.playlist_id == playlist.id)
+            .order_by(database.PlaylistItem.position)
+            .all()
+        )
 
         try:
             with open(m3u_path, "w", encoding="utf-8") as f:
@@ -154,10 +173,14 @@ class M3UService:
             logger.exception("Error writing M3U for playlist %s", playlist.id)
 
     def _get_user_playlist(self, playlist_id: int) -> Optional[database.Playlist]:
-        return self.db.query(database.Playlist).filter(
-            database.Playlist.id == playlist_id,
-            database.Playlist.owner_id == self.user.id,
-        ).first()
+        return (
+            self.db.query(database.Playlist)
+            .filter(
+                database.Playlist.id == playlist_id,
+                database.Playlist.owner_id == self.user.id,
+            )
+            .first()
+        )
 
     def _sanitize_name(self, name: str) -> str:
         if not name:
@@ -177,7 +200,9 @@ class M3UService:
         return normalized
 
     def _delete_m3u_file(self, playlist: database.Playlist):
-        path = playlist.m3u_path or str(self._build_m3u_path(self._sanitize_name(playlist.name) or f"Playlist_{playlist.id}"))
+        path = playlist.m3u_path or str(
+            self._build_m3u_path(self._sanitize_name(playlist.name) or f"Playlist_{playlist.id}")
+        )
         try:
             if path and os.path.exists(path):
                 os.remove(path)

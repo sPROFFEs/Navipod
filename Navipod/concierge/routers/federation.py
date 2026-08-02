@@ -34,11 +34,9 @@ from datetime import datetime, timezone
 import database
 import federation_service
 import httpx
-import path_security
 from auth import get_current_user, get_password_hash
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from fastapi.responses import JSONResponse, Response, StreamingResponse
-from http_client import http_client
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
@@ -132,8 +130,12 @@ def _validate_federation_base_url(url: str) -> str:
         except ValueError:
             continue
         if (
-            ip.is_loopback or ip.is_link_local or ip.is_private
-            or ip.is_unspecified or ip.is_multicast or ip.is_reserved
+            ip.is_loopback
+            or ip.is_link_local
+            or ip.is_private
+            or ip.is_unspecified
+            or ip.is_multicast
+            or ip.is_reserved
         ):
             raise HTTPException(
                 status_code=400,
@@ -150,12 +152,15 @@ def _validate_federation_base_url(url: str) -> str:
 # AUTH HELPERS
 # ============================================================================
 
+
 def _require_admin(user: database.User):
     if not user or not user.is_admin:
         raise HTTPException(status_code=403, detail="Admin only")
 
 
-def _verify_federation_token(db: Session, request: Request, authorization: str | None) -> database.FederationOutboundPeer:
+def _verify_federation_token(
+    db: Session, request: Request, authorization: str | None
+) -> database.FederationOutboundPeer:
     """Validate a Bearer token against the federation_outbound_peers
     table.
 
@@ -223,6 +228,7 @@ def _verify_federation_token(db: Session, request: Request, authorization: str |
         # exposure setup any client can spoof it and pollute the audit
         # trail. Gate on the existing TRUST_PROXY_HEADERS setting.
         from navipod_config import settings as _settings
+
         ip = None
         if getattr(_settings, "TRUST_PROXY_HEADERS", False):
             fwd = request.headers.get("x-forwarded-for")
@@ -245,6 +251,7 @@ def _verify_federation_token(db: Session, request: Request, authorization: str |
 # ============================================================================
 # PUBLISH ENDPOINTS (called BY remote peers)
 # ============================================================================
+
 
 @router.get("/api/federation/health")
 async def federation_health(
@@ -283,23 +290,21 @@ async def federation_catalog(
     _verify_federation_token(db, request, authorization)
 
     rows = (
-        db.query(database.Track)
-        .filter(database.Track.id > after)
-        .order_by(database.Track.id.asc())
-        .limit(limit)
-        .all()
+        db.query(database.Track).filter(database.Track.id > after).order_by(database.Track.id.asc()).limit(limit).all()
     )
     out = []
     for t in rows:
-        out.append({
-            "id": t.id,
-            "title": t.title,
-            "artist": t.artist,
-            "album": t.album,
-            "duration": t.duration,
-            # Cover URL points back at us — peers fetch it on demand.
-            "cover_url": f"/api/cover/{t.id}",
-        })
+        out.append(
+            {
+                "id": t.id,
+                "title": t.title,
+                "artist": t.artist,
+                "album": t.album,
+                "duration": t.duration,
+                # Cover URL points back at us — peers fetch it on demand.
+                "cover_url": f"/api/cover/{t.id}",
+            }
+        )
     return {"tracks": out, "next_cursor": rows[-1].id if rows else after}
 
 
@@ -318,14 +323,15 @@ async def federation_stream(
     # Defer to the local streaming logic by importing the existing
     # helper. Range header is taken from the original request and
     # forwarded transparently.
-    from routers.music.streaming import stream_track
-    # `stream_track` is async and respects the request's Range header.
-    return await stream_track(track_id, request, db)
+    from routers.music.streaming import stream_track_authorized
+
+    return await stream_track_authorized(track_id, request, db)
 
 
 # ============================================================================
 # ADMIN CRUD
 # ============================================================================
+
 
 def _serialize_instance(inst: database.FederatedInstance, *, include_token: bool = False) -> dict:
     out = {
@@ -471,6 +477,7 @@ async def _run_manual_sync(instance_id: int):
 # From then on every incoming federation request stamps that row with
 # last_seen_at + last_seen_ip so the admin can see who's online.
 
+
 def _outbound_status(peer: database.FederationOutboundPeer) -> str:
     if peer.revoked:
         return "revoked"
@@ -506,11 +513,7 @@ def _serialize_outbound(peer: database.FederationOutboundPeer) -> dict:
 async def admin_list_outbound(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     _require_admin(user)
-    rows = (
-        db.query(database.FederationOutboundPeer)
-        .order_by(database.FederationOutboundPeer.id.asc())
-        .all()
-    )
+    rows = db.query(database.FederationOutboundPeer).order_by(database.FederationOutboundPeer.id.asc()).all()
     return [_serialize_outbound(r) for r in rows]
 
 
@@ -540,7 +543,7 @@ async def admin_create_outbound(request: Request, db: Session = Depends(get_db))
     db.commit()
     db.refresh(peer)
     out = _serialize_outbound(peer)
-    out["token"] = token   # plaintext, last time it's ever in the response
+    out["token"] = token  # plaintext, last time it's ever in the response
     return out
 
 
@@ -552,11 +555,7 @@ async def admin_revoke_outbound(peer_id: int, request: Request, db: Session = De
     user = get_current_user(request, db)
     _require_admin(user)
 
-    peer = (
-        db.query(database.FederationOutboundPeer)
-        .filter(database.FederationOutboundPeer.id == peer_id)
-        .first()
-    )
+    peer = db.query(database.FederationOutboundPeer).filter(database.FederationOutboundPeer.id == peer_id).first()
     if not peer:
         raise HTTPException(status_code=404, detail="Not found")
     peer.revoked = True
@@ -570,11 +569,7 @@ async def admin_delete_outbound(peer_id: int, request: Request, db: Session = De
     user = get_current_user(request, db)
     _require_admin(user)
 
-    peer = (
-        db.query(database.FederationOutboundPeer)
-        .filter(database.FederationOutboundPeer.id == peer_id)
-        .first()
-    )
+    peer = db.query(database.FederationOutboundPeer).filter(database.FederationOutboundPeer.id == peer_id).first()
     if not peer:
         raise HTTPException(status_code=404, detail="Not found")
     db.delete(peer)
@@ -585,6 +580,7 @@ async def admin_delete_outbound(peer_id: int, request: Request, db: Session = De
 # ============================================================================
 # PROXY (regular user listening to a remote track)
 # ============================================================================
+
 
 @router.get("/api/federation/proxy/{instance_id}/stream/{remote_id}")
 async def federation_proxy_stream(
@@ -657,7 +653,10 @@ async def federation_proxy_stream(
         await upstream_client.aclose()
         logger.warning(
             "Federation upstream rejected inst=%s remote=%s: HTTP %s — %r",
-            instance_id, remote_id, upstream_resp.status_code, body_preview,
+            instance_id,
+            remote_id,
+            upstream_resp.status_code,
+            body_preview,
         )
         return JSONResponse(
             {"error": f"Upstream returned {upstream_resp.status_code}"},

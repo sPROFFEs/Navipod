@@ -6,6 +6,7 @@ import sqlite3
 import time
 from contextlib import contextmanager
 from typing import Any, Iterator
+
 logger = logging.getLogger(__name__)
 
 
@@ -68,9 +69,7 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         """
     )
 
-    columns = {
-        row[1] for row in conn.execute("PRAGMA table_info(metadata_cache)").fetchall()
-    }
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(metadata_cache)").fetchall()}
     if "created_at" not in columns:
         now = time.time()
         conn.execute("ALTER TABLE metadata_cache ADD COLUMN created_at REAL")
@@ -97,15 +96,9 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
             (time.time(),),
         )
 
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_metadata_cache_last_accessed_at ON metadata_cache(last_accessed_at)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_metadata_cache_created_at ON metadata_cache(created_at)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_metadata_cache_access_count ON metadata_cache(access_count)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_cache_last_accessed_at ON metadata_cache(last_accessed_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_cache_created_at ON metadata_cache(created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_cache_access_count ON metadata_cache(access_count)")
 
 
 # Substrings in the SQLite error message that indicate ACTUAL on-disk
@@ -115,7 +108,7 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
 # valid data and re-create the file, only to hit the same transient
 # error on the next call.
 _CORRUPTION_INDICATORS = (
-    "malformed",          # SQLITE_CORRUPT
+    "malformed",  # SQLITE_CORRUPT
     "database disk image is malformed",
     "file is not a database",
     "not a database",

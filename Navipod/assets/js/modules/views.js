@@ -13,6 +13,7 @@ import * as favorites from './favorites.js';
 import * as playlists from './playlists.js';
 import * as downloads from './downloads.js';
 import * as sync from './sync.js';
+import * as library from './library.js';
 
 const SECRET_EYE_ICON = `
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -277,7 +278,7 @@ export async function loadView(view, param = null, options = {}) {
     }
 
     if (view === 'home') await renderHome(container);
-    else if (view === 'library') await renderLibrary(container);
+    else if (view === 'library') await library.renderLibrary(container);
     else if (view === 'mix') {
       await renderMix(container, param);
       await trackRecentMix(param);
@@ -836,85 +837,6 @@ export async function renderMix(container, mixKey) {
             ? `<div class="track-list">${tracks.map((t, i) => createTrackRow(t, i, null)).join('')}</div>`
             : '<div class="empty-state glass-panel"><p>This mix is empty.</p></div>'
         }`;
-  lucide.createIcons();
-}
-
-export async function renderLibrary(container) {
-  let playlistList = [];
-  try {
-    const res = await fetch(`${state.API}/playlists`);
-    // Check res.ok BEFORE calling .json() — a non-JSON 500 body would
-    // otherwise surface a misleading "JSON parse error" to the user (B-13).
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    playlistList = await res.json();
-    state.setUserPlaylists(playlistList);
-    renderSidebarRecents();
-  } catch (e) {
-    container.innerHTML = `<div class="empty-state glass-panel"><p>Failed to load your library.</p></div>`;
-    return;
-  }
-
-  // Spotify-style "Your Library" surface:
-  //   - Header row: title (left) + circular search + add buttons (right)
-  //   - Filter pills (single chip set for now: Playlists; future-proofed
-  //     to add Albums / Artists / Synced as our model grows)
-  //   - "Recently played" sort label
-  //   - Compact rows: cover + name + meta (no card chrome)
-  // The username avatar at the very left of Spotify's header is omitted
-  // because the mobile topbar already shows it.
-  const rowHtml = (pl) => {
-    const name = ui.escHtml(pl.name || 'Playlist');
-    const thumb = pl.thumbnail || '/static/img/default_cover.png';
-    const hasThumb = pl.thumbnail && !pl.thumbnail.includes('default');
-    const fallback = pl.source_playlist_id ? 'refresh-cw' : pl.is_public ? 'globe' : 'list-music';
-    const tracks = Number(pl.track_count || 0);
-    const trackLabel = tracks === 1 ? '1 song' : `${tracks} songs`;
-    const visibility = pl.source_playlist_id ? 'Synced' : pl.is_public ? 'Public' : 'Private';
-    return `
-        <div class="library-row" onclick="loadView('playlist', ${pl.id})">
-            <div class="library-row-cover">
-                ${
-                  hasThumb
-                    ? `<img src="${thumb}" loading="lazy" decoding="async" onerror="this.outerHTML='<i data-lucide=\\'${fallback}\\'></i>'">`
-                    : `<i data-lucide="${fallback}"></i>`
-                }
-            </div>
-            <div class="library-row-meta">
-                <div class="library-row-name">${name}</div>
-                <div class="library-row-sub">Playlist · ${trackLabel} · ${visibility}</div>
-            </div>
-        </div>`;
-  };
-
-  container.innerHTML = `
-        <section class="library-shell">
-            <header class="library-head">
-                <h1 class="library-title">Your Library</h1>
-                <div class="library-head-actions">
-                    <button class="library-icon-btn" onclick="loadView('search')" title="Search">
-                        <i data-lucide="search"></i>
-                    </button>
-                    <button class="library-icon-btn" onclick="showCreatePlaylistModal()" title="New playlist">
-                        <i data-lucide="plus"></i>
-                    </button>
-                </div>
-            </header>
-
-            <div class="library-filters">
-                <button class="library-filter active">Playlists</button>
-            </div>
-
-            <div class="library-sort">
-                <i data-lucide="arrow-down-up" width="14" height="14"></i>
-                <span>Recently played</span>
-            </div>
-
-            ${
-              playlistList.length > 0
-                ? `<div class="library-list">${playlistList.map(rowHtml).join('')}</div>`
-                : `<div class="empty-state"><p>No playlists yet. Tap the + above to create your first one.</p></div>`
-            }
-        </section>`;
   lucide.createIcons();
 }
 

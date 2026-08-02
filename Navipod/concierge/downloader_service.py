@@ -7,10 +7,12 @@ import shutil
 import subprocess
 import tempfile
 import time
+from datetime import datetime, timezone
 
 import database
 import httpx
 import manager
+import media_metadata
 import mutagen
 import source_registry
 import track_identity
@@ -26,12 +28,13 @@ download_semaphore = asyncio.Semaphore(settings.CONCURRENT_DOWNLOADS)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class DownloadManager:
     def __init__(self, db: Session, user_id: int):
         self.db = db
         self.user_id = user_id
         self.user = db.query(database.User).filter(database.User.id == user_id).first()
-        
+
         if not self.user:
             raise ValueError(f"User {user_id} not found")
 
@@ -41,12 +44,12 @@ class DownloadManager:
         self._last_download_reason = ""
         self._engine_used = None
         self._fallback_reasons = []
-        
+
         # --- VALIDACIÓN DE MOTOR ---
         if not shutil.which("ffmpeg"):
             logger.error("CRÍTICO: FFmpeg no está instalado en el servidor. Reconstruye el Docker.")
         # ---------------------------
-        
+
         if not self.settings:
             self.settings = database.DownloadSettings(user_id=user_id)
             self.db.add(self.settings)
@@ -113,10 +116,14 @@ class DownloadManager:
         if not playlist_name:
             return None
 
-        playlist = self.db.query(database.Playlist).filter(
-            database.Playlist.name == playlist_name,
-            database.Playlist.owner_id == self.user_id,
-        ).first()
+        playlist = (
+            self.db.query(database.Playlist)
+            .filter(
+                database.Playlist.name == playlist_name,
+                database.Playlist.owner_id == self.user_id,
+            )
+            .first()
+        )
         if playlist:
             return playlist
 
@@ -128,10 +135,14 @@ class DownloadManager:
 
     def _resolve_target_playlist(self, job):
         if getattr(job, "target_modern_playlist_id", None):
-            playlist = self.db.query(database.Playlist).filter(
-                database.Playlist.id == job.target_modern_playlist_id,
-                database.Playlist.owner_id == self.user_id,
-            ).first()
+            playlist = (
+                self.db.query(database.Playlist)
+                .filter(
+                    database.Playlist.id == job.target_modern_playlist_id,
+                    database.Playlist.owner_id == self.user_id,
+                )
+                .first()
+            )
             if playlist:
                 return playlist
             logger.warning(
@@ -149,19 +160,25 @@ class DownloadManager:
         if not playlist or not track:
             return False
 
-        item_exists = self.db.query(database.PlaylistItem).filter_by(
-            playlist_id=playlist.id,
-            track_id=track.id,
-        ).first()
+        item_exists = (
+            self.db.query(database.PlaylistItem)
+            .filter_by(
+                playlist_id=playlist.id,
+                track_id=track.id,
+            )
+            .first()
+        )
         if item_exists:
             return False
 
         pos = self.db.query(database.PlaylistItem).filter_by(playlist_id=playlist.id).count() + 1
-        self.db.add(database.PlaylistItem(
-            playlist_id=playlist.id,
-            track_id=track.id,
-            position=pos,
-        ))
+        self.db.add(
+            database.PlaylistItem(
+                playlist_id=playlist.id,
+                track_id=track.id,
+                position=pos,
+            )
+        )
         self.db.commit()
         return True
 
@@ -188,6 +205,7 @@ class DownloadManager:
             # every song. Non-easy mutagen.File() exposes .info.length;
             # easy mode does not.
             duration = None
+            metadata = media_metadata.read_audio_metadata(final_path)
             try:
                 audio_info = mutagen.File(final_path)
                 if audio_info and getattr(audio_info, "info", None):
@@ -200,6 +218,8 @@ class DownloadManager:
                 title=title,
                 artist=artist,
                 album=album,
+                genre=metadata.genre or None,
+                year=metadata.year,
                 duration=duration,
                 source_id=source_id,
                 file_hash=file_hash,
@@ -209,6 +229,7 @@ class DownloadManager:
                 fingerprint=identity["fingerprint"] if identity else None,
                 filepath=final_path,
                 source_provider=source_provider,
+                metadata_scanned_at=datetime.now(timezone.utc),
             )
             self.db.add(track)
             self.db.commit()
@@ -242,7 +263,7 @@ class DownloadManager:
         return any(True for _ in self._iter_downloaded_audio_files(folder))
 
     def _iter_downloaded_audio_files(self, folder: str):
-        audio_exts = ('.mp3', '.m4a', '.flac', '.opus', '.ogg', '.wav')
+        audio_exts = (".mp3", ".m4a", ".flac", ".opus", ".ogg", ".wav")
         try:
             for root, _, files in os.walk(folder):
                 for name in files:
@@ -282,18 +303,18 @@ class DownloadManager:
 
         # Separamos la extensión para no normalizar el punto del archivo
         name, ext = os.path.splitext(filename)
-        
+
         # Normalización NFKD y eliminación de no-ASCII
-        nfkd_form = unicodedata.normalize('NFKD', name)
-        only_ascii = nfkd_form.encode('ASCII', 'ignore').decode('ASCII')
-        
+        nfkd_form = unicodedata.normalize("NFKD", name)
+        only_ascii = nfkd_form.encode("ASCII", "ignore").decode("ASCII")
+
         # Filtro de seguridad: solo alfanuméricos, guiones y espacios
-        clean_name = re.sub(r'[^a-zA-Z0-9\-\s]', '', only_ascii)
+        clean_name = re.sub(r"[^a-zA-Z0-9\-\s]", "", only_ascii)
         clean_name = " ".join(clean_name.split()).strip()
-        
+
         if not clean_name:
             clean_name = f"track_{int(time.time())}"
-            
+
         return f"{clean_name}{ext.lower()}"
 
     def _extract_source_id(self, url: str) -> str:
@@ -328,7 +349,6 @@ class DownloadManager:
 
         return None
 
-
     async def process_download(self, job_id: int):
         # El semáforo asegura que solo N descargas se ejecuten al mismo tiempo
         async with download_semaphore:
@@ -338,7 +358,8 @@ class DownloadManager:
 
     def _process_download_sync(self, job_id: int):
         job = self.db.query(database.DownloadJob).filter(database.DownloadJob.id == job_id).first()
-        if not job: return
+        if not job:
+            return
         self._set_last_reason("")
         self._set_engine_used("")
         self._fallback_reasons = []
@@ -348,7 +369,7 @@ class DownloadManager:
 
         # --- VERIFICACIÓN DE CUOTA DE DISCO (GLOBAL POOL) ---
         used_gb, limit_gb, percent = manager.get_pool_status(self.db)
-        
+
         # Buffer de seguridad (ej. 1GB libre necesario)
         if used_gb >= limit_gb:
             job.status = "failed"
@@ -376,12 +397,12 @@ class DownloadManager:
             existing_track = self.db.query(database.Track).filter(database.Track.source_id == source_id).first()
             if existing_track:
                 logger.info(f"PRE-DOWNLOAD DEDUP HIT: Track {existing_track.id} found for {source_id}. Skipping.")
-                
+
                 # Link existing track to the target playlist ONLY if one was requested
                 if target_playlist:
                     if self._link_track_to_playlist(target_playlist, existing_track):
                         logger.info(f"Linked existing track to playlist '{target_playlist.name}'")
-                
+
                 job.status = "finished"
                 job.progress_percent = 100
                 job.current_file = f"Already in library: {existing_track.title}"
@@ -396,7 +417,6 @@ class DownloadManager:
                 return
             else:
                 logger.info(f"Pre-download dedup miss for {source_id}. Proceeding with download.")
-
 
         with tempfile.TemporaryDirectory() as temp_dir:
             try:
@@ -423,30 +443,32 @@ class DownloadManager:
 
                 # 3. PROCESAR ARCHIVOS (Tagging, Deduplication, Move to Pool)
                 self._log(job_id, "Processing metadata and deduplicating...", 90)
-                
+
                 processed_count = 0
                 last_display_title = None
                 for filepath in self._iter_downloaded_audio_files(temp_dir):
                     file_name = os.path.basename(filepath)
-                    
+
                     # A. Extraer Metadatos y Hash
                     artist = "Unknown Artist"
                     title = os.path.splitext(file_name)[0]
                     album = "Unknown Album"
                     source_id = None
                     identity = None
-                    
+
                     try:
                         # Hashing
-                        file_hash = utils.get_file_hash(filepath) if hasattr(utils, 'get_file_hash') else None
+                        file_hash = utils.get_file_hash(filepath) if hasattr(utils, "get_file_hash") else None
                         if not file_hash:
                             # Inline hash calculation if utility missing
                             import hashlib
+
                             sha = hashlib.sha256()
-                            with open(filepath, 'rb') as f:
+                            with open(filepath, "rb") as f:
                                 while True:
                                     data = f.read(65536)
-                                    if not data: break
+                                    if not data:
+                                        break
                                     sha.update(data)
                             file_hash = sha.hexdigest()
 
@@ -454,9 +476,12 @@ class DownloadManager:
                         try:
                             audio = mutagen.File(filepath, easy=True)
                             if audio:
-                                if 'artist' in audio: artist = audio['artist'][0]
-                                if 'title' in audio: title = audio['title'][0]
-                                if 'album' in audio: album = audio['album'][0]
+                                if "artist" in audio:
+                                    artist = audio["artist"][0]
+                                if "title" in audio:
+                                    title = audio["title"][0]
+                                if "album" in audio:
+                                    album = audio["album"][0]
                                 audio.save()
                         except Exception as e:
                             logger.warning(f"Error reading tags: {e}")
@@ -470,33 +495,35 @@ class DownloadManager:
                             # the dedup check.
                             source_id = job.input_url
                         elif "spotify" in job.input_url and job.input_url.count("track") == 1:
-                             # Single track download, use input URL as ID base
-                             source_id = f"spotify:track:{job.input_url.split('/')[-1].split('?')[0]}"
+                            # Single track download, use input URL as ID base
+                            source_id = f"spotify:track:{job.input_url.split('/')[-1].split('?')[0]}"
                         elif "youtu" in job.input_url:
-                             # Handle both youtube.com/watch?v= and youtu.be/
-                             if "v=" in job.input_url:
-                                 vid = job.input_url.split("v=")[-1].split("&")[0]
-                                 source_id = f"youtube:{vid}"
-                             elif "youtu.be/" in job.input_url:
-                                 vid = job.input_url.split("youtu.be/")[-1].split("?")[0]
-                                 if len(vid) == 11: 
-                                     source_id = f"youtube:{vid}"
-                                 else:
-                                     source_id = f"local:{file_hash}"
-                             else:
-                                 # Fallback for other formats
-                                 vid = job.input_url.split("/")[-1].split("?")[0]
-                                 if len(vid) == 11:
-                                     source_id = f"youtube:{vid}"
-                                 else:
-                                     source_id = f"local:{file_hash}"
+                            # Handle both youtube.com/watch?v= and youtu.be/
+                            if "v=" in job.input_url:
+                                vid = job.input_url.split("v=")[-1].split("&")[0]
+                                source_id = f"youtube:{vid}"
+                            elif "youtu.be/" in job.input_url:
+                                vid = job.input_url.split("youtu.be/")[-1].split("?")[0]
+                                if len(vid) == 11:
+                                    source_id = f"youtube:{vid}"
+                                else:
+                                    source_id = f"local:{file_hash}"
+                            else:
+                                # Fallback for other formats
+                                vid = job.input_url.split("/")[-1].split("?")[0]
+                                if len(vid) == 11:
+                                    source_id = f"youtube:{vid}"
+                                else:
+                                    source_id = f"local:{file_hash}"
                         else:
-                             # Fallback: Hash-based ID
-                             source_id = f"local:{file_hash}"
+                            # Fallback: Hash-based ID
+                            source_id = f"local:{file_hash}"
 
                         identity = track_identity.compute_track_identity(artist, title)
 
-                        display_title = " - ".join(part for part in [artist, title] if part).strip() or title or file_name
+                        display_title = (
+                            " - ".join(part for part in [artist, title] if part).strip() or title or file_name
+                        )
                         if display_title:
                             job.resolved_title = title[:200] if title else None
                             job.resolved_artist = artist[:200] if artist else None
@@ -516,33 +543,37 @@ class DownloadManager:
                     )
 
                     final_path = ""
-                    
+
                     if track:
                         logger.info(f"Deduplication: Track found (ID: {track.id}). Linking.")
                         final_path = track.filepath
                         # Si el archivo físico no existe, lo restauramos?
                         if final_path and not os.path.exists(final_path):
-                             # Restore file from temp
-                             pool_dir = os.path.dirname(final_path)
-                             os.makedirs(pool_dir, exist_ok=True)
-                             shutil.move(filepath, final_path)
+                            # Restore file from temp
+                            pool_dir = os.path.dirname(final_path)
+                            os.makedirs(pool_dir, exist_ok=True)
+                            shutil.move(filepath, final_path)
                     else:
                         # C. Move to Pool
-                        safe_artist = "".join(c for c in artist if c.isalnum() or c in (' ', '-', '_')).strip() or "Unknown"
-                        safe_album = "".join(c for c in album if c.isalnum() or c in (' ', '-', '_')).strip() or "Unknown"
-                        safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip()
-                        
+                        safe_artist = (
+                            "".join(c for c in artist if c.isalnum() or c in (" ", "-", "_")).strip() or "Unknown"
+                        )
+                        safe_album = (
+                            "".join(c for c in album if c.isalnum() or c in (" ", "-", "_")).strip() or "Unknown"
+                        )
+                        safe_title = "".join(c for c in title if c.isalnum() or c in (" ", "-", "_")).strip()
+
                         pool_dir = os.path.join(pool_root, safe_artist, safe_album)
                         os.makedirs(pool_dir, exist_ok=True)
-                        
+
                         new_filename = f"{safe_title}{os.path.splitext(file_name)[1]}"
                         final_path = os.path.join(pool_dir, new_filename)
-                        
+
                         # Collision check
                         if os.path.exists(final_path):
                             new_filename = f"{safe_title}_{file_hash[:6]}{os.path.splitext(file_name)[1]}"
                             final_path = os.path.join(pool_dir, new_filename)
-                            
+
                         # D. Create Track Record. Move + DB insert are handled
                         # together so failed commits do not leave orphan files.
                         track = self._move_into_pool_and_create_track(
@@ -560,9 +591,11 @@ class DownloadManager:
                     # E. Link to Playlist (Only if requested)
                     if target_playlist:
                         self._link_track_to_playlist(target_playlist, track)
-                    
+
                     processed_count += 1
-                    last_display_title = " - ".join(part for part in [track.artist, track.title] if part).strip() or display_title
+                    last_display_title = (
+                        " - ".join(part for part in [track.artist, track.title] if part).strip() or display_title
+                    )
                     job.resolved_track_id = track.id
                     job.resolved_track_count = processed_count
                     job.resolved_title = track.title
@@ -583,10 +616,12 @@ class DownloadManager:
                 # Generar M3U para Navidrome en una carpeta visible??
                 # Phase 4 handles explicit M3U generation.
                 # For now, we are good. Database is source of truth.
-                
+
                 job.status = "completed"
                 job.progress_percent = 100
-                job.current_file = f"Imported to library: {last_display_title}" if last_display_title else "Imported to library"
+                job.current_file = (
+                    f"Imported to library: {last_display_title}" if last_display_title else "Imported to library"
+                )
                 job.engine_used = self._engine_used or ("spotdl" if "spotify.com" in job.input_url else "yt-dlp")
                 job.fallback_reason = self._fallback_reason_text()
                 job.error_type = None
@@ -630,9 +665,7 @@ class DownloadManager:
         # Look up peer + cached track metadata. We use the cached
         # FederatedTrack row for filename + tagging hints; without it
         # we still proceed but with a generic name.
-        inst = self.db.query(database.FederatedInstance).filter(
-            database.FederatedInstance.id == instance_id
-        ).first()
+        inst = self.db.query(database.FederatedInstance).filter(database.FederatedInstance.id == instance_id).first()
         if not inst:
             self._set_last_reason(f"Federation peer #{instance_id} not configured on this instance")
             return False
@@ -644,18 +677,21 @@ class DownloadManager:
         # offline. Otherwise we'd waste time on a guaranteed timeout.
         try:
             import federation_service as _fed_svc
+
             if not _fed_svc.status_is_playable(inst.status):
-                self._set_last_reason(
-                    f"Federation peer '{inst.name}' is currently {inst.status} — try again later"
-                )
+                self._set_last_reason(f"Federation peer '{inst.name}' is currently {inst.status} — try again later")
                 return False
         except Exception:
             pass
 
-        fed_track = self.db.query(database.FederatedTrack).filter(
-            database.FederatedTrack.instance_id == instance_id,
-            database.FederatedTrack.remote_id == remote_id,
-        ).first()
+        fed_track = (
+            self.db.query(database.FederatedTrack)
+            .filter(
+                database.FederatedTrack.instance_id == instance_id,
+                database.FederatedTrack.remote_id == remote_id,
+            )
+            .first()
+        )
 
         upstream_url = inst.base_url.rstrip("/") + f"/api/federation/stream/{remote_id}"
         upstream_headers = {"User-Agent": "Navipod-Federation/1.0"}
@@ -714,7 +750,10 @@ class DownloadManager:
                     else:
                         base = f"federation-{instance_id}-{remote_id}"
                     safe_chars = set(" -_.()&,'!")
-                    base = "".join(c for c in base if c.isalnum() or c in safe_chars)[:120].strip() or f"federation-{instance_id}-{remote_id}"
+                    base = (
+                        "".join(c for c in base if c.isalnum() or c in safe_chars)[:120].strip()
+                        or f"federation-{instance_id}-{remote_id}"
+                    )
                     out_path = os.path.join(folder, base + suffix)
 
                     total_bytes = 0
@@ -788,7 +827,7 @@ class DownloadManager:
             self._log(job_id, "SpotiFLAC failed. Falling back to spotDL...", 10)
         else:
             logger.info("SpotiFLAC command not found. Falling back to spotDL.")
-        
+
         # 1. Intento con Claves (si existen)
         if self.settings.spotify_client_id:
             self._log(job_id, "SpotDL metadata mode...", 10)
@@ -800,7 +839,7 @@ class DownloadManager:
                 self._log(job_id, "spotDL metadata parsing failed. Switching to yt-dlp fallback...", 20)
                 return self._handle_spotify_query_fallback(url, folder, job_id)
             self._log(job_id, "spotDL API failed. Switching to anonymous mode...", 20)
-        
+
         # 2. Intento Anónimo (320k) - AQUÍ ESTÁ EL FIX
         self._log(job_id, "spotDL anonymous mode...", 30)
         if self._run_spotdl_cmd(url, folder, mode="full", use_auth=False):
@@ -810,7 +849,7 @@ class DownloadManager:
         if self._spotdl_should_bypass_retries():
             self._log(job_id, "spotDL metadata parsing failed. Switching to yt-dlp fallback...", 40)
             return self._handle_spotify_query_fallback(url, folder, job_id)
-        
+
         # 3. Intento Básico (128k)
         self._log(job_id, "spotDL basic mode retry (128k)...", 50)
         if self._run_spotdl_cmd(url, folder, mode="basic", use_auth=False):
@@ -826,7 +865,7 @@ class DownloadManager:
 
         if not self._last_download_reason:
             self._set_last_reason("SpotiFLAC, spotDL, and yt-dlp Spotify fallbacks all failed.")
-        
+
         return False
 
     def _run_spotiflac_cmd(self, url, folder):
@@ -960,35 +999,47 @@ class DownloadManager:
 
     def _run_spotdl_cmd(self, url, folder, mode="full", use_auth=True):
         cmd = ["spotdl", "download", url]
-        
+
         # Lógica de Auth Condicional
         if use_auth and self.settings.spotify_client_id and self.settings.spotify_client_secret:
-            cmd.extend(["--client-id", self.settings.spotify_client_id, 
-                        "--client-secret", self.settings.spotify_client_secret])
-        
+            cmd.extend(
+                ["--client-id", self.settings.spotify_client_id, "--client-secret", self.settings.spotify_client_secret]
+            )
+
         # Cookies siempre (ayudan a evitar rate limits de YouTube)
         if self._runtime_cookie_path and os.path.exists(self._runtime_cookie_path):
             cmd.extend(["--cookie-file", self._runtime_cookie_path])
-        
+
         # FIX: Pasar argumentos a yt-dlp interno de spotdl para EJS challenge solving
         # Nota: spotdl requiere los args separados por espacio dentro de una sola cadena
         cmd.extend(["--yt-dlp-args", "--remote-components ejs:github --js-runtimes deno,node"])
 
         if mode == "full":
-            cmd.extend([
-                "--output", f"{folder}/{{artist}} - {{title}}.{{ext}}",
-                "--format", "mp3",
-                "--bitrate", "256k",
-                "--overwrite", "skip",
-                "--print-errors"
-            ])
+            cmd.extend(
+                [
+                    "--output",
+                    f"{folder}/{{artist}} - {{title}}.{{ext}}",
+                    "--format",
+                    "mp3",
+                    "--bitrate",
+                    "256k",
+                    "--overwrite",
+                    "skip",
+                    "--print-errors",
+                ]
+            )
         elif mode == "basic":
-            cmd.extend([
-                "--output", f"{folder}/{{artist}} - {{title}}.{{ext}}",
-                "--format", "mp3",
-                "--bitrate", "128k",
-                "--print-errors"
-            ])
+            cmd.extend(
+                [
+                    "--output",
+                    f"{folder}/{{artist}} - {{title}}.{{ext}}",
+                    "--format",
+                    "mp3",
+                    "--bitrate",
+                    "128k",
+                    "--print-errors",
+                ]
+            )
 
         try:
             safe_cmd = []
@@ -1006,7 +1057,7 @@ class DownloadManager:
             logger.info(f"SpotDL CMD (Auth={use_auth}): {' '.join(safe_cmd)}")
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             stdout, stderr = process.communicate(timeout=2400)
-            
+
             # spotdl exits 0 even when every song fails (LookupError, YouTube
             # blocks) — trusting the returncode alone skipped the yt-dlp
             # fallback chain. Require actual audio output, like SpotiFLAC.
@@ -1026,9 +1077,7 @@ class DownloadManager:
                     self._set_last_reason("spotDL hit the upstream Spotify metadata bug: missing 'genres'.")
                     logger.warning("SpotDL metadata parsing bug detected: missing 'genres'")
                 elif process.returncode == 0:
-                    self._set_last_reason(
-                        combined or "spotDL finished without producing an audio file."
-                    )
+                    self._set_last_reason(combined or "spotDL finished without producing an audio file.")
                     logger.warning(f"SpotDL exited 0 but produced no audio. Output: {combined[:300]}")
                 else:
                     self._set_last_reason(combined or f"spotDL exited with code {process.returncode}.")
@@ -1044,62 +1093,66 @@ class DownloadManager:
 
     def _handle_ytdlp_robust(self, url, folder, job_id):
         def progress_hook(d):
-            if d['status'] == 'downloading':
+            if d["status"] == "downloading":
                 try:
                     # Robust progress extraction
-                    p_str = d.get('_percent_str', '0%').strip()
+                    p_str = d.get("_percent_str", "0%").strip()
                     # Remove ANSI codes and %
-                    p_clean = re.sub(r'\x1b\[[0-9;]*m', '', p_str).replace('%', '').strip()
+                    p_clean = re.sub(r"\x1b\[[0-9;]*m", "", p_str).replace("%", "").strip()
                     p_float = float(p_clean)
-                    
-                    filename = d.get('filename', 'Downloading...')
+
+                    filename = d.get("filename", "Downloading...")
                     basename = os.path.basename(filename)
-                    
+
                     self._log(job_id, f"Downloading: {basename}", p_float)
                 except Exception as e:
                     logger.debug(f"Progress hook error: {e}")
 
         # Si el usuario NO marcó playlist, forzamos descarga de solo el vídeo
         is_playlist_url = "list=" in url
-        
+
         client_strategies = [
-             {'player_client': ['web'], 'skip': ['dash', 'hls']},
-             {'player_client': ['web_embedded'], 'skip': ['dash', 'hls']},
-             {'player_client': ['ios', 'web'], 'skip': ['dash', 'hls']},
-             {'player_client': ['android', 'web'], 'skip': ['dash', 'hls']},
-             {'player_client': ['android_vr'], 'skip': ['dash', 'hls']}
+            {"player_client": ["web"], "skip": ["dash", "hls"]},
+            {"player_client": ["web_embedded"], "skip": ["dash", "hls"]},
+            {"player_client": ["ios", "web"], "skip": ["dash", "hls"]},
+            {"player_client": ["android", "web"], "skip": ["dash", "hls"]},
+            {"player_client": ["android_vr"], "skip": ["dash", "hls"]},
         ]
         age_gate_cookie_strategies = [
-             {'player_client': ['tv', 'web_safari'], 'skip': []},
-             {'player_client': ['tv_embedded', 'web_safari'], 'skip': []},
-             {'player_client': ['web_embedded', 'web_safari'], 'skip': []},
-             {'player_client': ['web', 'web_safari'], 'skip': []},
+            {"player_client": ["tv", "web_safari"], "skip": []},
+            {"player_client": ["tv_embedded", "web_safari"], "skip": []},
+            {"player_client": ["web_embedded", "web_safari"], "skip": []},
+            {"player_client": ["web", "web_safari"], "skip": []},
         ]
 
         # Base options
         base_opts = {
-            'format': 'bestaudio/best',
-            'outtmpl': f'{folder}/%(artist)s - %(title)s.%(ext)s',
-            'writethumbnail': True,
-            'age_limit': 99,
-            'noplaylist': not is_playlist_url, 
-            'extract_flat': False,
-            'ignoreerrors': False,
-            'source_address': '0.0.0.0',
-            'force_ipv4': True, 
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '320',
-            }, {'key': 'EmbedThumbnail'}, {'key': 'FFmpegMetadata'}],
-            'progress_hooks': [progress_hook],
-            'js_runtimes': {'deno': {}, 'node': {}},
-            'remote_components': ['ejs:github'],
-            'sleep_interval': 5,
-            'max_sleep_interval': 10,
-            'retries': 2,
-            'extractor_retries': 2,
-            'file_access_retries': 2,
+            "format": "bestaudio/best",
+            "outtmpl": f"{folder}/%(artist)s - %(title)s.%(ext)s",
+            "writethumbnail": True,
+            "age_limit": 99,
+            "noplaylist": not is_playlist_url,
+            "extract_flat": False,
+            "ignoreerrors": False,
+            "source_address": "0.0.0.0",
+            "force_ipv4": True,
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "320",
+                },
+                {"key": "EmbedThumbnail"},
+                {"key": "FFmpegMetadata"},
+            ],
+            "progress_hooks": [progress_hook],
+            "js_runtimes": {"deno": {}, "node": {}},
+            "remote_components": ["ejs:github"],
+            "sleep_interval": 5,
+            "max_sleep_interval": 10,
+            "retries": 2,
+            "extractor_retries": 2,
+            "file_access_retries": 2,
         }
 
         retry_state = {"force_cookies": False}
@@ -1109,20 +1162,20 @@ class DownloadManager:
             if use_cookies and retry_state["force_cookies"]:
                 strategies = age_gate_cookie_strategies
             elif use_cookies:
-                strategies = [s for s in client_strategies if "android" not in s.get('player_client', [])]
+                strategies = [s for s in client_strategies if "android" not in s.get("player_client", [])]
 
             for i, strategy_config in enumerate(strategies):
                 try:
                     opts = base_opts.copy()
                     if use_cookies and self._runtime_cookie_path and os.path.exists(self._runtime_cookie_path):
-                        opts['cookiefile'] = self._runtime_cookie_path
-                    opts['extractor_args'] = {'youtube': strategy_config}
+                        opts["cookiefile"] = self._runtime_cookie_path
+                    opts["extractor_args"] = {"youtube": strategy_config}
                     if retry_state["force_cookies"] and use_cookies:
-                        opts['format'] = 'bestaudio/best'
-                        opts['concurrent_fragment_downloads'] = 1
+                        opts["format"] = "bestaudio/best"
+                        opts["concurrent_fragment_downloads"] = 1
 
                     logger.info(
-                        f"[Job {job_id}] Attempting download with Strategy {i+1}"
+                        f"[Job {job_id}] Attempting download with Strategy {i + 1}"
                         f" (cookies={'on' if use_cookies else 'off'}): {strategy_config['player_client']}"
                     )
 
@@ -1130,7 +1183,7 @@ class DownloadManager:
                         ydl.extract_info(url, download=True)
                         if not self._has_downloaded_audio(folder):
                             self._set_last_reason("yt-dlp finished without producing an audio file.")
-                            logger.warning(f"[Job {job_id}] Strategy {i+1} finished but produced no audio files.")
+                            logger.warning(f"[Job {job_id}] Strategy {i + 1} finished but produced no audio files.")
                             continue
                         self._set_last_reason("")
                         if not self._engine_used:
@@ -1157,9 +1210,7 @@ class DownloadManager:
                             break
                     elif self._is_youtube_bot_challenge_error(err_str):
                         if use_cookies:
-                            self._set_last_reason(
-                                "YouTube bot challenge persisted even with the configured cookies."
-                            )
+                            self._set_last_reason("YouTube bot challenge persisted even with the configured cookies.")
                         elif self._runtime_cookie_path:
                             self._set_last_reason(
                                 "YouTube bot challenge detected. Continuing with alternate clients before a final authenticated retry."
@@ -1171,7 +1222,7 @@ class DownloadManager:
                         logger.warning(f"[Job {job_id}] YouTube bot challenge detected.")
                     else:
                         self._set_last_reason(str(e))
-                    logger.warning(f"[Job {job_id}] Strategy {i+1} failed: {err_str[:140]}...")
+                    logger.warning(f"[Job {job_id}] Strategy {i + 1} failed: {err_str[:140]}...")
                     continue
             return False
 
@@ -1198,7 +1249,7 @@ class DownloadManager:
                     self._log(job_id, "Age-restricted content detected. Retrying with cookies...", 74)
                     if run_with_cookie_mode(True):
                         return True
-        
+
         # If all strategies failed
         if not self._last_download_reason:
             self._set_last_reason("yt-dlp exhausted all download strategies.")

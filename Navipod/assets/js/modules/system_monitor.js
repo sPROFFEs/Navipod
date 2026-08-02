@@ -93,7 +93,8 @@ export function initSystemMonitor(root = document) {
   wrappedRegenerateForm?.addEventListener('submit', () => {
     if (!wrappedRegenerateSubmit) return;
     wrappedRegenerateSubmit.disabled = true;
-    wrappedRegenerateSubmit.innerHTML = '<i data-lucide="loader-2" style="animation: spin 1s linear infinite;"></i><span>Queuing...</span>';
+    wrappedRegenerateSubmit.innerHTML =
+      '<i data-lucide="loader-2" style="animation: spin 1s linear infinite;"></i><span>Queuing...</span>';
     if (window.lucide) window.lucide.createIcons();
   });
 

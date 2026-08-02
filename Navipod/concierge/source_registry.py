@@ -1,6 +1,5 @@
 from urllib.parse import urlparse
 
-
 KNOWN_SOURCES = {
     "spotify",
     "youtube",

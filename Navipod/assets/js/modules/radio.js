@@ -68,8 +68,9 @@ export async function renderSavedRadios(container) {
     return;
   }
 
-  container.innerHTML = radios.length > 0
-    ? `<div class="saved-radio-list">
+  container.innerHTML =
+    radios.length > 0
+      ? `<div class="saved-radio-list">
         ${radios
           .map((r) => {
             const radioName = ui.escHtml(r.name || 'Saved Radio');
@@ -91,7 +92,7 @@ export async function renderSavedRadios(container) {
           })
           .join('')}
       </div>`
-    : `<div class="empty-state glass-panel"><p>No saved radios yet. Save stations from the search results above.</p></div>`;
+      : `<div class="empty-state glass-panel"><p>No saved radios yet. Save stations from the search results above.</p></div>`;
   lucide.createIcons();
 }
 
@@ -193,9 +194,9 @@ export function drawRadioGrid(stations) {
         if (!s || !s.url) return '';
         const id = s.url.split('/').pop();
         if (id === 'channels' || id.length < 5) return '';
-        const safeTitle  = ui.escHtml(s.title || 'Unknown');
+        const safeTitle = ui.escHtml(s.title || 'Unknown');
         const jsSafeTitle = (s.title || 'Unknown').replace(/'/g, "\\'");
-        const safeSub    = ui.escHtml(s.subtitle || 'Streaming');
+        const safeSub = ui.escHtml(s.subtitle || 'Streaming');
         return `
           <div class="saved-radio-row">
             <button class="saved-radio-main"

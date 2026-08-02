@@ -42,10 +42,7 @@ _active_audit_path: str | None = None
 
 # Single header line so the file is greppable / spreadsheet-importable.
 # `top_allocators` is a pipe-separated list of `file:line:size_kb` entries.
-CSV_HEADER = (
-    "iso_utc,uptime_s,rss_kb,vms_kb,threads,open_fds,"
-    "py_traced_current_kb,py_traced_peak_kb,top_allocators"
-)
+CSV_HEADER = "iso_utc,uptime_s,rss_kb,vms_kb,threads,open_fds,py_traced_current_kb,py_traced_peak_kb,top_allocators"
 
 
 def _read_proc_status() -> dict[str, str]:

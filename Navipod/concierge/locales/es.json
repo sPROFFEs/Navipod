@@ -173,7 +173,7 @@
     "help.youtube.step2": "Exportar",
     "help.youtube.step2_desc": "Entra en YouTube con tu cuenta, abre la extensión y pulsa \"Export\". Se descargará un archivo <code>cookies.txt</code>.",
     "help.youtube.step3": "Subir al Servidor",
-    "help.youtube.step3_desc": "Ve a <a href=\"/settings/downloader\" class=\"text-link\">Ajustes > Motor</a> y sube el archivo.",
+    "help.youtube.step3_desc": "Ve a <a href=\"/user/settings\" class=\"text-link\">Ajustes > Motor</a> y sube el archivo.",
     "help.spotify.title": "API de Spotify",
     "help.spotify.desc": "Habilita la descarga de metadatos de alta calidad y lectura de Playlists privadas.",
     "help.spotify.step1": "Dashboard de Desarrolladores",

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 import database
+
 logger = logging.getLogger(__name__)
 
 ADMIN_JOB_RETENTION_LIMIT = 200
@@ -38,17 +39,10 @@ def create_admin_job(job_type: str, triggered_by: str | None, message: str, deta
 
 def _prune_admin_jobs(db, keep: int = ADMIN_JOB_RETENTION_LIMIT):
     keep = max(1, int(keep))
-    total_jobs = db.query(database.AdminJob.id).count()
-    active_count = (
-        db.query(database.AdminJob.id)
-        .filter(database.AdminJob.status.in_(["queued", "running"]))
-        .count()
-    )
+    active_count = db.query(database.AdminJob.id).filter(database.AdminJob.status.in_(["queued", "running"])).count()
     keep_finished = max(0, keep - active_count)
     finished_count = (
-        db.query(database.AdminJob.id)
-        .filter(database.AdminJob.status.in_(["completed", "failed"]))
-        .count()
+        db.query(database.AdminJob.id).filter(database.AdminJob.status.in_(["completed", "failed"])).count()
     )
     overflow = finished_count - keep_finished
     if overflow <= 0:
@@ -111,9 +105,7 @@ def _heartbeat_lock(db, job_id: int | None):
     if job_id is None:
         return
     lock = (
-        db.query(database.AdminOperationLock)
-        .filter(database.AdminOperationLock.name == GLOBAL_OPERATION_LOCK)
-        .first()
+        db.query(database.AdminOperationLock).filter(database.AdminOperationLock.name == GLOBAL_OPERATION_LOCK).first()
     )
     if not lock or lock.job_id != job_id:
         return
@@ -144,7 +136,9 @@ def update_admin_job(job_id: int, *, status=None, message=None, details=None, fi
         db.close()
 
 
-def update_admin_job_progress(job_id: int, *, message=None, status=None, phase=None, progress=None, extra=None, finished=False):
+def update_admin_job_progress(
+    job_id: int, *, message=None, status=None, phase=None, progress=None, extra=None, finished=False
+):
     db = database.SessionLocal()
     try:
         job = db.query(database.AdminJob).filter(database.AdminJob.id == job_id).first()
@@ -167,10 +161,12 @@ def update_admin_job_progress(job_id: int, *, message=None, status=None, phase=N
             details.update(extra)
         if message:
             logs = details.setdefault("logs", [])
-            logs.append({
-                "at": utcnow().isoformat(),
-                "message": message,
-            })
+            logs.append(
+                {
+                    "at": utcnow().isoformat(),
+                    "message": message,
+                }
+            )
             if len(logs) > ADMIN_JOB_LOG_LIMIT:
                 details["logs"] = logs[-ADMIN_JOB_LOG_LIMIT:]
             job.message = message
@@ -219,21 +215,25 @@ def get_recent_admin_jobs(db, limit=10):
                 details = json.loads(job.details_json)
             except Exception:
                 details = {"raw": job.details_json}
-        response.append({
-            "id": job.id,
-            "job_type": job.job_type,
-            "status": job.status,
-            "triggered_by": job.triggered_by,
-            "message": job.message,
-            "details": details,
-            "started_at": job.started_at.isoformat() if job.started_at else None,
-            "finished_at": job.finished_at.isoformat() if job.finished_at else None,
-        })
+        response.append(
+            {
+                "id": job.id,
+                "job_type": job.job_type,
+                "status": job.status,
+                "triggered_by": job.triggered_by,
+                "message": job.message,
+                "details": details,
+                "started_at": job.started_at.isoformat() if job.started_at else None,
+                "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+            }
+        )
     return response
 
 
 def get_active_operation_lock(db):
-    lock = db.query(database.AdminOperationLock).filter(database.AdminOperationLock.name == GLOBAL_OPERATION_LOCK).first()
+    lock = (
+        db.query(database.AdminOperationLock).filter(database.AdminOperationLock.name == GLOBAL_OPERATION_LOCK).first()
+    )
     if not lock:
         return None
     if _should_reclaim_lock(db, lock):
@@ -248,7 +248,9 @@ def get_active_operation_lock(db):
 
 
 def acquire_lock(db, job_id: int | None):
-    existing = db.query(database.AdminOperationLock).filter(database.AdminOperationLock.name == GLOBAL_OPERATION_LOCK).first()
+    existing = (
+        db.query(database.AdminOperationLock).filter(database.AdminOperationLock.name == GLOBAL_OPERATION_LOCK).first()
+    )
     if existing and _should_reclaim_lock(db, existing):
         _clear_lock(db, existing)
         existing = None
@@ -261,5 +263,7 @@ def acquire_lock(db, job_id: int | None):
 
 
 def release_lock(db):
-    db.query(database.AdminOperationLock).filter(database.AdminOperationLock.name == GLOBAL_OPERATION_LOCK).delete(synchronize_session=False)
+    db.query(database.AdminOperationLock).filter(database.AdminOperationLock.name == GLOBAL_OPERATION_LOCK).delete(
+        synchronize_session=False
+    )
     db.commit()

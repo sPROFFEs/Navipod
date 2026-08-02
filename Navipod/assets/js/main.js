@@ -15,6 +15,7 @@ import * as favorites from './modules/favorites.js';
 import * as playlists from './modules/playlists.js';
 import * as downloads from './modules/downloads.js';
 import * as views from './modules/views.js';
+import * as library from './modules/library.js';
 // admin.js is dynamically imported below for is_admin users only.
 // Saves ~24 KB on every non-admin page load.
 import * as lyrics from './modules/lyrics.js';
@@ -178,6 +179,13 @@ window.handlePlaylistCoverUpload = playlists.handlePlaylistCoverUpload;
 window.showPlaylistCoverTrackModal = playlists.showPlaylistCoverTrackModal;
 window.setPlaylistCoverFromTrack = playlists.setPlaylistCoverFromTrack;
 window.resetPlaylistCover = playlists.resetPlaylistCover;
+
+// Library
+window.switchLibraryKind = library.switchLibraryKind;
+window.openLibraryFacet = library.openLibraryFacet;
+window.showCreateSmartPlaylistModal = library.showCreateSmartPlaylistModal;
+window.createSmartPlaylist = library.createSmartPlaylist;
+window.refreshSmartPlaylist = library.refreshSmartPlaylist;
 
 // Downloads
 window.openDownloadsModal = downloads.openDownloadsModal;

@@ -39,8 +39,8 @@ from spotify_service import spotify_service
 logger = logging.getLogger(__name__)
 
 
-ARTIST_VIEW_TTL = 7 * 24 * 3600       # 7 days
-TRACK_RADIO_TTL = 14 * 24 * 3600      # 14 days
+ARTIST_VIEW_TTL = 7 * 24 * 3600  # 7 days
+TRACK_RADIO_TTL = 14 * 24 * 3600  # 14 days
 
 
 def _is_fresh(payload: dict, ttl: int) -> bool:
@@ -115,9 +115,7 @@ async def get_artist_view(
     # but the artist data we pull is universal so we cache it globally).
     if spotify_client_id and spotify_client_secret:
         try:
-            sp_artist = await spotify_service.get_artist_by_name(
-                spotify_client_id, spotify_client_secret, artist_name
-            )
+            sp_artist = await spotify_service.get_artist_by_name(spotify_client_id, spotify_client_secret, artist_name)
             if sp_artist:
                 out["spotify"] = sp_artist
                 albums = await spotify_service.get_artist_albums(
@@ -137,8 +135,7 @@ async def get_artist_view(
     # produced data, we keep it (next visitor benefits); otherwise we
     # skip the write so the next request retries.
     has_real_data = bool(
-        out.get("info") or out.get("similar") or out.get("top_tracks")
-        or out.get("albums") or out.get("spotify")
+        out.get("info") or out.get("similar") or out.get("top_tracks") or out.get("albums") or out.get("spotify")
     )
     if has_real_data:
         metadata_cache.set(cache_key, _now_payload(out))
@@ -179,9 +176,7 @@ async def get_radio_seeds(
 
     if lastfm_api_key:
         try:
-            similar = await lastfm_service.get_similar_tracks(
-                lastfm_api_key, artist, title, limit=40
-            )
+            similar = await lastfm_service.get_similar_tracks(lastfm_api_key, artist, title, limit=40)
             for s in similar:
                 if s.get("title") and s.get("artist"):
                     seeds.append({"title": s["title"], "artist": s["artist"]})
@@ -206,9 +201,7 @@ async def get_radio_seeds(
                     lastfm_api_key, fallback_seed_artist or artist, limit=6
                 )
                 for sa in sim_artists[:4]:
-                    tops = await lastfm_service.get_artist_top_tracks(
-                        lastfm_api_key, sa["name"], limit=4
-                    )
+                    tops = await lastfm_service.get_artist_top_tracks(lastfm_api_key, sa["name"], limit=4)
                     for t in tops:
                         seeds.append({"title": t["title"], "artist": t["artist"]})
             except Exception as e:

@@ -40,16 +40,18 @@ def _local_tracks_for_artist(db: Session, user, artist_name: str) -> list[dict]:
     )
     out = []
     for t in rows:
-        out.append({
-            "id": t.source_id or f"local:{t.id}",
-            "db_id": t.id,
-            "title": t.title,
-            "artist": t.artist,
-            "album": t.album,
-            "thumbnail": f"/api/cover/{t.id}",
-            "is_local": True,
-            "source": "local",
-        })
+        out.append(
+            {
+                "id": t.source_id or f"local:{t.id}",
+                "db_id": t.id,
+                "title": t.title,
+                "artist": t.artist,
+                "album": t.album,
+                "thumbnail": f"/api/cover/{t.id}",
+                "is_local": True,
+                "source": "local",
+            }
+        )
     return out
 
 
@@ -98,23 +100,27 @@ async def get_artist(name: str, request: Request, db: Session = Depends(get_db))
         key = (alb.get("name") or "").strip().lower()
         owned = local_by_album.get(key, [])
         missing = max(0, (alb.get("total_tracks") or 0) - len(owned))
-        annotated_albums.append({
-            **alb,
-            "owned_count": len(owned),
-            "missing_count": missing,
-            "fully_owned": (alb.get("total_tracks") or 0) > 0 and missing == 0,
-        })
+        annotated_albums.append(
+            {
+                **alb,
+                "owned_count": len(owned),
+                "missing_count": missing,
+                "fully_owned": (alb.get("total_tracks") or 0) > 0 and missing == 0,
+            }
+        )
 
-    return JSONResponse({
-        "name": artist_data.get("name") or name,
-        "info": artist_data.get("info") or {},
-        "spotify": artist_data.get("spotify"),
-        "albums": annotated_albums,
-        "similar": artist_data.get("similar") or [],
-        "top_tracks": artist_data.get("top_tracks") or [],
-        "local_tracks": local_tracks,
-        "local_album_count": len([k for k in local_by_album if k != "__no_album__"]),
-    })
+    return JSONResponse(
+        {
+            "name": artist_data.get("name") or name,
+            "info": artist_data.get("info") or {},
+            "spotify": artist_data.get("spotify"),
+            "albums": annotated_albums,
+            "similar": artist_data.get("similar") or [],
+            "top_tracks": artist_data.get("top_tracks") or [],
+            "local_tracks": local_tracks,
+            "local_album_count": len([k for k in local_by_album if k != "__no_album__"]),
+        }
+    )
 
 
 def _track_to_dict(t: database.Track) -> dict:
@@ -198,8 +204,7 @@ async def smart_radio(
         if not t or t.id in used_ids:
             return False
         # Skip the exact seed track so we don't echo it back.
-        if (t.title or "").strip().lower() == seed_key_title and \
-           (t.artist or "").strip().lower() == seed_key_artist:
+        if (t.title or "").strip().lower() == seed_key_title and (t.artist or "").strip().lower() == seed_key_artist:
             return False
         used_ids.add(t.id)
         queue.append(_track_to_dict(t))
@@ -243,7 +248,6 @@ async def smart_radio(
             .all()
         )
 
-        per_artist_count: dict[str, int] = {}
         # Walk in seed-then-neighbor order: emit up to the per-artist
         # quota for each name in `artist_targets`, in order. This
         # preserves Last.fm's similarity ranking even though the
@@ -269,12 +273,7 @@ async def smart_radio(
         needed = limit - len(queue)
         # Heuristic over-fetch — random() doesn't guarantee uniqueness
         # against `used_ids`, so grab a few extras and filter.
-        randoms = (
-            db.query(database.Track)
-            .order_by(func.random())
-            .limit(needed * 3)
-            .all()
-        )
+        randoms = db.query(database.Track).order_by(func.random()).limit(needed * 3).all()
         for t in randoms:
             if len(queue) >= limit:
                 break
@@ -289,8 +288,10 @@ async def smart_radio(
         random.shuffle(tail)
         queue = head + tail
 
-    return JSONResponse({
-        "seed": {"title": title, "artist": artist},
-        "tracks": queue[:limit],
-        "total": len(queue),
-    })
+    return JSONResponse(
+        {
+            "seed": {"title": title, "artist": artist},
+            "tracks": queue[:limit],
+            "total": len(queue),
+        }
+    )

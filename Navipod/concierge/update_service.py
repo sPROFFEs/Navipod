@@ -13,12 +13,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
-import httpx
-
 import database
+import httpx
 import ops_core as ops
-from build_info_service import get_build_info, _get_revision_since_version_bump
-from job_service import acquire_lock, create_admin_job, get_active_operation_lock, get_admin_job, get_recent_admin_jobs, release_lock, update_admin_job_progress
+from build_info_service import _get_revision_since_version_bump, get_build_info
+from job_service import (
+    acquire_lock,
+    create_admin_job,
+    get_active_operation_lock,
+    release_lock,
+    update_admin_job_progress,
+)
 
 COMPOSE_UPDATE_TIMEOUT_SECONDS = 1000
 DOCKER_PRUNE_TIMEOUT_SECONDS = 120
@@ -88,7 +93,14 @@ def _truncate_log_text(value, limit: int = 700):
     return text[: limit - 3] + "..."
 
 
-def _log_command_result(job_id: int, label: str, result, *, include_command_on_success: bool = False, include_output_on_success: bool = False):
+def _log_command_result(
+    job_id: int,
+    label: str,
+    result,
+    *,
+    include_command_on_success: bool = False,
+    include_output_on_success: bool = False,
+):
     if isinstance(result, dict):
         ok = bool(result.get("ok"))
         command = result.get("command")
@@ -191,11 +203,26 @@ def _clear_git_index_lock() -> bool:
 
 
 def _fetch_update_tracking_ref():
-    return _run_git(["fetch", "--prune", "--no-tags", "--no-write-fetch-head", ops.settings.UPDATE_SOURCE_REPO_URL, f"+refs/heads/{ops.settings.UPDATE_SOURCE_BRANCH}:{ops.UPDATE_TRACKING_REMOTE}"], fallback="", include_details=True)
+    return _run_git(
+        [
+            "fetch",
+            "--prune",
+            "--no-tags",
+            "--no-write-fetch-head",
+            ops.settings.UPDATE_SOURCE_REPO_URL,
+            f"+refs/heads/{ops.settings.UPDATE_SOURCE_BRANCH}:{ops.UPDATE_TRACKING_REMOTE}",
+        ],
+        fallback="",
+        include_details=True,
+    )
 
 
 def _get_remote_branch_sha_via_ls_remote():
-    result = _run_git(["ls-remote", ops.settings.UPDATE_SOURCE_REPO_URL, f"refs/heads/{ops.settings.UPDATE_SOURCE_BRANCH}"], fallback="", include_details=True)
+    result = _run_git(
+        ["ls-remote", ops.settings.UPDATE_SOURCE_REPO_URL, f"refs/heads/{ops.settings.UPDATE_SOURCE_BRANCH}"],
+        fallback="",
+        include_details=True,
+    )
     if not isinstance(result, dict) or not result.get("ok"):
         return None, result
     stdout = result.get("stdout") or ""
@@ -236,7 +263,9 @@ async def _get_remote_release_version():
         return None
 
 
-def _build_remote_version_display(current: dict, remote_ref: str | None, remote_release_version: str | None, remote_commit: str):
+def _build_remote_version_display(
+    current: dict, remote_ref: str | None, remote_release_version: str | None, remote_commit: str
+):
     release_version = remote_release_version or current.get("release_version") or "v0.0.0"
     if remote_ref:
         remote_revision = _get_revision_since_version_bump(remote_ref)
@@ -255,7 +284,9 @@ def _get_update_details_via_fetch(local_full_commit: str, current: dict):
 
     remote_commit = _run_git(["rev-parse", "--short", ops.UPDATE_TRACKING_REMOTE], fallback="unknown")
     remote_full_commit = _run_git(["rev-parse", ops.UPDATE_TRACKING_REMOTE], fallback="unknown")
-    counts = _run_git(["rev-list", "--left-right", "--count", f"HEAD...{ops.UPDATE_TRACKING_REMOTE}"], fallback="0	0")
+    counts = _run_git(
+        ["rev-list", "--left-right", "--count", f"HEAD...{ops.UPDATE_TRACKING_REMOTE}"], fallback="0	0"
+    )
     ahead_count = 0
     behind_count = 0
     try:
@@ -277,7 +308,9 @@ def _get_update_details_via_fetch(local_full_commit: str, current: dict):
             "commit": remote_commit,
             "full_commit": remote_full_commit,
             "release_version": remote_release_version,
-            "version": _build_remote_version_display(current, ops.UPDATE_TRACKING_REMOTE, remote_release_version, remote_commit),
+            "version": _build_remote_version_display(
+                current, ops.UPDATE_TRACKING_REMOTE, remote_release_version, remote_commit
+            ),
         },
         "ahead_count": ahead_count,
         "behind_count": behind_count,
@@ -289,7 +322,10 @@ def _get_update_details_via_fetch(local_full_commit: str, current: dict):
 
 
 def _get_worktree_dirty():
-    status = _run_git(["status", "--porcelain", "--untracked-files=no", "--", ".", ":(exclude).env", ":(exclude)Navipod/.env"], fallback="")
+    status = _run_git(
+        ["status", "--porcelain", "--untracked-files=no", "--", ".", ":(exclude).env", ":(exclude)Navipod/.env"],
+        fallback="",
+    )
     return bool(status and status.strip())
 
 
@@ -371,7 +407,18 @@ def _resolve_target_update_sha():
 def _fetch_target_update_ref(target_sha: str | None):
     if not target_sha:
         return None
-    return _run_git(["fetch", "--prune", "--no-tags", "--no-write-fetch-head", ops.settings.UPDATE_SOURCE_REPO_URL, f"+refs/heads/{ops.settings.UPDATE_SOURCE_BRANCH}:{ops.UPDATE_TRACKING_REMOTE}"], fallback=None, include_details=True)
+    return _run_git(
+        [
+            "fetch",
+            "--prune",
+            "--no-tags",
+            "--no-write-fetch-head",
+            ops.settings.UPDATE_SOURCE_REPO_URL,
+            f"+refs/heads/{ops.settings.UPDATE_SOURCE_BRANCH}:{ops.UPDATE_TRACKING_REMOTE}",
+        ],
+        fallback=None,
+        include_details=True,
+    )
 
 
 def _run_post_update_health_check():
@@ -398,9 +445,18 @@ def _run_check_update_job(job_id: int, triggered_by: str | None):
     db = database.SessionLocal()
     try:
         if not acquire_lock(db, job_id):
-            update_admin_job_progress(job_id, message="Another admin operation is already running", status="failed", phase="error", progress=100, finished=True)
+            update_admin_job_progress(
+                job_id,
+                message="Another admin operation is already running",
+                status="failed",
+                phase="error",
+                progress=100,
+                finished=True,
+            )
             return
-        update_admin_job_progress(job_id, message="Checking GitHub main for updates", status="running", phase="check", progress=25)
+        update_admin_job_progress(
+            job_id, message="Checking GitHub main for updates", status="running", phase="check", progress=25
+        )
         payload = asyncio.run(_get_update_check_payload())
         save_update_state(db, payload)
         if payload.get("status") != "ok":
@@ -412,9 +468,13 @@ def _run_check_update_job(job_id: int, triggered_by: str | None):
         else:
             message = "Already up to date"
             status = "completed"
-        update_admin_job_progress(job_id, message=message, status=status, phase="done", progress=100, extra=payload, finished=True)
+        update_admin_job_progress(
+            job_id, message=message, status=status, phase="done", progress=100, extra=payload, finished=True
+        )
     except Exception as e:
-        update_admin_job_progress(job_id, message=f"Update check failed: {e}", status="failed", phase="error", progress=100, finished=True)
+        update_admin_job_progress(
+            job_id, message=f"Update check failed: {e}", status="failed", phase="error", progress=100, finished=True
+        )
     finally:
         try:
             release_lock(db)
@@ -492,34 +552,58 @@ def _run_compose_update(job_id: int, changed_files: list[str]):
     compose_error = (completed.stderr or completed.stdout or "docker compose up failed").strip()
     if completed.returncode != 0:
         conflict_markers = [
-            'already in use by container',
-            'Conflict. The container name',
+            "already in use by container",
+            "Conflict. The container name",
         ]
         if any(marker in compose_error for marker in conflict_markers):
             cleaned_retry = ops.cleanup_stale_recreate_containers(services)
             if cleaned_retry:
-                update_admin_job_progress(job_id, message=f"Retrying recreate after removing stale containers: {', '.join(cleaned_retry)}")
-                retry_completed = ops._run_compose_command(compose_args, check=False, timeout_seconds=COMPOSE_UPDATE_TIMEOUT_SECONDS)
+                update_admin_job_progress(
+                    job_id, message=f"Retrying recreate after removing stale containers: {', '.join(cleaned_retry)}"
+                )
+                retry_completed = ops._run_compose_command(
+                    compose_args, check=False, timeout_seconds=COMPOSE_UPDATE_TIMEOUT_SECONDS
+                )
                 _log_command_result(job_id, "Compose update retry", retry_completed)
                 completed = retry_completed
                 compose_error = (completed.stderr or completed.stdout or "docker compose up failed").strip()
 
         if completed.returncode == 124:
-            update_admin_job_progress(job_id, message="Compose update timed out. Verifying service health before failing", phase="health", progress=90, status="running")
+            update_admin_job_progress(
+                job_id,
+                message="Compose update timed out. Verifying service health before failing",
+                phase="health",
+                progress=90,
+                status="running",
+            )
             health_result = _run_post_update_health_check()
             if health_result.get("ok"):
-                update_admin_job_progress(job_id, message="Compose command timed out, but services are healthy", phase="cleanup", progress=95, status="running")
+                update_admin_job_progress(
+                    job_id,
+                    message="Compose command timed out, but services are healthy",
+                    phase="cleanup",
+                    progress=95,
+                    status="running",
+                )
             else:
                 raise RuntimeError(compose_error)
         elif completed.returncode != 0:
             raise RuntimeError(compose_error)
 
-    update_admin_job_progress(job_id, message="Services restarted. Waiting for health check", phase="health", progress=90, status="running")
+    update_admin_job_progress(
+        job_id, message="Services restarted. Waiting for health check", phase="health", progress=90, status="running"
+    )
     health_result = _run_post_update_health_check()
     if health_result.get("ok"):
         update_admin_job_progress(job_id, message="Health check passed", phase="cleanup", progress=95, status="running")
     else:
-        update_admin_job_progress(job_id, message=f"Health check failed: {health_result.get('error', 'unknown error')}", phase="health", progress=95, status="running")
+        update_admin_job_progress(
+            job_id,
+            message=f"Health check failed: {health_result.get('error', 'unknown error')}",
+            phase="health",
+            progress=95,
+            status="running",
+        )
         raise RuntimeError(f"health check failed: {health_result.get('error', 'unknown error')}")
 
     update_admin_job_progress(job_id, message="Cleaning Docker cache", phase="cleanup", progress=97, status="running")
@@ -641,14 +725,26 @@ def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
             )
 
         if not acquire_lock(db, job_id):
-            update_admin_job_progress(job_id, message="Another admin operation is already running", status="failed", progress=100, finished=True)
+            update_admin_job_progress(
+                job_id,
+                message="Another admin operation is already running",
+                status="failed",
+                progress=100,
+                finished=True,
+            )
             return
 
         # Clear any stale .git/index.lock left by an interrupted container
         # restart; without this, every git command fails and the update
         # never progresses past the fetch step.
         if _clear_git_index_lock():
-            update_admin_job_progress(job_id, message="Removed stale .git/index.lock from previous interrupted operation", status="running", phase="preflight", progress=2)
+            update_admin_job_progress(
+                job_id,
+                message="Removed stale .git/index.lock from previous interrupted operation",
+                status="running",
+                phase="preflight",
+                progress=2,
+            )
 
         # The apply phase later runs `git reset --hard <target_sha>`, which
         # overwrites tracked local modifications by design. Untracked files
@@ -656,10 +752,21 @@ def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
         # discarding tracked drift is the intended behaviour for self-hosted
         # deployments where the operator has edited tracked files in place.
         # We surface the discarded paths in the activity log for traceability.
-        dirty_status = _run_git(
-            ["status", "--porcelain", "--untracked-files=no", "--", ".", ":(exclude).env", ":(exclude)Navipod/.env"],
-            fallback="",
-        ) or ""
+        dirty_status = (
+            _run_git(
+                [
+                    "status",
+                    "--porcelain",
+                    "--untracked-files=no",
+                    "--",
+                    ".",
+                    ":(exclude).env",
+                    ":(exclude)Navipod/.env",
+                ],
+                fallback="",
+            )
+            or ""
+        )
         dirty_paths = [line.strip() for line in dirty_status.splitlines() if line.strip()]
         if dirty_paths:
             preview = ", ".join(dirty_paths[:10])
@@ -673,24 +780,57 @@ def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
                 extra={"dirty": True, "dirty_paths": dirty_paths[:200]},
             )
 
-        update_admin_job_progress(job_id, message="Checking GitHub main for updates", status="running", phase="check", progress=10)
+        update_admin_job_progress(
+            job_id, message="Checking GitHub main for updates", status="running", phase="check", progress=10
+        )
         payload = asyncio.run(_get_update_check_payload())
         save_update_state(db, payload)
         if payload.get("status") != "ok":
-            update_admin_job_progress(job_id, message=payload.get("message") or "Update check failed", status="failed", phase="check", progress=100, extra=payload, finished=True)
+            update_admin_job_progress(
+                job_id,
+                message=payload.get("message") or "Update check failed",
+                status="failed",
+                phase="check",
+                progress=100,
+                extra=payload,
+                finished=True,
+            )
             return
         if not payload.get("update_available"):
-            update_admin_job_progress(job_id, message="Already up to date", status="completed", phase="done", progress=100, extra=payload, finished=True)
+            update_admin_job_progress(
+                job_id,
+                message="Already up to date",
+                status="completed",
+                phase="done",
+                progress=100,
+                extra=payload,
+                finished=True,
+            )
             return
 
         target_sha, target_result = _resolve_target_update_sha()
         if not target_sha:
-            update_admin_job_progress(job_id, message="Failed to resolve remote update target", status="failed", phase="check", progress=100, extra={"precheck": payload, "target_result": target_result}, finished=True)
+            update_admin_job_progress(
+                job_id,
+                message="Failed to resolve remote update target",
+                status="failed",
+                phase="check",
+                progress=100,
+                extra={"precheck": payload, "target_result": target_result},
+                finished=True,
+            )
             return
 
-        from backup_service import _build_backup_manifest, _rotate_current_to_previous, _upsert_backup_artifact, _write_backup_zip
+        from backup_service import (
+            _build_backup_manifest,
+            _rotate_current_to_previous,
+            _upsert_backup_artifact,
+            _write_backup_zip,
+        )
 
-        update_admin_job_progress(job_id, message="Creating pre-update backup", status="running", phase="backup", progress=25)
+        update_admin_job_progress(
+            job_id, message="Creating pre-update backup", status="running", phase="backup", progress=25
+        )
         ops.ensure_runtime_dirs()
         manifest = _build_backup_manifest(triggered_by, "pre-update")
         with tempfile.NamedTemporaryFile(delete=False, suffix=".zip", dir=ops.BACKUP_ROOT) as tmp:
@@ -701,9 +841,19 @@ def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
         current_path = ops.BACKUP_ROOT / ops.CURRENT_BACKUP_NAME
         shutil.move(str(temp_path), current_path)
         temp_path = None
-        _upsert_backup_artifact(db, "current", filename=ops.CURRENT_BACKUP_NAME, file_path=str(current_path), size_bytes=current_path.stat().st_size, created_at=ops.utcnow(), manifest=manifest)
+        _upsert_backup_artifact(
+            db,
+            "current",
+            filename=ops.CURRENT_BACKUP_NAME,
+            file_path=str(current_path),
+            size_bytes=current_path.stat().st_size,
+            created_at=ops.utcnow(),
+            manifest=manifest,
+        )
 
-        update_admin_job_progress(job_id, message="Fetching target revision from remote", status="running", phase="fetch", progress=40)
+        update_admin_job_progress(
+            job_id, message="Fetching target revision from remote", status="running", phase="fetch", progress=40
+        )
         fetch_result = _fetch_target_update_ref(target_sha)
         _log_command_result(job_id, "Git fetch", fetch_result)
         if not fetch_result or not fetch_result.get("ok"):
@@ -712,26 +862,51 @@ def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
         changed_files_raw = _run_git(["diff", "--name-only", f"HEAD..{target_sha}"], fallback="") or ""
         changed_files = [line.strip() for line in changed_files_raw.splitlines() if line.strip()]
 
-        update_admin_job_progress(job_id, message="Applying Git update to workspace", status="running", phase="workspace", progress=50)
+        update_admin_job_progress(
+            job_id, message="Applying Git update to workspace", status="running", phase="workspace", progress=50
+        )
         reset_result = _run_git(["reset", "--hard", target_sha], fallback=None, include_details=True)
         _log_command_result(job_id, "Git reset", reset_result)
         if not reset_result or not reset_result.get("ok"):
             raise RuntimeError("git reset --hard failed")
 
-        update_admin_job_progress(job_id, message="Running schema migrations", status="running", phase="migrate", progress=70)
+        update_admin_job_progress(
+            job_id, message="Running schema migrations", status="running", phase="migrate", progress=70
+        )
         applied_migrations = ops.apply_schema_migrations()
         if applied_migrations:
             update_admin_job_progress(job_id, message=f"Migrations applied: {', '.join(applied_migrations)}")
         else:
             update_admin_job_progress(job_id, message="No schema migrations needed")
-        rebuild_required, health_result, normalized_changed_files, rebuild_targets = _run_compose_update(job_id, changed_files)
+        rebuild_required, health_result, normalized_changed_files, rebuild_targets = _run_compose_update(
+            job_id, changed_files
+        )
 
         post_payload = asyncio.run(_get_update_check_payload())
         save_update_state(db, post_payload)
-        details = {"before": payload, "after": post_payload, "changed_files": normalized_changed_files[:100], "rebuild_required": rebuild_required, "rebuild_targets": rebuild_targets, "applied_migrations": applied_migrations, "health_check": health_result, "target_sha": target_sha}
-        update_admin_job_progress(job_id, message="Update applied and services recreated successfully", status="completed", phase="done", progress=100, extra=details, finished=True)
+        details = {
+            "before": payload,
+            "after": post_payload,
+            "changed_files": normalized_changed_files[:100],
+            "rebuild_required": rebuild_required,
+            "rebuild_targets": rebuild_targets,
+            "applied_migrations": applied_migrations,
+            "health_check": health_result,
+            "target_sha": target_sha,
+        }
+        update_admin_job_progress(
+            job_id,
+            message="Update applied and services recreated successfully",
+            status="completed",
+            phase="done",
+            progress=100,
+            extra=details,
+            finished=True,
+        )
     except Exception as e:
-        update_admin_job_progress(job_id, message=f"Apply update failed: {e}", status="failed", phase="error", progress=100, finished=True)
+        update_admin_job_progress(
+            job_id, message=f"Apply update failed: {e}", status="failed", phase="error", progress=100, finished=True
+        )
     finally:
         if temp_path and temp_path.exists():
             temp_path.unlink(missing_ok=True)
@@ -742,18 +917,42 @@ def run_apply_update_job_from_updater(job_id: int, triggered_by: str | None):
 
 
 def queue_check_update(triggered_by: str | None):
-    job_id = create_admin_job("check_update", triggered_by, "Update check queued", {"source_branch": ops.settings.UPDATE_SOURCE_BRANCH})
+    job_id = create_admin_job(
+        "check_update", triggered_by, "Update check queued", {"source_branch": ops.settings.UPDATE_SOURCE_BRANCH}
+    )
     asyncio.create_task(asyncio.to_thread(_run_check_update_job, job_id, triggered_by))
     return job_id
 
 
 def queue_apply_update(triggered_by: str | None):
-    job_id = create_admin_job("apply_update", triggered_by, "Apply update queued", {"source_branch": ops.settings.UPDATE_SOURCE_BRANCH, "progress": 0, "phase": "queued", "logs": [{"at": ops.utcnow().isoformat(), "message": "Apply update queued"}]})
+    job_id = create_admin_job(
+        "apply_update",
+        triggered_by,
+        "Apply update queued",
+        {
+            "source_branch": ops.settings.UPDATE_SOURCE_BRANCH,
+            "progress": 0,
+            "phase": "queued",
+            "logs": [{"at": ops.utcnow().isoformat(), "message": "Apply update queued"}],
+        },
+    )
     try:
-        response = httpx.post(ops.UPDATER_INTERNAL_URL, headers={"Authorization": f"Bearer {get_internal_updater_token()}"}, json={"job_id": job_id, "triggered_by": triggered_by}, timeout=10.0)
+        response = httpx.post(
+            ops.UPDATER_INTERNAL_URL,
+            headers={"Authorization": f"Bearer {get_internal_updater_token()}"},
+            json={"job_id": job_id, "triggered_by": triggered_by},
+            timeout=10.0,
+        )
         response.raise_for_status()
     except Exception as e:
-        update_admin_job_progress(job_id, message=f"Failed to contact internal updater: {e}", status="failed", phase="error", progress=100, finished=True)
+        update_admin_job_progress(
+            job_id,
+            message=f"Failed to contact internal updater: {e}",
+            status="failed",
+            phase="error",
+            progress=100,
+            finished=True,
+        )
     return job_id
 
 

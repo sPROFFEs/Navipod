@@ -1,5 +1,6 @@
-import httpx
 from typing import Dict, List
+
+import httpx
 
 
 class MusicBrainzService:

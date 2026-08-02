@@ -3,7 +3,6 @@ import unicodedata
 
 import database
 
-
 YOUTUBE_PATTERNS = [
     re.compile(r"(?:v=|youtu\.be/|embed/|shorts/)([a-zA-Z0-9_-]{11})"),
 ]
@@ -126,7 +125,9 @@ def compute_track_identity(artist: str, title: str) -> dict[str, str]:
 
 
 def apply_identity_fields(track, artist: str | None = None, title: str | None = None):
-    identity = compute_track_identity(artist if artist is not None else track.artist, title if title is not None else track.title)
+    identity = compute_track_identity(
+        artist if artist is not None else track.artist, title if title is not None else track.title
+    )
     track.artist_norm = identity["artist_norm"]
     track.title_norm = identity["title_norm"]
     track.version_tag = identity["version_tag"]
@@ -134,7 +135,15 @@ def apply_identity_fields(track, artist: str | None = None, title: str | None = 
     return identity
 
 
-def find_existing_track(db, *, source_id: str | None = None, file_hash: str | None = None, artist: str | None = None, title: str | None = None, fingerprint: str | None = None):
+def find_existing_track(
+    db,
+    *,
+    source_id: str | None = None,
+    file_hash: str | None = None,
+    artist: str | None = None,
+    title: str | None = None,
+    fingerprint: str | None = None,
+):
     if source_id:
         track = db.query(database.Track).filter(database.Track.source_id == source_id).first()
         if track:

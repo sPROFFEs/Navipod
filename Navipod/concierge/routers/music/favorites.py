@@ -28,9 +28,9 @@ def generate_favorites_m3u(db: Session, user):
     """Generate Liked Songs M3U for user"""
     try:
         playlist_dir = f"{settings.MUSIC_ROOT}/{user.username}/music/playlists"
-        os.makedirs(playlist_dir, mode=0o777, exist_ok=True)
+        os.makedirs(playlist_dir, mode=0o750, exist_ok=True)
         try:
-            os.chmod(playlist_dir, 0o777)
+            os.chmod(playlist_dir, 0o750)
         except OSError as e:
             logger.debug("Could not chmod favorites playlist directory %s: %s", playlist_dir, e)
         m3u_path = f"{playlist_dir}/Liked Songs.m3u"
@@ -69,7 +69,13 @@ async def sync_favorite_to_navidrome(user, track, is_starred: bool):
     """Synchronize favorite status with Navidrome via Subsonic API"""
     try:
         target_ip = manager.get_or_spawn_container(user.username)
-        base_params = {"u": user.username, "p": settings.NAVIDROME_INTERNAL_PASSWORD, "v": "1.16.1", "c": "navipod-concierge", "f": "json"}
+        base_params = {
+            "u": user.username,
+            "p": settings.NAVIDROME_INTERNAL_PASSWORD,
+            "v": "1.16.1",
+            "c": "navipod-concierge",
+            "f": "json",
+        }
         headers = {"x-navidrome-user": user.username}
 
         # 1. Search for track in Navidrome to get its ID
@@ -129,7 +135,13 @@ async def sync_navidrome_to_local(db: Session, user):
     """
     try:
         target_ip = manager.get_or_spawn_container(user.username)
-        base_params = {"u": user.username, "p": settings.NAVIDROME_INTERNAL_PASSWORD, "v": "1.16.1", "c": "navipod-concierge", "f": "json"}
+        base_params = {
+            "u": user.username,
+            "p": settings.NAVIDROME_INTERNAL_PASSWORD,
+            "v": "1.16.1",
+            "c": "navipod-concierge",
+            "f": "json",
+        }
         headers = {"x-navidrome-user": user.username}
 
         async with httpx.AsyncClient(timeout=10.0) as client:

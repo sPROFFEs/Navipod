@@ -1016,12 +1016,18 @@ def _migration_017_track_delete_requests(conn):
     """)
     )
     conn.execute(
-        text("CREATE INDEX IF NOT EXISTS ix_track_delete_requests_status_requested ON track_delete_requests(status, requested_at)")
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_track_delete_requests_status_requested ON track_delete_requests(status, requested_at)"
+        )
     )
     conn.execute(
-        text("CREATE INDEX IF NOT EXISTS ix_track_delete_requests_user_status ON track_delete_requests(user_id, status)")
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_track_delete_requests_user_status ON track_delete_requests(user_id, status)"
+        )
     )
-    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_track_delete_requests_track_id ON track_delete_requests(track_id)"))
+    conn.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_track_delete_requests_track_id ON track_delete_requests(track_id)")
+    )
 
 
 def _migration_018_track_delete_requests_relax_fk(conn):
@@ -1050,7 +1056,9 @@ def _migration_018_track_delete_requests_relax_fk(conn):
                 "CREATE INDEX IF NOT EXISTS ix_track_delete_requests_user_status ON track_delete_requests(user_id, status)"
             )
         )
-        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_track_delete_requests_track_id ON track_delete_requests(track_id)"))
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_track_delete_requests_track_id ON track_delete_requests(track_id)")
+        )
         conn.execute(
             text(
                 "CREATE INDEX IF NOT EXISTS ix_track_delete_requests_user_seen ON track_delete_requests(user_id, user_seen_at)"
@@ -1105,11 +1113,17 @@ def _migration_018_track_delete_requests_relax_fk(conn):
         )
     )
     conn.execute(
-        text("CREATE INDEX IF NOT EXISTS ix_track_delete_requests_user_status ON track_delete_requests(user_id, status)")
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_track_delete_requests_user_status ON track_delete_requests(user_id, status)"
+        )
     )
-    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_track_delete_requests_track_id ON track_delete_requests(track_id)"))
     conn.execute(
-        text("CREATE INDEX IF NOT EXISTS ix_track_delete_requests_user_seen ON track_delete_requests(user_id, user_seen_at)")
+        text("CREATE INDEX IF NOT EXISTS ix_track_delete_requests_track_id ON track_delete_requests(track_id)")
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_track_delete_requests_user_seen ON track_delete_requests(user_id, user_seen_at)"
+        )
     )
 
 
@@ -1120,7 +1134,8 @@ def _migration_019_federation(conn):
     if "is_service_account" not in cols:
         conn.execute(text("ALTER TABLE users ADD COLUMN is_service_account INTEGER NOT NULL DEFAULT 0"))
 
-    conn.execute(text("""
+    conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS federated_instances (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -1137,9 +1152,11 @@ def _migration_019_federation(conn):
             sync_done INTEGER NOT NULL DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
-    """))
+    """)
+    )
 
-    conn.execute(text("""
+    conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS federated_tracks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             instance_id INTEGER NOT NULL REFERENCES federated_instances(id) ON DELETE CASCADE,
@@ -1153,17 +1170,16 @@ def _migration_019_federation(conn):
             artist_norm TEXT,
             synced_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
-    """))
+    """)
+    )
 
-    conn.execute(text(
-        "CREATE INDEX IF NOT EXISTS ix_federated_tracks_instance ON federated_tracks(instance_id)"
-    ))
-    conn.execute(text(
-        "CREATE INDEX IF NOT EXISTS ix_federated_tracks_norm ON federated_tracks(title_norm, artist_norm)"
-    ))
-    conn.execute(text(
-        "CREATE UNIQUE INDEX IF NOT EXISTS ux_federated_tracks_remote ON federated_tracks(instance_id, remote_id)"
-    ))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_federated_tracks_instance ON federated_tracks(instance_id)"))
+    conn.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_federated_tracks_norm ON federated_tracks(title_norm, artist_norm)")
+    )
+    conn.execute(
+        text("CREATE UNIQUE INDEX IF NOT EXISTS ux_federated_tracks_remote ON federated_tracks(instance_id, remote_id)")
+    )
 
 
 def _migration_021_federation_token_prefix(conn):
@@ -1174,13 +1190,38 @@ def _migration_021_federation_token_prefix(conn):
     cols = [r[1] for r in conn.execute(text("PRAGMA table_info(federation_outbound_peers)")).fetchall()]
     if "token_prefix" not in cols:
         conn.execute(text("ALTER TABLE federation_outbound_peers ADD COLUMN token_prefix TEXT"))
-    conn.execute(text(
-        "CREATE INDEX IF NOT EXISTS ix_fed_outbound_token_prefix ON federation_outbound_peers(token_prefix)"
-    ))
+    conn.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_fed_outbound_token_prefix ON federation_outbound_peers(token_prefix)")
+    )
+
+
+def _migration_022_library_metadata_and_smart_playlists(conn):
+    track_cols = {r[1] for r in conn.execute(text("PRAGMA table_info(tracks)")).fetchall()}
+    if "genre" not in track_cols:
+        conn.execute(text("ALTER TABLE tracks ADD COLUMN genre TEXT"))
+    if "year" not in track_cols:
+        conn.execute(text("ALTER TABLE tracks ADD COLUMN year INTEGER"))
+    if "metadata_scanned_at" not in track_cols:
+        conn.execute(text("ALTER TABLE tracks ADD COLUMN metadata_scanned_at DATETIME"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tracks_genre ON tracks(genre)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tracks_year ON tracks(year)"))
+
+    playlist_cols = {r[1] for r in conn.execute(text("PRAGMA table_info(playlists)")).fetchall()}
+    if "smart_rules_json" not in playlist_cols:
+        conn.execute(text("ALTER TABLE playlists ADD COLUMN smart_rules_json TEXT"))
+    if "smart_updated_at" not in playlist_cols:
+        conn.execute(text("ALTER TABLE playlists ADD COLUMN smart_updated_at DATETIME"))
+
+
+def _migration_023_user_session_version(conn):
+    user_cols = {r[1] for r in conn.execute(text("PRAGMA table_info(users)")).fetchall()}
+    if "session_version" not in user_cols:
+        conn.execute(text("ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0"))
 
 
 def _migration_020_federation_outbound_peers(conn):
-    conn.execute(text("""
+    conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS federation_outbound_peers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -1193,7 +1234,8 @@ def _migration_020_federation_outbound_peers(conn):
             last_seen_user_agent TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
-    """))
+    """)
+    )
 
 
 MIGRATIONS = [
@@ -1219,6 +1261,8 @@ MIGRATIONS = [
     ("019_federation", _migration_019_federation),
     ("020_federation_outbound_peers", _migration_020_federation_outbound_peers),
     ("021_federation_token_prefix", _migration_021_federation_token_prefix),
+    ("022_library_metadata_and_smart_playlists", _migration_022_library_metadata_and_smart_playlists),
+    ("023_user_session_version", _migration_023_user_session_version),
 ]
 
 

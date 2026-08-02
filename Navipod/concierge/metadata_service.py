@@ -2,12 +2,11 @@ import json
 import re
 from typing import Any, Dict, List
 
+import metadata_cache
 import spotify_service
 import youtube_service
-import metadata_cache
 from lastfm_service import lastfm_service
 from musicbrainz_service import musicbrainz_service
-
 
 DEFAULT_PREFS = ["spotify", "lastfm", "musicbrainz"]
 
@@ -53,8 +52,6 @@ def _score_candidate(
     title_tokens = _tokenize(target_title)
     artist_tokens = _tokenize(target_artist)
     album_tokens = _tokenize(target_album)
-    candidate_title_tokens = _tokenize(candidate_title)
-    candidate_artist_tokens = _tokenize(candidate_artist)
     haystack = f"{candidate_title} {candidate_artist}"
     haystack_tokens = _tokenize(haystack)
 
@@ -250,12 +247,14 @@ async def resolve_download_target(
     cover_url = enriched.get("cover_url") or ""
     spotify_url = enriched.get("spotify_url") or ""
 
-    result.update({
-        "cover_url": cover_url,
-        "title": canonical_title,
-        "artist": canonical_artist,
-        "album": canonical_album,
-    })
+    result.update(
+        {
+            "cover_url": cover_url,
+            "title": canonical_title,
+            "artist": canonical_artist,
+            "album": canonical_album,
+        }
+    )
 
     if spotify_url and source in {"spotify", "lastfm", "musicbrainz"}:
         result["url"] = spotify_url
@@ -269,22 +268,26 @@ async def resolve_download_target(
     compact_title = re.sub(r"\([^)]*\)|\[[^\]]*\]", "", base_title).strip()
 
     if base_artist and base_title:
-        queries.extend([
-            f"{base_artist} {base_title} audio",
-            f"{base_artist} {base_title} topic",
-            f"{base_artist} {base_title} official audio",
-        ])
+        queries.extend(
+            [
+                f"{base_artist} {base_title} audio",
+                f"{base_artist} {base_title} topic",
+                f"{base_artist} {base_title} official audio",
+            ]
+        )
     if base_artist and compact_title and compact_title != base_title:
-        queries.extend([
-            f"{base_artist} {compact_title} audio",
-            f"{base_artist} {compact_title} topic",
-        ])
+        queries.extend(
+            [
+                f"{base_artist} {compact_title} audio",
+                f"{base_artist} {compact_title} topic",
+            ]
+        )
     if base_artist and base_album and base_title:
         queries.append(f"{base_artist} {base_title} {base_album}")
 
     seen_ids = set()
     best_item = None
-    best_score = -10**9
+    best_score = -(10**9)
     cookie_path = getattr(settings, "youtube_cookies_path", None) if settings else None
 
     for query in queries:

@@ -68,11 +68,17 @@ function dbToLinear(db) {
 }
 
 export function isReplayGainEnabled() {
-  try { return localStorage.getItem(RG_KEY) === '1'; } catch { return false; }
+  try {
+    return localStorage.getItem(RG_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
 export function setReplayGainEnabled(on) {
-  try { localStorage.setItem(RG_KEY, on ? '1' : '0'); } catch {}
+  try {
+    localStorage.setItem(RG_KEY, on ? '1' : '0');
+  } catch {}
   if (on) ensureInitialized();
 }
 
@@ -80,12 +86,16 @@ export function getCrossfadeSeconds() {
   try {
     const n = parseInt(localStorage.getItem(XF_KEY) || '0', 10);
     return Math.max(0, Math.min(12, n));
-  } catch { return 0; }
+  } catch {
+    return 0;
+  }
 }
 
 export function setCrossfadeSeconds(seconds) {
   const n = Math.max(0, Math.min(12, parseInt(seconds, 10) || 0));
-  try { localStorage.setItem(XF_KEY, String(n)); } catch {}
+  try {
+    localStorage.setItem(XF_KEY, String(n));
+  } catch {}
   if (n > 0) ensureInitialized();
 }
 
@@ -144,7 +154,9 @@ function _notifyInitFailure(msg) {
   if (_initFailureNotified) return;
   _initFailureNotified = true;
   if (typeof window.showToast === 'function') {
-    try { window.showToast(msg, 'error'); } catch {}
+    try {
+      window.showToast(msg, 'error');
+    } catch {}
   }
 }
 
@@ -152,7 +164,9 @@ function _notifyInitFailure(msg) {
 // this from a click handler before applying gain.
 export async function resumeIfSuspended() {
   if (_ctx && _ctx.state === 'suspended') {
-    try { await _ctx.resume(); } catch {}
+    try {
+      await _ctx.resume();
+    } catch {}
   }
 }
 

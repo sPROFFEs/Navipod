@@ -8,11 +8,10 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy.orm import Session
-
 import database
 import track_identity
 from navipod_config import settings
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +24,20 @@ class TrackService:
 
     def search_local(self, query: str, limit: int = 20) -> List[database.Track]:
         query_lower = f"%{query.lower()}%"
-        return self.db.query(database.Track).filter(
-            (database.Track.title.ilike(query_lower))
-            | (database.Track.artist.ilike(query_lower))
-            | (database.Track.album.ilike(query_lower))
-        ).limit(limit).all()
+        return (
+            self.db.query(database.Track)
+            .filter(
+                (database.Track.title.ilike(query_lower))
+                | (database.Track.artist.ilike(query_lower))
+                | (database.Track.album.ilike(query_lower))
+            )
+            .limit(limit)
+            .all()
+        )
 
-    def search_hybrid(self, query: str, spotify_service=None, youtube_service=None, spotify_creds: Dict = None, limit: int = 20) -> Dict[str, Any]:
+    def search_hybrid(
+        self, query: str, spotify_service=None, youtube_service=None, spotify_creds: Dict = None, limit: int = 20
+    ) -> Dict[str, Any]:
         return {
             "local": [self._track_to_dict(track) for track in self.search_local(query, limit)],
             "remote_spotify": [],
@@ -56,9 +62,7 @@ class TrackService:
     def find_similar(self, artist: str, title: str) -> List[database.Track]:
         fingerprint = self.compute_fingerprint(artist, title)
         base_fingerprint = fingerprint.rsplit("::", 1)[0]
-        return self.db.query(database.Track).filter(
-            database.Track.fingerprint.like(f"{base_fingerprint}::%")
-        ).all()
+        return self.db.query(database.Track).filter(database.Track.fingerprint.like(f"{base_fingerprint}::%")).all()
 
     def is_exact_duplicate(self, artist: str, title: str) -> Optional[database.Track]:
         fingerprint = self.compute_fingerprint(artist, title)

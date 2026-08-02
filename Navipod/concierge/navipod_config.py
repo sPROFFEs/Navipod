@@ -1,20 +1,22 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
+
     # Security
     SECRET_KEY: str = "unsafe-default-secret-key-change-me-in-production"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440 # 24 hours
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
 
     # Paths
     MUSIC_ROOT: str = "/saas-data/users"
     COOKIES_FILE: str = "cookies.txt"
-    
+
     # External Services
     SPOTIFY_CLIENT_ID: str | None = None
     SPOTIFY_CLIENT_SECRET: str | None = None
-    
+
     # Navidrome internal auth (used by concierge↔Navidrome Subsonic calls)
     # Override via NAVIDROME_INTERNAL_PASSWORD env var in production.
     NAVIDROME_INTERNAL_PASSWORD: str = "enc:000000"
@@ -40,11 +42,12 @@ class Settings(BaseSettings):
     PROXY_IMAGE_MAX_BYTES: int = 5 * 1024 * 1024
     PROXY_IMAGE_TIMEOUT_SECONDS: float = 8.0
     PROXY_IMAGE_ALLOWED_CONTENT_TYPES: str = "image/jpeg,image/png,image/webp,image/gif,image/avif"
-    
+
     # Allowed Hosts (CORS & TrustedHost)
     DOMAIN: str = "localhost"
     ALLOWED_HOSTS: str = "localhost,127.0.0.1,0.0.0.0,domain.com,*.domain.com"
-    
+    CORS_ORIGINS: str = "http://localhost,http://127.0.0.1"
+
     @property
     def all_allowed_hosts(self) -> list[str]:
         hosts = [
@@ -59,11 +62,14 @@ class Settings(BaseSettings):
 
     @property
     def trusted_proxy_ips(self) -> set[str]:
-        return {
-            ip.strip()
-            for ip in (self.TRUSTED_PROXY_IPS or "").split(",")
-            if ip.strip()
-        }
+        return {ip.strip() for ip in (self.TRUSTED_PROXY_IPS or "").split(",") if ip.strip()}
+
+    @property
+    def cors_origins(self) -> list[str]:
+        origins = {origin.strip().rstrip("/") for origin in self.CORS_ORIGINS.split(",") if origin.strip()}
+        if self.DOMAIN and self.DOMAIN != "localhost":
+            origins.add(f"https://{self.DOMAIN}")
+        return sorted(origins)
 
     @property
     def proxy_image_allowed_content_types(self) -> set[str]:
@@ -72,10 +78,6 @@ class Settings(BaseSettings):
             for content_type in (self.PROXY_IMAGE_ALLOWED_CONTENT_TYPES or "").split(",")
             if content_type.strip()
         }
-    
-    class Config:
-        env_file = ".env"
-        # Environment variables will take precedence over .env file
-        # Case insensitive matching (e.g. secret_key matches SECRET_KEY)
+
 
 settings = Settings()

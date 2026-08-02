@@ -176,7 +176,7 @@ def _extract_embedded_cover(audio) -> bytes | None:
 
 
 @router.get("/api/cover/{track_id:int}")
-async def get_cover(track_id: int, db: Session = Depends(get_db)):
+async def get_cover(track_id: int, request: Request, db: Session = Depends(get_db)):
     """Extract cover art from the audio file's embedded picture, with disk caching.
 
     Note: a cached file at /saas-data/cover_cache/{track_id}.jpg is only trusted
@@ -184,6 +184,8 @@ async def get_cover(track_id: int, db: Session = Depends(get_db)):
     leftover from a previously-deleted track whose rowid was reused, and we drop
     it before re-extracting from the new file.
     """
+    if not get_current_user_safe(db, request):
+        return Response(status_code=401)
     track = db.query(database.Track).filter(database.Track.id == track_id).first()
 
     cached = cover_cache.get_cached_cover(track_id)
@@ -223,6 +225,13 @@ async def get_cover(track_id: int, db: Session = Depends(get_db)):
 @router.get("/api/stream/{track_id}")
 async def stream_track(track_id: int, request: Request, db: Session = Depends(get_db)):
     """Stream local audio file with Range support (Essential for correct duration/seeking)"""
+    if not get_current_user_safe(db, request):
+        return Response(status_code=401)
+    return await stream_track_authorized(track_id, request, db)
+
+
+async def stream_track_authorized(track_id: int, request: Request, db: Session):
+    """Stream helper for callers that already authenticated by another scheme."""
     track = db.query(database.Track).filter(database.Track.id == track_id).first()
     file_path = _resolve_allowed_media_path(track.filepath if track else None)
     if not track or not file_path:
@@ -272,12 +281,14 @@ async def stream_track(track_id: int, request: Request, db: Session = Depends(ge
 
 
 @router.get("/api/track/{track_id}/gain")
-async def get_track_gain(track_id: int, db: Session = Depends(get_db)):
+async def get_track_gain(track_id: int, request: Request, db: Session = Depends(get_db)):
     """Return ReplayGain track values for client-side loudness
     normalization. Reads ReplayGain tags via mutagen — present on most
     well-tagged libraries (foobar2000 / Picard / rsgain). Returns sane
     defaults (0 dB / 1.0 peak) when the tags are absent so the
     frontend can apply gain unconditionally."""
+    if not get_current_user_safe(db, request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
     track = db.query(database.Track).filter(database.Track.id == track_id).first()
     file_path = _resolve_allowed_media_path(track.filepath if track else None)
     if not track or not file_path:
@@ -332,8 +343,10 @@ async def get_track_gain(track_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/api/random-track")
-async def get_random_track(db: Session = Depends(get_db)):
+async def get_random_track(request: Request, db: Session = Depends(get_db)):
     """Return a random track from the local library."""
+    if not get_current_user_safe(db, request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
     track = _pick_random_track(db)
     if not track:
         return JSONResponse({"error": "Library is empty"}, status_code=404)
@@ -357,6 +370,9 @@ async def resolve_cover(request: Request, artist: str = "", title: str = "", db:
     Used when Last.fm/MusicBrainz don't provide images directly.
     Results are cached on disk and in SQLite metadata cache.
     """
+    user = get_current_user_safe(db, request)
+    if not user:
+        return Response(status_code=401)
     if not artist and not title:
         return RedirectResponse("/static/img/default_cover.png")
 
@@ -409,7 +425,6 @@ async def resolve_cover(request: Request, artist: str = "", title: str = "", db:
             metadata_cache.set(metadata_key, {"negative": True, "provider": "file-negative-cache"})
             return RedirectResponse("/static/img/default_cover.png")
 
-    user = get_current_user_safe(db, request) if request else None
     image_url = None
     provider = "unknown"
 

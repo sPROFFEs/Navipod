@@ -94,6 +94,37 @@ export async function fetchPlaylist(playlistId) {
   return null;
 }
 
+export async function fetchLibraryFacets(kind) {
+  const res = await fetch(`${state.API}/library/facets?kind=${encodeURIComponent(kind)}`);
+  if (!res.ok) throw new Error(`Library request failed (${res.status})`);
+  return await res.json();
+}
+
+export async function fetchLibraryTracks(filters = {}) {
+  const params = new URLSearchParams(filters);
+  const res = await fetch(`${state.API}/library/tracks?${params}`);
+  if (!res.ok) throw new Error(`Library request failed (${res.status})`);
+  return await res.json();
+}
+
+export async function createSmartPlaylistApi(payload) {
+  const res = await fetch(`${state.API}/smart-playlists`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Create failed (${res.status})`);
+  return data;
+}
+
+export async function refreshSmartPlaylistApi(playlistId) {
+  const res = await fetch(`${state.API}/smart-playlists/${playlistId}/refresh`, { method: 'POST' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Refresh failed (${res.status})`);
+  return data;
+}
+
 export async function createPlaylistApi(name) {
   try {
     const res = await fetch(`${state.API}/playlists`, {

@@ -9,10 +9,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import database
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-import database
 logger = logging.getLogger(__name__)
 
 
@@ -20,7 +20,7 @@ USER_ACTIVITY_DB_NAME = "user_activity.db"
 MIX_CACHE_NAME = "personalized_mixes.json"
 LEGACY_RECENT_CACHE_NAME = "recent_activity.json"
 TOP_POOL_CACHE_NAME = "top_pool_tracks.json"
-MIX_CACHE_VERSION = 5    # bumped: daily decade mixes added to the payload
+MIX_CACHE_VERSION = 5  # bumped: daily decade mixes added to the payload
 TOP_POOL_CACHE_VERSION = 3
 MIX_CACHE_TTL_SECONDS = 12 * 3600
 RECENT_ITEMS_LIMIT = 20
@@ -414,18 +414,14 @@ def get_library_shelves(db: Session, user, limit_per_shelf: int = 12) -> list[di
     that lives in recommendations.py.
     """
     ensure_user_activity_db(user.username)
-    from database import Track   # local import — avoid cycles at module load
+    from database import Track  # local import — avoid cycles at module load
 
     shelves: list[dict[str, Any]] = []
 
     def _hydrate_local(track_ids: list[int]) -> list[dict[str, Any]]:
         if not track_ids:
             return []
-        rows = (
-            db.query(Track)
-            .filter(Track.id.in_(track_ids))
-            .all()
-        )
+        rows = db.query(Track).filter(Track.id.in_(track_ids)).all()
         # Preserve the order the IDs came in (SQLite's IN() doesn't guarantee it)
         by_id = {t.id: t for t in rows}
         ordered = [by_id[i] for i in track_ids if i in by_id]
@@ -646,11 +642,13 @@ def get_recent_activity_payload(db: Session, user) -> dict[str, Any]:
         title = str(payload.get("title") or row["item_label"] or "").strip()
         thumbnail = str(payload.get("thumbnail") or "").strip()
         if key:
-            mixes.append({
-                "key": key,
-                "title": title or key.replace("_", " ").title(),
-                "thumbnail": thumbnail,
-            })
+            mixes.append(
+                {
+                    "key": key,
+                    "title": title or key.replace("_", " ").title(),
+                    "thumbnail": thumbnail,
+                }
+            )
         if len(mixes) >= RECENT_ITEMS_LIMIT:
             break
 
@@ -683,7 +681,9 @@ def _safe_int_ms(value: Any) -> int:
     return max(0, ms)
 
 
-def is_wrapped_qualified_play(played_seconds: float, duration_seconds: float | None = None, completed: bool = False) -> bool:
+def is_wrapped_qualified_play(
+    played_seconds: float, duration_seconds: float | None = None, completed: bool = False
+) -> bool:
     played = max(0.0, float(played_seconds or 0.0))
     if completed:
         return True
@@ -1080,7 +1080,9 @@ def _staleness_bonus(last_played_at: str | None) -> float:
     return 8.5
 
 
-def _select_diverse_tracks(candidates: list[dict[str, Any]], *, limit: int = MIX_TRACK_LIMIT, max_per_artist: int = 2) -> list[dict[str, Any]]:
+def _select_diverse_tracks(
+    candidates: list[dict[str, Any]], *, limit: int = MIX_TRACK_LIMIT, max_per_artist: int = 2
+) -> list[dict[str, Any]]:
     picked = []
     artist_counts: dict[str, int] = {}
     seen_ids = set()
@@ -1112,7 +1114,16 @@ def _select_diverse_tracks(candidates: list[dict[str, Any]], *, limit: int = MIX
     return picked
 
 
-def _candidate_payload(track_row: dict[str, Any], stats: dict[str, Any], *, favorite_ids: set[int], playlist_counts: dict[int, int], artist_affinity: dict[str, Any], favorite_artists: set[str], favorite_albums: set[str]) -> dict[str, Any]:
+def _candidate_payload(
+    track_row: dict[str, Any],
+    stats: dict[str, Any],
+    *,
+    favorite_ids: set[int],
+    playlist_counts: dict[int, int],
+    artist_affinity: dict[str, Any],
+    favorite_artists: set[str],
+    favorite_albums: set[str],
+) -> dict[str, Any]:
     track_id = int(track_row["id"])
     artist_key = _normalize_artist(track_row.get("artist"))
     album_key = _normalize_album(track_row.get("album"))
@@ -1156,7 +1167,8 @@ def _build_deep_cuts_mix(candidates: list[dict[str, Any]], top_repeat_ids: set[i
     filtered = [
         c
         for c in candidates
-        if c["id"] not in top_repeat_ids and (c["play_count"] >= 2 or c["completion_count"] >= 1 or c["favorite"] or c["playlist_count"] >= 1)
+        if c["id"] not in top_repeat_ids
+        and (c["play_count"] >= 2 or c["completion_count"] >= 1 or c["favorite"] or c["playlist_count"] >= 1)
     ]
     ranked = sorted(
         filtered,
@@ -1194,12 +1206,7 @@ def _build_rediscovery_mix(candidates: list[dict[str, Any]]) -> list[dict[str, A
     filtered = [
         c
         for c in candidates
-        if (
-            c["play_count"] > 0
-            or c["completion_count"] > 0
-            or c["favorite"]
-            or c["playlist_count"] > 0
-        )
+        if (c["play_count"] > 0 or c["completion_count"] > 0 or c["favorite"] or c["playlist_count"] > 0)
     ]
     ranked = sorted(
         filtered,
@@ -1213,7 +1220,9 @@ def _build_rediscovery_mix(candidates: list[dict[str, Any]]) -> list[dict[str, A
         ),
         reverse=True,
     )
-    ranked = [c for c in ranked if _days_since(c["last_played_at"]) is None or (_days_since(c["last_played_at"]) or 0) >= 7]
+    ranked = [
+        c for c in ranked if _days_since(c["last_played_at"]) is None or (_days_since(c["last_played_at"]) or 0) >= 7
+    ]
     return _select_diverse_tracks(ranked)
 
 
@@ -1296,7 +1305,9 @@ def _generate_top_pool_mix(db: Session) -> dict[str, Any]:
             bucket["total_played_seconds"] += float(row["total_played_seconds"] or 0.0)
 
             row_last_played = row["last_played_at"]
-            if row_last_played and (not bucket["last_played_at"] or str(row_last_played) > str(bucket["last_played_at"])):
+            if row_last_played and (
+                not bucket["last_played_at"] or str(row_last_played) > str(bucket["last_played_at"])
+            ):
                 bucket["last_played_at"] = row_last_played
 
     if not aggregate:
@@ -1395,6 +1406,7 @@ def _track_year_from_file(filepath: str | None) -> int | None:
         return None
     try:
         import mutagen
+
         audio = mutagen.File(filepath, easy=True)
         if not audio:
             return None
@@ -1498,7 +1510,7 @@ def _build_daily_decade_mixes(
         label = _DECADE_LABEL(year)
         decade_buckets.setdefault(label, []).append(cand)
 
-    conn.commit()       # persist any newly-cached years
+    conn.commit()  # persist any newly-cached years
 
     # Pick the top-N decades by member count
     top_decades = sorted(
@@ -1516,13 +1528,15 @@ def _build_daily_decade_mixes(
         items = [_track_to_item(c["track"]) for c in chosen]
         if not items:
             continue
-        mixes.append({
-            "key": f"daily_decade_{label}",
-            "title": f"{label} Mix",
-            "track_count": len(items),
-            "thumbnail": items[0]["thumbnail"] if items else "/static/img/default_cover.png",
-            "items": items,
-        })
+        mixes.append(
+            {
+                "key": f"daily_decade_{label}",
+                "title": f"{label} Mix",
+                "track_count": len(items),
+                "thumbnail": items[0]["thumbnail"] if items else "/static/img/default_cover.png",
+                "items": items,
+            }
+        )
         if len(mixes) >= max_mixes:
             break
     return mixes
@@ -1537,7 +1551,9 @@ def _generate_mixes(db: Session, user) -> dict[str, Any]:
     tracks = db.query(database.Track).all()
     favorite_ids = {
         int(track_id)
-        for (track_id,) in db.query(database.UserFavorite.track_id).filter(database.UserFavorite.user_id == user.id).all()
+        for (track_id,) in db.query(database.UserFavorite.track_id)
+        .filter(database.UserFavorite.user_id == user.id)
+        .all()
     }
     playlist_counts = {
         int(track_id): int(count or 0)
@@ -1551,7 +1567,9 @@ def _generate_mixes(db: Session, user) -> dict[str, Any]:
     }
 
     stats_lookup = {int(row["track_id"]): dict(row) for row in track_stats_rows}
-    artist_affinity = {_normalize_artist(row["artist_name"]): dict(row) for row in artist_stats_rows if row["artist_name"]}
+    artist_affinity = {
+        _normalize_artist(row["artist_name"]): dict(row) for row in artist_stats_rows if row["artist_name"]
+    }
 
     favorite_tracks = [track for track in tracks if int(track.id) in favorite_ids]
     favorite_artists = {_normalize_artist(track.artist) for track in favorite_tracks if track.artist}
@@ -1566,7 +1584,7 @@ def _generate_mixes(db: Session, user) -> dict[str, Any]:
                 "artist": track.artist,
                 "album": track.album,
                 "duration": track.duration,
-                "filepath": track.filepath,         # used by _build_daily_decade_mixes
+                "filepath": track.filepath,  # used by _build_daily_decade_mixes
                 "created_at": track.created_at.isoformat() if getattr(track, "created_at", None) else "",
             },
             stats_lookup.get(int(track.id), {}),

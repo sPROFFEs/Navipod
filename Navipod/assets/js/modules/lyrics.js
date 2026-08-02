@@ -24,7 +24,7 @@ import * as ui from './ui.js';
 // In-memory parsed-lines for the currently visible track. Resets on
 // every fetch — kept module-scoped so the rAF tick doesn't have to
 // re-parse on every frame.
-let _currentLines = [];        // [{time, text}]
+let _currentLines = []; // [{time, text}]
 let _currentTrackId = null;
 let _activeIdx = -1;
 let _isInstrumental = false;
@@ -100,7 +100,9 @@ export async function loadLyricsFor(track) {
 
   // Cancel any in-flight fetch for the previous track so we don't race.
   if (_fetchAbort) {
-    try { _fetchAbort.abort(); } catch (_) {}
+    try {
+      _fetchAbort.abort();
+    } catch (_) {}
   }
   _fetchAbort = new AbortController();
 
@@ -111,15 +113,18 @@ export async function loadLyricsFor(track) {
   // `duration: float` validation with 422 and the user sees "Could
   // not load lyrics." Coerce to 0 unless we have a real number.
   const rawDur = state.audio?.duration;
-  const duration = Number.isFinite(rawDur) && rawDur > 0
-    ? Math.floor(rawDur)
-    : (Number.isFinite(track.duration) && track.duration > 0 ? Math.floor(track.duration) : 0);
+  const duration =
+    Number.isFinite(rawDur) && rawDur > 0
+      ? Math.floor(rawDur)
+      : Number.isFinite(track.duration) && track.duration > 0
+        ? Math.floor(track.duration)
+        : 0;
 
   const params = new URLSearchParams({
     title: track.title || '',
     artist: track.artist || '',
     album: track.album || '',
-    duration: String(duration),
+    duration: String(duration)
   });
 
   try {

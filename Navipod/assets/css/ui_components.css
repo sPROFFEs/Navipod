@@ -325,13 +325,116 @@
 
 .library-row {
     display: grid;
-    grid-template-columns: 56px 1fr;
+    grid-template-columns: 56px minmax(0, 1fr) auto;
     align-items: center;
     gap: 12px;
     padding: 8px 4px;
     border-radius: 6px;
     cursor: pointer;
     transition: background-color 0.12s ease;
+}
+
+.library-facet-row,
+.library-track-row {
+    width: 100%;
+    border: 0;
+    color: inherit;
+    text-align: left;
+    font: inherit;
+}
+
+.library-row-action,
+.library-back {
+    border: 0;
+    background: transparent;
+    color: var(--text-sub);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px;
+}
+
+.library-row-action:hover,
+.library-back:hover {
+    color: var(--text-main);
+}
+
+.library-facet-count {
+    color: var(--text-sub);
+    margin: 6px 0 20px;
+}
+
+.library-track-row {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 8px;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.library-track-row:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.library-track-row img {
+    width: 48px;
+    height: 48px;
+    border-radius: 4px;
+    object-fit: cover;
+}
+
+.library-track-row span {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.library-track-row strong,
+.library-track-row small {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.library-track-row small {
+    color: var(--text-sub);
+    margin-top: 3px;
+}
+
+.smart-playlist-modal {
+    width: min(92vw, 620px) !important;
+}
+
+.modal-subtitle {
+    color: var(--text-sub);
+    margin: -4px 0 18px;
+}
+
+.smart-rule-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.smart-rule-grid .modal-input {
+    margin-bottom: 0;
+}
+
+.smart-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-sub);
+}
+
+@media (max-width: 600px) {
+    .smart-rule-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .library-row:hover,

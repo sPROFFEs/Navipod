@@ -2,7 +2,6 @@ import asyncio
 import ipaddress
 import logging
 import os
-import shutil
 import socket
 from contextvars import ContextVar
 from urllib.parse import urljoin, urlparse
@@ -13,13 +12,14 @@ import database
 import httpx
 import i18n
 import manager
+import media_metadata
 import operations_service
 import ram_audit
 import reaper
 import security
 import track_identity
 import wrapped_service
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
@@ -27,7 +27,6 @@ from fastapi.staticfiles import StaticFiles
 from http_client import http_client  # Moved to top level to avoid shutdown re-import issues
 from limiter import limiter
 from navipod_config import settings
-from pydantic import BaseModel
 from routers import admin, user
 from routers.music import router as music_router
 from shared_templates import templates
@@ -52,10 +51,10 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # --- SECURITY MIDDLEWARE ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.all_allowed_hosts,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Range"],
 )
 
 app.add_middleware(
@@ -127,8 +126,23 @@ async def set_i18n_context(request: Request, call_next):
     if lang not in i18n.SUPPORTED_LANGS:
         lang = i18n.DEFAULT_LANG
     token = current_lang.set(lang)
-    response = await call_next(request)
-    current_lang.reset(token)
+    try:
+        security.validate_same_origin(request)
+        response = await call_next(request)
+    finally:
+        current_lang.reset(token)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://www.youtube.com https://s.ytimg.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
+        "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
+        "img-src 'self' data: blob: https:; media-src 'self' blob: https:; "
+        "frame-src https://www.youtube.com; connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+    )
     return response
 
 
@@ -167,6 +181,7 @@ async def startup_event():
     asyncio.create_task(cache_cleanup_scheduler())
     asyncio.create_task(operations_service.autobackup_scheduler())
     asyncio.create_task(wrapped_daily_scheduler())
+    asyncio.create_task(library_metadata_backfill())
     # Append per-tick RAM stats to /workspace/ram_audit.log (= repo root
     # on the host via the bind mount) so memory growth can be inspected
     # after the box has been running for days without needing an
@@ -175,6 +190,7 @@ async def startup_event():
 
     # Federation periodic loop (no-op when there are no enabled peers)
     import federation_service
+
     federation_service.start_background_loop()
 
 
@@ -192,6 +208,15 @@ async def reaper_scheduler():
         except Exception as e:
             logger.exception("Reaper scheduler failed: %s", e)
             await asyncio.sleep(60)  # En caso de error, reintentar en 1 min
+
+
+async def library_metadata_backfill():
+    try:
+        indexed = await asyncio.to_thread(media_metadata.backfill_library_metadata)
+        if indexed:
+            logger.info("Indexed local metadata for %s existing track(s)", indexed)
+    except Exception as exc:
+        logger.warning("Library metadata backfill failed: %s", exc)
 
 
 async def cache_cleanup_scheduler():
@@ -370,13 +395,9 @@ app.include_router(admin.router)
 app.include_router(user.router)
 
 from routers import federation as federation_router
+
 app.include_router(federation_router.router)
 # ---------------------------------------------------------------
-
-
-class UserCreate(BaseModel):
-    username: str
-    password: str
 
 
 # --- AUTH & SYSTEM ROUTES ---
@@ -436,7 +457,12 @@ async def login(
             msg = "Temporarily blocked for security (15 min)."
         return RedirectResponse(f"/login?error={msg}", status_code=303)
 
-    if not user or not auth.verify_password(password, user.hashed_password):
+    if (
+        not user
+        or not user.is_active
+        or not auth.is_valid_username(user.username)
+        or not auth.verify_password(password, user.hashed_password)
+    ):
         # Register the hit
         is_blocked = security.register_failed_attempt(request)
 
@@ -449,7 +475,7 @@ async def login(
     # 3. SUCCESS -> Clear criminal record
     security.clear_attempts(request)
 
-    access_token = auth.create_access_token(data={"sub": user.username})
+    access_token = auth.create_access_token(data={"sub": user.username, "sv": int(user.session_version or 0)})
     redirect_url = "/portal"
 
     if next and next != "None":
@@ -563,14 +589,10 @@ def logout(request: Request, db: Session = Depends(get_db)):
 
 @app.get("/help")
 async def help_page(request: Request, db: Session = Depends(get_db)):
-    # Autenticación requerida
-    token = request.cookies.get("access_token")
-    if not token:
+    try:
+        user = auth.get_current_user(request, db)
+    except HTTPException:
         return RedirectResponse("/login")
-    username = auth.get_username_from_token(token)
-    if not username:
-        return RedirectResponse("/login")
-    user = auth.get_user_by_username(db, username)
     # Pool Status
     u_gb, l_gb, pct = manager.get_pool_status(db)
 
@@ -578,141 +600,22 @@ async def help_page(request: Request, db: Session = Depends(get_db)):
         "help.html",
         {
             "request": request,
-            "username": username,
-            "is_admin": user.is_admin if user else False,
+            "username": user.username,
+            "is_admin": user.is_admin,
             "pool": {"used": u_gb, "limit": l_gb, "percent": pct},
         },
     )
 
 
+@app.get("/settings")
+@app.get("/settings/downloader")
+async def legacy_settings_redirect():
+    return RedirectResponse("/user/settings", status_code=308)
+
+
 @app.get("/")
 def home(request: Request):
     return RedirectResponse("/portal") if request.cookies.get("access_token") else RedirectResponse("/login")
-
-
-@app.post("/admin/create_user")
-def create_user(request: Request, user: UserCreate, db: Session = Depends(get_db)):
-    current_user = auth.get_current_user(request, db)
-    if not current_user or not current_user.is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
-    auth.create_user_in_db(db, user.username, user.password)
-    manager.provision_user_env(user.username)
-    return {"status": "ok", "user": user.username}
-
-
-@app.post("/settings")
-async def change_password(
-    request: Request,
-    old_password: str = Form(...),
-    new_password: str = Form(...),
-    confirm_password: str = Form(...),
-    db: Session = Depends(get_db),
-):
-    # 1. Autenticación básica
-    token = request.cookies.get("access_token")
-    if not token:
-        return RedirectResponse("/login")
-
-    # 2. Validación de consistencia (Fail Fast)
-    if new_password != confirm_password:
-        return RedirectResponse("/settings?msg=Passwords do not match&type=error", status_code=303)
-
-    # 3. Validación de complejidad (Fail Fast) - AHORRAS CPU AQUÍ
-    if not auth.is_password_strong(new_password):
-        return RedirectResponse(
-            "/settings?msg=Weak password: use 8 characters, uppercase letters, numbers, and symbols&type=error",
-            status_code=303,
-        )
-
-    # 4. Operaciones pesadas (DB y Hash Verify)
-    username = auth.get_username_from_token(token)
-    user = auth.get_user_by_username(db, username)
-
-    if not auth.verify_password(old_password, user.hashed_password):
-        return RedirectResponse("/settings?msg=Current password is incorrect&type=error", status_code=303)
-
-    # 5. Commit final
-    user.hashed_password = auth.get_password_hash(new_password)
-    db.commit()
-
-    return RedirectResponse("/settings?msg=Password updated successfully&type=success", status_code=303)
-
-
-@app.get("/settings/downloader")
-async def settings_downloader_page(request: Request, db: Session = Depends(get_db)):
-    token = request.cookies.get("access_token")
-    if not token:
-        return RedirectResponse("/login")
-    username = auth.get_username_from_token(token)
-    user = auth.get_user_by_username(db, username)
-
-    if not user.download_settings:
-        user.download_settings = database.DownloadSettings(user_id=user.id)
-        db.add(user.download_settings)
-        db.commit()
-
-    return templates.TemplateResponse(
-        "settings_downloader.html",
-        {"request": request, "username": username, "is_admin": user.is_admin, "settings": user.download_settings},
-    )
-
-
-@app.post("/api/settings/cookies")
-async def upload_cookies(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
-    token = request.cookies.get("access_token")
-    if not token:
-        return RedirectResponse("/login", status_code=303)
-
-    username = auth.get_username_from_token(token)
-    if not username:
-        return RedirectResponse("/login", status_code=303)
-
-    if username in {"", ".", ".."} or "/" in username or "\\" in username:
-        return JSONResponse({"error": "Invalid user session"}, status_code=400)
-
-    user = auth.get_user_by_username(db, username)
-    if not user:
-        return RedirectResponse("/login", status_code=303)
-
-    if not file:
-        return JSONResponse({"error": "No file uploaded"}, status_code=400)
-
-    config_dir = f"/saas-data/users/{username}/config"
-    os.makedirs(config_dir, exist_ok=True)
-    file_path = f"{config_dir}/cookies.txt"
-
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    if not user.download_settings:
-        user.download_settings = database.DownloadSettings(user_id=user.id)
-    user.download_settings.youtube_cookies_path = file_path
-    db.commit()
-    return RedirectResponse("/settings?msg=Cookies updated successfully", status_code=303)
-
-
-@app.post("/api/settings/spotify")
-async def save_spotify_settings(
-    request: Request,
-    spotify_client_id: str = Form(...),
-    spotify_client_secret: str = Form(...),
-    db: Session = Depends(get_db),
-):
-    token = request.cookies.get("access_token")
-    if not token:
-        return RedirectResponse("/login")
-    username = auth.get_username_from_token(token)
-    user = auth.get_user_by_username(db, username)
-
-    if not user.download_settings:
-        user.download_settings = database.DownloadSettings(user_id=user.id)
-
-    # Guardamos las credenciales
-    user.download_settings.spotify_client_id = spotify_client_id
-    user.download_settings.spotify_client_secret = spotify_client_secret
-    db.commit()
-
-    return RedirectResponse("/settings/downloader?msg=Spotify configured successfully", status_code=303)
 
 
 @app.get("/set-language/{lang}")
@@ -737,81 +640,6 @@ async def set_language(lang: str, request: Request):
         key="lang", value=lang, httponly=True, secure=settings.COOKIE_SECURE, samesite="lax", max_age=31536000
     )  # 1 year
     return response
-
-
-class PasswordChangeRequest(BaseModel):
-    new_password: str
-
-
-class UserSettingsRequest(BaseModel):
-    spotify_client_id: str = None
-    spotify_client_secret: str = None
-    lastfm_api_key: str = None
-    lastfm_shared_secret: str = None
-    youtube_cookies: str = None
-    metadata_preferences: list[str] | None = None
-    audio_quality: str = "320"
-
-
-@app.post("/api/user/password")
-async def api_change_password(req: PasswordChangeRequest, request: Request, db: Session = Depends(get_db)):
-    token = request.cookies.get("access_token")
-    if not token:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-
-    username = auth.get_username_from_token(token)
-    user = auth.get_user_by_username(db, username)
-    if not user:
-        return JSONResponse({"error": "User not found"}, status_code=404)
-
-    # Validate password strength (same policy used elsewhere)
-    if not auth.is_password_strong(req.new_password):
-        return JSONResponse(
-            {"error": "Weak password: use 8 chars, uppercase, lowercase, numbers and symbols"},
-            status_code=400,
-        )
-
-    user.hashed_password = auth.get_password_hash(req.new_password)
-    db.commit()
-
-    return JSONResponse({"status": "updated"})
-
-
-@app.post("/api/user/settings")
-async def api_save_settings(req: UserSettingsRequest, request: Request, db: Session = Depends(get_db)):
-    token = request.cookies.get("access_token")
-    if not token:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-
-    username = auth.get_username_from_token(token)
-    user = auth.get_user_by_username(db, username)
-    if not user:
-        return JSONResponse({"error": "User not found"}, status_code=404)
-
-    if not user.download_settings:
-        user.download_settings = database.DownloadSettings(user_id=user.id)
-        db.add(user.download_settings)
-
-    if req.spotify_client_id is not None:
-        user.download_settings.spotify_client_id = req.spotify_client_id
-    if req.spotify_client_secret is not None:
-        user.download_settings.spotify_client_secret = req.spotify_client_secret
-    if req.lastfm_api_key is not None:
-        user.download_settings.lastfm_api_key = req.lastfm_api_key
-    if req.lastfm_shared_secret is not None:
-        user.download_settings.lastfm_shared_secret = req.lastfm_shared_secret
-    if req.youtube_cookies is not None:
-        user.download_settings.youtube_cookies = req.youtube_cookies
-    if req.metadata_preferences is not None:
-        import json
-
-        user.download_settings.metadata_preferences = json.dumps(req.metadata_preferences)
-    if req.audio_quality:
-        user.download_settings.audio_quality = req.audio_quality
-
-    db.commit()
-
-    return JSONResponse({"status": "saved"})
 
 
 # --- PROXY GATEWAY (SIEMPRE EL ÚLTIMO) ---

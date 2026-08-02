@@ -9,6 +9,7 @@ import spotify_service
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse
 from lastfm_service import lastfm_service
+from navipod_config import settings
 from secrets_store import ENC_PREFIX
 from shared_templates import templates
 from sqlalchemy.orm import Session
@@ -30,15 +31,10 @@ def get_db():
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)):
-    token = request.cookies.get("access_token")
-    if not token:
+    try:
+        return auth.get_current_user(request, db)
+    except Exception:
         return None
-    # Same blacklist check as auth.get_current_user — without it, revoked
-    # (logged-out) tokens kept working on every endpoint in this router.
-    if auth.is_token_blacklisted(db, token):
-        return None
-    username = auth.get_username_from_token(token)
-    return auth.get_user_by_username(db, username)
 
 
 def ensure_download_settings(db: Session, user: database.User) -> database.DownloadSettings:
@@ -322,18 +318,18 @@ async def change_password(
 
     # Update password
     user.hashed_password = auth.get_password_hash(new_password)
+    user.session_version = int(user.session_version or 0) + 1
     db.commit()
 
-    return templates.TemplateResponse(
-        "user_settings.html",
-        {
-            "request": request,
-            "user": user,
-            "success": "Password updated successfully",
-            "is_admin": user.is_admin,
-            "username": user.username,
-        },
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie(
+        "access_token",
+        path="/",
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite="lax",
     )
+    return response
 
 
 # --- PROFILE PICTURE / AVATAR ---

@@ -2,7 +2,7 @@
 Cover Art Caching Service.
 Caches extracted ID3 cover art to disk to avoid repeated extraction.
 """
-import os
+
 from pathlib import Path
 from typing import Optional
 

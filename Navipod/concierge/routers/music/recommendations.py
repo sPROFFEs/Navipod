@@ -286,6 +286,7 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
                 # section. Order chosen so the user sees their own
                 # library context before remote suggestions.
                 from personalization_service import get_library_shelves
+
                 lib_shelves = get_library_shelves(db, user)
                 local_section = _get_local_section(db)
 
@@ -360,7 +361,9 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
                         # the preview URL later via the embed scraper —
                         # Spotify deprecated preview_url in their official
                         # API in late 2024 and most tracks return null.
-                        "_spotify_id": item.get("id") if isinstance(item.get("id"), str) and len(item.get("id")) == 22 else None,
+                        "_spotify_id": item.get("id")
+                        if isinstance(item.get("id"), str) and len(item.get("id")) == 22
+                        else None,
                     }
                 )
 
@@ -523,6 +526,7 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
     # the cache-hit branch produces.
     try:
         from personalization_service import get_library_shelves
+
         lib_shelves = get_library_shelves(db, user)
         if lib_shelves:
             sections = list(lib_shelves) + sections
@@ -600,7 +604,7 @@ async def discovery_feed(request: Request, db: Session = Depends(get_db), limit:
         filtered.append(item)
 
     random.shuffle(filtered)
-    return JSONResponse({"items": filtered[:max(1, min(limit, 60))], "total": len(filtered)})
+    return JSONResponse({"items": filtered[: max(1, min(limit, 60))], "total": len(filtered)})
 
 
 def _get_local_section(db: Session):
