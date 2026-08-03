@@ -176,6 +176,33 @@
             color: var(--primary);
         }
 
+        .remember-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin: -4px 0 8px;
+            color: var(--text-sub);
+            text-align: left;
+            font-size: 0.84rem;
+            line-height: 1.35;
+            cursor: pointer;
+        }
+
+        .remember-row input {
+            width: 16px;
+            height: 16px;
+            margin-top: 1px;
+            accent-color: var(--primary);
+            flex: 0 0 auto;
+        }
+
+        .remember-row strong {
+            display: block;
+            color: var(--text-main);
+            font-size: 0.88rem;
+            font-weight: 500;
+        }
+
         /* --- BUTTON --- */
         .btn-login-pro {
             width: 100%;
@@ -405,6 +432,11 @@
                         <i class="fa-solid fa-lock input-icon"></i>
                     </div>
                 </div>
+
+                <label class="remember-row" for="remember_me">
+                    <input type="checkbox" id="remember_me" name="remember_me" value="true">
+                    <span><strong>Remember me on this device</strong>Keeps you signed in without saving your password.</span>
+                </label>
 
                 <input type="hidden" name="next" value="{{ next }}">
 

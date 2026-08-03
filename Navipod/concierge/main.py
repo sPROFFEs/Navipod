@@ -416,6 +416,7 @@ async def login(
     request: Request,
     username: str = Form(...),
     password: str = Form(...),
+    remember_me: bool = Form(False),
     next: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -475,7 +476,11 @@ async def login(
     # 3. SUCCESS -> Clear criminal record
     security.clear_attempts(request)
 
-    access_token = auth.create_access_token(data={"sub": user.username, "sv": int(user.session_version or 0)})
+    session_lifetime = auth.session_expiry(remember_me)
+    access_token = auth.create_access_token(
+        data={"sub": user.username, "sv": int(user.session_version or 0)},
+        expires_delta=session_lifetime,
+    )
     redirect_url = "/portal"
 
     if next and next != "None":
@@ -500,7 +505,9 @@ async def login(
         httponly=True,
         secure=settings.COOKIE_SECURE,
         samesite="lax",
-        max_age=86400,
+        # No Max-Age means the browser discards the cookie when its session
+        # ends. Remembered sessions persist, but remain revocable server-side.
+        max_age=int(session_lifetime.total_seconds()) if remember_me else None,
     )
     if user.is_admin:
         try:

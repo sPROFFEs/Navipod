@@ -61,6 +61,11 @@ existing music library.
 
 Then open your tunnel URL and log in.
 
+Login sessions are browser-session cookies by default. Selecting **Remember
+me on this device** creates a revocable HttpOnly cookie for
+`REMEMBER_SESSION_DAYS` (30 by default); Navipod never stores the password in
+the browser. Keep `COOKIE_SECURE=true` for every HTTPS deployment.
+
 ---
 
 ## 2. Internal HTTP (LAN / VPN)

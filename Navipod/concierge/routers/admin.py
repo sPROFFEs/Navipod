@@ -8,7 +8,9 @@ from pathlib import Path
 
 import auth
 import database
+import library_maintenance
 import manager
+import media_metadata
 import operations_service
 import path_security
 import psutil
@@ -992,6 +994,78 @@ def _run_duplicate_scan_job(job_id: int, limit_groups: int):
         db.close()
 
 
+def _run_library_audit_job(job_id: int):
+    db = database.SessionLocal()
+    try:
+        operations_service.update_admin_job_progress(
+            job_id, status="running", message="Auditing library files and metadata", phase="scan", progress=10
+        )
+        result = library_maintenance.build_library_audit(db, roots=TRACK_DELETE_ROOTS)
+        operations_service.update_admin_job_progress(
+            job_id,
+            status="completed",
+            message="Library audit completed",
+            phase="completed",
+            progress=100,
+            extra={"result": result},
+            finished=True,
+        )
+    except Exception as exc:
+        operations_service.update_admin_job_progress(
+            job_id,
+            status="failed",
+            message=f"Library audit failed: {exc}",
+            phase="failed",
+            progress=100,
+            extra={"error": str(exc)},
+            finished=True,
+        )
+    finally:
+        db.close()
+
+
+def _run_metadata_rescan_job(job_id: int):
+    db = database.SessionLocal()
+    try:
+        incomplete = db.query(database.Track).filter(
+            (database.Track.artist.is_(None))
+            | (database.Track.artist == "")
+            | (database.Track.album.is_(None))
+            | (database.Track.album == "")
+            | (database.Track.genre.is_(None))
+            | (database.Track.genre == "")
+            | database.Track.year.is_(None)
+        )
+        queued = incomplete.update({database.Track.metadata_scanned_at: None}, synchronize_session=False)
+        db.commit()
+        operations_service.update_admin_job_progress(
+            job_id, status="running", message=f"Rescanning metadata for {queued} track(s)", phase="scan", progress=20
+        )
+        updated = media_metadata.backfill_library_metadata()
+        operations_service.update_admin_job_progress(
+            job_id,
+            status="completed",
+            message=f"Metadata rescan completed for {updated} track(s)",
+            phase="completed",
+            progress=100,
+            extra={"result": {"queued": queued, "updated": updated}},
+            finished=True,
+        )
+    except Exception as exc:
+        db.rollback()
+        operations_service.update_admin_job_progress(
+            job_id,
+            status="failed",
+            message=f"Metadata rescan failed: {exc}",
+            phase="failed",
+            progress=100,
+            extra={"error": str(exc)},
+            finished=True,
+        )
+    finally:
+        db.close()
+
+
 def _query_tracks_with_fts(db, raw_query: str, limit: int):
     normalized = " ".join(token for token in raw_query.strip().split() if token)
     if not normalized:
@@ -1146,4 +1220,24 @@ async def admin_find_duplicates_job(
         {"phase": "queued", "progress": 0, "limit_groups": limit_groups},
     )
     background_tasks.add_task(_run_duplicate_scan_job, job_id, limit_groups)
+    return JSONResponse({"job_id": job_id})
+
+
+@router.post("/api/library/audit/jobs")
+async def admin_library_audit_job(background_tasks: BackgroundTasks, admin: database.User = Depends(get_current_admin)):
+    job_id = operations_service.create_admin_job(
+        "library_audit", admin.username, "Library audit queued", {"phase": "queued", "progress": 0}
+    )
+    background_tasks.add_task(_run_library_audit_job, job_id)
+    return JSONResponse({"job_id": job_id})
+
+
+@router.post("/api/library/metadata-rescan/jobs")
+async def admin_metadata_rescan_job(
+    background_tasks: BackgroundTasks, admin: database.User = Depends(get_current_admin)
+):
+    job_id = operations_service.create_admin_job(
+        "metadata_rescan", admin.username, "Metadata rescan queued", {"phase": "queued", "progress": 0}
+    )
+    background_tasks.add_task(_run_metadata_rescan_job, job_id)
     return JSONResponse({"job_id": job_id})

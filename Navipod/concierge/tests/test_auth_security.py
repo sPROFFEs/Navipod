@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import auth
 import database
 import pytest
@@ -64,6 +66,15 @@ def test_password_session_version_revokes_existing_tokens(db_session):
         auth.get_current_user(request_for(token=token), db_session)
 
     assert exc.value.status_code == 401
+
+
+def test_remembered_session_is_longer_but_bounded(monkeypatch):
+    monkeypatch.setattr(auth, "REMEMBER_SESSION_DAYS", 30)
+    assert auth.session_expiry(False) == timedelta(days=1)
+    assert auth.session_expiry(True) == timedelta(days=30)
+
+    monkeypatch.setattr(auth, "REMEMBER_SESSION_DAYS", 10_000)
+    assert auth.session_expiry(True) == timedelta(days=365)
 
 
 def test_cookie_authenticated_write_requires_same_origin():

@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = settings.ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+REMEMBER_SESSION_DAYS = settings.REMEMBER_SESSION_DAYS
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 USERNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{1,31}$")
@@ -53,6 +54,15 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def session_expiry(remember: bool) -> timedelta:
+    """Return a bounded login lifetime without ever persisting credentials."""
+    if remember:
+        days = min(max(int(REMEMBER_SESSION_DAYS), 1), 365)
+        return timedelta(days=days)
+    minutes = min(max(int(ACCESS_TOKEN_EXPIRE_MINUTES), 1), 24 * 60)
+    return timedelta(minutes=minutes)
 
 
 def get_username_from_token(token: str):
@@ -150,12 +160,14 @@ def is_token_blacklisted(db: Session, token: str) -> bool:
     return exists is not None
 
 
-def prune_token_blacklist(max_age_hours: int = 48) -> int:
+def prune_token_blacklist(max_age_hours: int | None = None) -> int:
     """Delete blacklist rows older than max_age_hours. Tokens expire after
-    ACCESS_TOKEN_EXPIRE_MINUTES (24h) anyway, so a row past 48h can never
-    match a still-valid token — it is dead weight scanned on every request.
+    Keep rows for at least the longest possible session lifetime. Otherwise
+    a logged-out remembered session could become valid again after pruning.
     Opens its own session: called from a background scheduler, never from
     a request handler."""
+    if max_age_hours is None:
+        max_age_hours = max(48, min(max(int(REMEMBER_SESSION_DAYS), 1), 365) * 24 + 24)
     # blacklisted_at is naive UTC (SQLite CURRENT_TIMESTAMP) — compare naive.
     cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=max_age_hours)
     db = database.SessionLocal()

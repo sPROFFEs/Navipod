@@ -285,6 +285,84 @@ export async function adminFindDuplicates() {
   }
 }
 
+function renderLibraryAudit(container, data) {
+  const sources =
+    Object.entries(data.source_counts || {})
+      .map(([name, count]) => `${ui.escHtml(name)}: ${count}`)
+      .join(' · ') || 'No sources';
+  const broken = data.missing_files || [];
+  container.innerHTML = `
+    <div class="admin-feedback ${data.missing_file_count ? 'error' : 'success'}">
+      <strong>${data.track_count} tracks · ${(Number(data.total_bytes || 0) / 1073741824).toFixed(2)} GB indexed</strong>
+      <div class="admin-feedback-meta">${data.missing_file_count} missing files · ${data.missing_metadata_count} incomplete metadata · ${data.metadata_pending_count} pending scans</div>
+      <div class="admin-feedback-meta">Sources: ${sources}</div>
+    </div>
+    ${
+      broken.length
+        ? `<div class="admin-results-list">${broken
+            .map(
+              (t) => `
+      <article class="admin-result-row">
+        <div class="admin-result-main"><div class="admin-result-title">${ui.escHtml(t.title)}</div><div class="admin-result-meta">${ui.escHtml(t.artist)} · file missing</div></div>
+        <button type="button" class="admin-icon-btn danger" data-audit-delete="${t.id}" data-title="${ui.escHtml(t.title)}" title="Remove broken database entry"><i data-lucide="trash-2" width="16" height="16"></i></button>
+      </article>`
+            )
+            .join('')}</div>`
+        : '<div class="admin-feedback success">All indexed files are present.</div>'
+    }
+    ${data.results_truncated ? '<div class="admin-feedback">Only the first 100 issues are shown.</div>' : ''}`;
+  container.querySelectorAll('[data-audit-delete]').forEach((button) =>
+    button.addEventListener('click', () => {
+      showDeleteTrackModal(Number(button.dataset.auditDelete), button.dataset.title || 'Track');
+    })
+  );
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function pollLibraryJob(jobId, container, onComplete, attempt = 0) {
+  const res = await fetch(`/admin/api/system/jobs/${jobId}`);
+  const job = await res.json();
+  if (!res.ok) throw new Error(job.error || `HTTP ${res.status}`);
+  if (job.status === 'completed') {
+    onComplete(job.details?.result || {});
+    return;
+  }
+  if (job.status === 'failed') throw new Error(job.message || 'Library job failed');
+  renderDuplicateScanStatus(container, job);
+  if (attempt >= 180) throw new Error('Library operation timed out');
+  window.setTimeout(
+    () =>
+      pollLibraryJob(jobId, container, onComplete, attempt + 1).catch((error) => {
+        container.innerHTML = `<div class="admin-feedback error">Error: ${ui.escHtml(error.message)}</div>`;
+      }),
+    1500
+  );
+}
+
+async function startLibraryJob(path, onComplete) {
+  const container = document.getElementById('library-results');
+  if (!container) return;
+  container.innerHTML = '<div class="admin-feedback">Starting library operation...</div>';
+  try {
+    const res = await fetch(path, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok || !data.job_id) throw new Error(data.error || `HTTP ${res.status}`);
+    await pollLibraryJob(data.job_id, container, (result) => onComplete(container, result));
+  } catch (error) {
+    container.innerHTML = `<div class="admin-feedback error">Error: ${ui.escHtml(error.message)}</div>`;
+  }
+}
+
+export function adminAuditLibrary() {
+  return startLibraryJob('/admin/api/library/audit/jobs', renderLibraryAudit);
+}
+
+export function adminRescanMetadata() {
+  return startLibraryJob('/admin/api/library/metadata-rescan/jobs', (container, result) => {
+    container.innerHTML = `<div class="admin-feedback success"><strong>Metadata rescan complete.</strong><div class="admin-feedback-meta">Queued ${result.queued || 0}; scanned ${result.updated || 0} tracks.</div></div>`;
+  });
+}
+
 export function showDeleteTrackModal(id, title) {
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';

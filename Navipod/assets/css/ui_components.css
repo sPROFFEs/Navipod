@@ -355,6 +355,12 @@
     padding: 10px;
 }
 
+.library-row-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
 .library-row-action:hover,
 .library-back:hover {
     color: var(--text-main);

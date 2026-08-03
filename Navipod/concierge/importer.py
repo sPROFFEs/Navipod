@@ -424,6 +424,11 @@ def run(args: argparse.Namespace) -> int:
 
         if not args.dry_run:
             cleanup_empty_dirs(source)
+            if stats.new_track_ids:
+                from routers.music.smart_playlists import refresh_user_smart_playlists
+
+                for user in db.query(User).filter(User.is_service_account == False).all():
+                    refresh_user_smart_playlists(db, user)
 
     finally:
         db.close()

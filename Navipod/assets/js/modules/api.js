@@ -94,14 +94,15 @@ export async function fetchPlaylist(playlistId) {
   return null;
 }
 
-export async function fetchLibraryFacets(kind) {
-  const res = await fetch(`${state.API}/library/facets?kind=${encodeURIComponent(kind)}`);
+export async function fetchLibraryFacets(kind, options = {}) {
+  const params = new URLSearchParams({ kind, paged: 'true', ...options });
+  const res = await fetch(`${state.API}/library/facets?${params}`);
   if (!res.ok) throw new Error(`Library request failed (${res.status})`);
   return await res.json();
 }
 
 export async function fetchLibraryTracks(filters = {}) {
-  const params = new URLSearchParams(filters);
+  const params = new URLSearchParams({ paged: 'true', ...filters });
   const res = await fetch(`${state.API}/library/tracks?${params}`);
   if (!res.ok) throw new Error(`Library request failed (${res.status})`);
   return await res.json();
@@ -115,6 +116,28 @@ export async function createSmartPlaylistApi(payload) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Create failed (${res.status})`);
+  return data;
+}
+
+export async function updateSmartPlaylistApi(playlistId, payload) {
+  const res = await fetch(`${state.API}/smart-playlists/${playlistId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Update failed (${res.status})`);
+  return data;
+}
+
+export async function previewSmartPlaylistApi(rules) {
+  const res = await fetch(`${state.API}/smart-playlists/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rules })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Preview failed (${res.status})`);
   return data;
 }
 

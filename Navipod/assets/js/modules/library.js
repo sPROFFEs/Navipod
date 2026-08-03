@@ -5,6 +5,10 @@ import * as state from './state.js';
 import * as ui from './ui.js';
 
 let activeKind = 'playlists';
+let smartEditingId = null;
+let facetQuery = '';
+let facetSort = 'name';
+let facetLimit = 50;
 
 function playlistRow(pl) {
   const tracks = Number(pl.track_count || 0);
@@ -19,9 +23,9 @@ function playlistRow(pl) {
       </div>
       <div class="library-row-meta">
         <div class="library-row-name">${ui.escHtml(pl.name || 'Playlist')}</div>
-        <div class="library-row-sub">${type} · ${tracks} ${tracks === 1 ? 'song' : 'songs'}</div>
+        <div class="library-row-sub">${type} · ${tracks} ${tracks === 1 ? 'song' : 'songs'}${pl.smart_rule_summary ? ` · ${ui.escHtml(pl.smart_rule_summary)}` : ''}</div>
       </div>
-      ${pl.is_smart ? `<button class="library-row-action" onclick="event.stopPropagation(); refreshSmartPlaylist(${pl.id})" title="Refresh rules"><i data-lucide="refresh-cw"></i></button>` : ''}
+      ${pl.is_smart ? `<span class="library-row-actions"><button class="library-row-action" onclick="event.stopPropagation(); showEditSmartPlaylistModal(${pl.id})" title="Edit rules"><i data-lucide="pencil"></i></button><button class="library-row-action" onclick="event.stopPropagation(); refreshSmartPlaylist(${pl.id})" title="Refresh rules"><i data-lucide="refresh-cw"></i></button></span>` : ''}
     </div>`;
 }
 
@@ -29,18 +33,19 @@ function facetRow(kind, facet) {
   const singular = kind === 'artists' ? 'artist' : kind === 'albums' ? 'album' : 'genre';
   const icon = kind === 'artists' ? 'user-round' : kind === 'albums' ? 'disc-3' : 'tags';
   const encoded = encodeURIComponent(facet.name).replace(/'/g, '%27');
+  const encodedArtist = encodeURIComponent(facet.artist || '').replace(/'/g, '%27');
   return `
-    <button class="library-row library-facet-row" onclick="openLibraryFacet('${singular}', decodeURIComponent('${encoded}'))">
-      <span class="library-row-cover"><i data-lucide="${icon}"></i></span>
+    <button class="library-row library-facet-row" onclick="openLibraryFacet('${singular}', decodeURIComponent('${encoded}'), decodeURIComponent('${encodedArtist}'))">
+      <span class="library-row-cover">${facet.thumbnail ? `<img src="${ui.escHtml(facet.thumbnail)}" loading="lazy" onerror="this.replaceWith(document.createTextNode(''))">` : `<i data-lucide="${icon}"></i>`}</span>
       <span class="library-row-meta">
         <span class="library-row-name">${ui.escHtml(facet.name)}</span>
-        <span class="library-row-sub">${facet.track_count} ${facet.track_count === 1 ? 'song' : 'songs'}</span>
+        <span class="library-row-sub">${facet.artist ? `${ui.escHtml(facet.artist)} · ` : ''}${facet.track_count} ${facet.track_count === 1 ? 'song' : 'songs'}</span>
       </span>
       <i data-lucide="chevron-right"></i>
     </button>`;
 }
 
-function shell(content) {
+function shell(content, browsing = false, total = 0, hasMore = false) {
   return `
     <section class="library-shell">
       <header class="library-head">
@@ -54,11 +59,18 @@ function shell(content) {
       <div class="library-filters">
         ${['playlists', 'artists', 'albums', 'genres'].map((kind) => `<button class="library-filter${kind === activeKind ? ' active' : ''}" onclick="switchLibraryKind('${kind}')">${kind[0].toUpperCase()}${kind.slice(1)}</button>`).join('')}
       </div>
+      ${browsing ? `<div class="library-sort"><input id="library-facet-query" class="modal-input" value="${ui.escHtml(facetQuery)}" placeholder="Search ${activeKind}" onkeyup="if(event.key==='Enter') reloadLibraryFacets()"><select id="library-facet-sort" class="modal-input" onchange="reloadLibraryFacets()"><option value="name"${facetSort === 'name' ? ' selected' : ''}>Name</option><option value="count"${facetSort === 'count' ? ' selected' : ''}>Most songs</option></select><button class="library-icon-btn" onclick="reloadLibraryFacets()" title="Search"><i data-lucide="search"></i></button></div>` : ''}
       ${content}
+      ${browsing ? `<p class="library-facet-count">Showing ${Math.min(facetLimit, total)} of ${total}</p>${hasMore ? '<button class="btn-secondary" onclick="loadMoreLibraryFacets()">Load more</button>' : ''}` : ''}
     </section>`;
 }
 
 export async function renderLibrary(container, kind = activeKind) {
+  if (kind !== activeKind) {
+    facetQuery = '';
+    facetSort = 'name';
+    facetLimit = 50;
+  }
   activeKind = kind;
   try {
     if (kind === 'playlists') {
@@ -70,11 +82,15 @@ export async function renderLibrary(container, kind = activeKind) {
           : '<div class="empty-state"><p>No playlists yet. Use + or create a smart playlist.</p></div>'
       );
     } else {
-      const facets = await api.fetchLibraryFacets(kind);
+      const page = await api.fetchLibraryFacets(kind, { q: facetQuery, sort: facetSort, limit: facetLimit });
+      const facets = page.items || [];
       container.innerHTML = shell(
         facets.length
           ? `<div class="library-list">${facets.map((facet) => facetRow(kind, facet)).join('')}</div>`
-          : `<div class="empty-state"><p>No ${kind} with metadata found.</p></div>`
+          : `<div class="empty-state"><p>No ${kind} with metadata found.</p></div>`,
+        true,
+        page.total || 0,
+        Boolean(page.has_more)
       );
     }
     ui.refreshIcons(container);
@@ -89,17 +105,33 @@ export async function switchLibraryKind(kind) {
   if (container) await renderLibrary(container, kind);
 }
 
-export async function openLibraryFacet(key, value) {
+export async function reloadLibraryFacets() {
+  facetQuery = document.getElementById('library-facet-query')?.value.trim() || '';
+  facetSort = document.getElementById('library-facet-sort')?.value || 'name';
+  facetLimit = 50;
+  return switchLibraryKind(activeKind);
+}
+
+export async function loadMoreLibraryFacets() {
+  facetLimit = Math.min(facetLimit + 50, 500);
+  return switchLibraryKind(activeKind);
+}
+
+export async function openLibraryFacet(key, value, albumArtist = '') {
   const container = document.getElementById('view-container');
   if (!container) return;
   try {
-    const tracks = await api.fetchLibraryTracks({ [key]: value });
+    const filters = { [key]: value, limit: 500, sort: key === 'album' ? 'album' : 'artist' };
+    if (key === 'album' && albumArtist) filters.artist = albumArtist;
+    const page = await api.fetchLibraryTracks(filters);
+    const tracks = page.items || [];
     state.setCurrentViewList(tracks);
     container.innerHTML = `
       <section class="library-shell">
         <button class="library-back" onclick="switchLibraryKind('${key === 'artist' ? 'artists' : key === 'album' ? 'albums' : 'genres'}')"><i data-lucide="arrow-left"></i> Library</button>
         <h1 class="library-title">${ui.escHtml(value)}</h1>
-        <p class="library-facet-count">${tracks.length} songs</p>
+        ${albumArtist ? `<p class="library-facet-count">${ui.escHtml(albumArtist)}</p>` : ''}
+        <p class="library-facet-count">${page.total || tracks.length} songs</p>
         <div class="track-list">${tracks
           .map(
             (track, index) => `
@@ -118,11 +150,17 @@ export async function openLibraryFacet(key, value) {
 }
 
 export function showCreateSmartPlaylistModal() {
+  smartEditingId = null;
+  showSmartPlaylistModal();
+}
+
+function showSmartPlaylistModal(data = null) {
+  const editing = Boolean(data);
   document.getElementById('modal-container').innerHTML = `
     <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
       <div class="modal smart-playlist-modal">
-        <h2>New smart playlist</h2>
-        <p class="modal-subtitle">Matching songs update whenever you refresh the playlist.</p>
+        <h2>${editing ? 'Edit' : 'New'} smart playlist</h2>
+        <p class="modal-subtitle">Preview the rules before saving. Matching songs also refresh when favorites change.</p>
         <input id="smart-name" class="modal-input" maxlength="100" placeholder="Playlist name">
         <div class="smart-rule-grid">
           <input id="smart-artist" class="modal-input" placeholder="Artist (optional)">
@@ -137,9 +175,31 @@ export function showCreateSmartPlaylistModal() {
           <select id="smart-sort" class="modal-input"><option value="newest">Newest added</option><option value="artist">Artist</option><option value="album">Album</option><option value="most_played">Most played</option><option value="least_played">Least played</option></select>
           <label class="smart-check"><input id="smart-favorites" type="checkbox"> Favorites only</label>
         </div>
-        <div class="modal-actions"><button class="btn-secondary" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="createSmartPlaylist()">Create</button></div>
+        <div id="smart-preview" class="modal-subtitle" aria-live="polite"></div>
+        <div class="modal-actions"><button class="btn-secondary" onclick="previewSmartPlaylist()">Preview</button><button class="btn-secondary" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="saveSmartPlaylist()">${editing ? 'Save' : 'Create'}</button></div>
       </div>
     </div>`;
+  if (data) {
+    const rules = data.smart_rules || {};
+    const values = {
+      'smart-name': data.name,
+      'smart-artist': rules.artist,
+      'smart-album': rules.album,
+      'smart-genre': rules.genre,
+      'smart-year-min': rules.year_min,
+      'smart-year-max': rules.year_max,
+      'smart-days': rules.added_within_days,
+      'smart-min-plays': rules.min_plays,
+      'smart-unplayed': rules.not_played_days,
+      'smart-limit': rules.limit || 50,
+      'smart-sort': rules.sort || 'newest'
+    };
+    Object.entries(values).forEach(([id, value]) => {
+      const input = document.getElementById(id);
+      if (input && value != null) input.value = value;
+    });
+    document.getElementById('smart-favorites').checked = Boolean(rules.favorite_only);
+  }
 }
 
 function optionalNumber(id) {
@@ -147,33 +207,57 @@ function optionalNumber(id) {
   return value === '' || value == null ? null : Number(value);
 }
 
-export async function createSmartPlaylist() {
+function smartRulesFromForm() {
+  return {
+    artist: document.getElementById('smart-artist')?.value.trim() || '',
+    album: document.getElementById('smart-album')?.value.trim() || '',
+    genre: document.getElementById('smart-genre')?.value.trim() || '',
+    year_min: optionalNumber('smart-year-min'),
+    year_max: optionalNumber('smart-year-max'),
+    added_within_days: optionalNumber('smart-days'),
+    min_plays: optionalNumber('smart-min-plays'),
+    not_played_days: optionalNumber('smart-unplayed'),
+    favorite_only: Boolean(document.getElementById('smart-favorites')?.checked),
+    limit: optionalNumber('smart-limit') || 50,
+    sort: document.getElementById('smart-sort')?.value || 'newest'
+  };
+}
+
+export async function showEditSmartPlaylistModal(playlistId) {
+  const data = await api.fetchPlaylist(playlistId);
+  if (!data?.is_smart) return ui.showToast('Smart playlist not found.', 'error');
+  smartEditingId = playlistId;
+  showSmartPlaylistModal(data);
+}
+
+export async function previewSmartPlaylist() {
+  const target = document.getElementById('smart-preview');
+  try {
+    const result = await api.previewSmartPlaylistApi(smartRulesFromForm());
+    if (target) target.textContent = `${result.track_count} matching songs · ${result.summary}`;
+  } catch (error) {
+    if (target) target.textContent = error.message;
+  }
+}
+
+export async function saveSmartPlaylist() {
   const name = document.getElementById('smart-name')?.value.trim();
   if (!name) return ui.showToast('Enter a playlist name.', 'error');
   try {
-    const result = await api.createSmartPlaylistApi({
-      name,
-      rules: {
-        artist: document.getElementById('smart-artist')?.value.trim() || '',
-        album: document.getElementById('smart-album')?.value.trim() || '',
-        genre: document.getElementById('smart-genre')?.value.trim() || '',
-        year_min: optionalNumber('smart-year-min'),
-        year_max: optionalNumber('smart-year-max'),
-        added_within_days: optionalNumber('smart-days'),
-        min_plays: optionalNumber('smart-min-plays'),
-        not_played_days: optionalNumber('smart-unplayed'),
-        favorite_only: Boolean(document.getElementById('smart-favorites')?.checked),
-        limit: optionalNumber('smart-limit') || 50,
-        sort: document.getElementById('smart-sort')?.value || 'newest'
-      }
-    });
+    const payload = { name, rules: smartRulesFromForm() };
+    const result = smartEditingId
+      ? await api.updateSmartPlaylistApi(smartEditingId, payload)
+      : await api.createSmartPlaylistApi(payload);
     ui.closeModal();
-    ui.showToast(`Created with ${result.track_count} songs.`, 'success');
+    ui.showToast(`${smartEditingId ? 'Updated' : 'Created'} with ${result.track_count} songs.`, 'success');
+    smartEditingId = null;
     await switchLibraryKind('playlists');
   } catch (error) {
     ui.showToast(error.message, 'error');
   }
 }
+
+export const createSmartPlaylist = saveSmartPlaylist;
 
 export async function refreshSmartPlaylist(playlistId) {
   try {

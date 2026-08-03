@@ -36,11 +36,15 @@ class SmartPlaylistRequest(BaseModel):
     rules: SmartRules
 
 
+class SmartPreviewRequest(BaseModel):
+    rules: SmartRules
+
+
 def _rules_dict(payload: SmartRules) -> dict:
     return payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
 
 
-def _materialize(db: Session, playlist, user, rules: dict) -> int:
+def _materialize(db: Session, playlist, user, rules: dict, *, schedule_external_sync: bool = True) -> int:
     track_ids = library_service.smart_track_ids(db, user, rules)
     db.query(database.PlaylistItem).filter(database.PlaylistItem.playlist_id == playlist.id).delete(
         synchronize_session=False
@@ -52,13 +56,61 @@ def _materialize(db: Session, playlist, user, rules: dict) -> int:
     db.commit()
     db.refresh(playlist)
 
-    from .favorites import schedule_navidrome_sync
     from .playlists import generate_m3u_for_playlist, schedule_playlist_sync
 
     generate_m3u_for_playlist(db, playlist, user.username)
-    schedule_playlist_sync(db, user)
-    schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
+    if schedule_external_sync:
+        from .favorites import schedule_navidrome_sync
+
+        schedule_playlist_sync(db, user)
+        schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
     return len(track_ids)
+
+
+def refresh_user_smart_playlists(db: Session, user) -> int:
+    """Refresh all rule playlists after library/favorite state changes."""
+    playlists = (
+        db.query(database.Playlist)
+        .filter(database.Playlist.owner_id == user.id, database.Playlist.smart_rules_json.isnot(None))
+        .all()
+    )
+    refreshed = 0
+    for playlist in playlists:
+        try:
+            _materialize(
+                db,
+                playlist,
+                user,
+                json.loads(playlist.smart_rules_json or "{}"),
+                schedule_external_sync=False,
+            )
+            refreshed += 1
+        except (json.JSONDecodeError, TypeError, ValueError):
+            db.rollback()
+    return refreshed
+
+
+@router.post("/api/smart-playlists/preview")
+async def preview_smart_playlist(payload: SmartPreviewRequest, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    try:
+        rules = _rules_dict(payload.rules)
+        track_ids = library_service.smart_track_ids(db, user, rules)
+        tracks_by_id = {
+            track.id: track for track in db.query(database.Track).filter(database.Track.id.in_(track_ids[:20])).all()
+        }
+        tracks = [library_service.serialize_track(tracks_by_id[track_id]) for track_id in track_ids[:20]]
+        return JSONResponse(
+            {
+                "track_count": len(track_ids),
+                "tracks": tracks,
+                "summary": library_service.describe_smart_rules(rules),
+            }
+        )
+    except (TypeError, ValueError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
 
 
 @router.post("/api/smart-playlists")

@@ -298,6 +298,12 @@ async def add_favorite(track_id: int, request: Request, db: Session = Depends(ge
 
     # Regenerate Liked Songs M3U
     generate_favorites_m3u(db, user)
+    from .smart_playlists import refresh_user_smart_playlists
+
+    if refresh_user_smart_playlists(db, user):
+        from .playlists import schedule_playlist_sync
+
+        schedule_playlist_sync(db, user)
 
     # Sync with Navidrome Star system (Background)
     asyncio.create_task(sync_favorite_to_navidrome(user, track, True))
@@ -326,6 +332,12 @@ async def remove_favorite(track_id: int, request: Request, db: Session = Depends
 
     # Regenerate Liked Songs M3U
     generate_favorites_m3u(db, user)
+    from .smart_playlists import refresh_user_smart_playlists
+
+    if refresh_user_smart_playlists(db, user):
+        from .playlists import schedule_playlist_sync
+
+        schedule_playlist_sync(db, user)
 
     # Sync with Navidrome Star system (Background)
     track = db.query(database.Track).filter(database.Track.id == track_id).first()

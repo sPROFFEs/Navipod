@@ -18,6 +18,26 @@ FACET_COLUMNS = {
 SMART_SORTS = {"newest", "oldest", "artist", "album", "title", "most_played", "least_played"}
 
 
+def describe_smart_rules(raw_rules: dict) -> str:
+    rules = normalize_smart_rules(raw_rules)
+    parts = []
+    for key, label in (("artist", "Artist"), ("album", "Album"), ("genre", "Genre")):
+        if rules[key]:
+            parts.append(f"{label}: {rules[key]}")
+    if rules["year_min"] is not None or rules["year_max"] is not None:
+        parts.append(f"Years: {rules['year_min'] or 'any'}–{rules['year_max'] or 'any'}")
+    if rules["favorite_only"]:
+        parts.append("Favorites")
+    if rules["added_within_days"] is not None:
+        parts.append(f"Added in {rules['added_within_days']}d")
+    if rules["min_plays"] is not None:
+        parts.append(f"At least {rules['min_plays']} plays")
+    if rules["not_played_days"] is not None:
+        parts.append(f"Not played in {rules['not_played_days']}d")
+    parts.append(f"Up to {rules['limit']} · {rules['sort'].replace('_', ' ')}")
+    return " · ".join(parts)
+
+
 def serialize_track(track: database.Track) -> dict:
     return {
         "id": track.id,
@@ -32,16 +52,53 @@ def serialize_track(track: database.Track) -> dict:
     }
 
 
-def list_facets(db: Session, kind: str, query: str = "", limit: int = 100) -> list[dict]:
+def list_facets(
+    db: Session, kind: str, query: str = "", limit: int = 100, offset: int = 0, sort: str = "name"
+) -> list[dict]:
     column = FACET_COLUMNS.get(kind)
     if column is None:
         raise ValueError("kind must be artists, albums, or genres")
-    statement = db.query(column.label("name"), func.count(database.Track.id).label("track_count"))
+    fields = [column.label("name"), func.count(database.Track.id).label("track_count")]
+    if kind == "albums":
+        fields.extend([database.Track.artist.label("artist"), func.min(database.Track.id).label("cover_track_id")])
+    statement = db.query(*fields)
     statement = statement.filter(column.isnot(None), func.trim(column) != "")
     if query.strip():
         statement = statement.filter(column.ilike(f"%{query.strip()}%"))
-    rows = statement.group_by(column).order_by(func.lower(column)).limit(max(1, min(limit, 500))).all()
-    return [{"name": row.name, "track_count": int(row.track_count)} for row in rows]
+    grouping = [column, database.Track.artist] if kind == "albums" else [column]
+    statement = statement.group_by(*grouping)
+    statement = statement.order_by(
+        func.count(database.Track.id).desc() if sort == "count" else func.lower(column),
+        func.lower(database.Track.artist) if kind == "albums" else column,
+    )
+    rows = statement.offset(max(0, offset)).limit(max(1, min(limit, 500))).all()
+    result = []
+    for row in rows:
+        item = {"name": row.name, "track_count": int(row.track_count)}
+        if kind == "albums":
+            item.update(
+                {
+                    # Preserve the real filter value. The UI may render an
+                    # empty artist as unknown, but must not query that label.
+                    "artist": row.artist or "",
+                    "thumbnail": f"/api/cover/{row.cover_track_id}",
+                }
+            )
+        result.append(item)
+    return result
+
+
+def count_facets(db: Session, kind: str, query: str = "") -> int:
+    column = FACET_COLUMNS.get(kind)
+    if column is None:
+        raise ValueError("kind must be artists, albums, or genres")
+    statement = db.query(column)
+    statement = statement.filter(column.isnot(None), func.trim(column) != "")
+    if query.strip():
+        statement = statement.filter(column.ilike(f"%{query.strip()}%"))
+    if kind == "albums":
+        return statement.group_by(column, database.Track.artist).count()
+    return statement.distinct().count()
 
 
 def list_tracks(
@@ -53,7 +110,28 @@ def list_tracks(
     year: int | None = None,
     query: str = "",
     limit: int = 200,
+    offset: int = 0,
+    sort: str = "artist",
 ) -> list[dict]:
+    statement = _track_query(db, artist=artist, album=album, genre=genre, year=year, query=query)
+    orders = {
+        "title": (database.Track.title, database.Track.artist),
+        "album": (database.Track.album, database.Track.title),
+        "year_desc": (database.Track.year.desc(), database.Track.title),
+        "newest": (database.Track.created_at.desc(), database.Track.id.desc()),
+        "artist": (database.Track.artist, database.Track.album, database.Track.title),
+    }
+    rows = statement.order_by(*orders.get(sort, orders["artist"])).offset(max(0, offset)).limit(max(1, min(limit, 500)))
+    return [serialize_track(track) for track in rows]
+
+
+def count_tracks(db: Session, **filters) -> int:
+    return _track_query(db, **filters).count()
+
+
+def _track_query(
+    db: Session, *, artist: str = "", album: str = "", genre: str = "", year: int | None = None, query: str = ""
+):
     statement = db.query(database.Track)
     if artist:
         statement = statement.filter(database.Track.artist == artist)
@@ -72,10 +150,7 @@ def list_tracks(
                 database.Track.album.ilike(needle),
             )
         )
-    rows = statement.order_by(database.Track.artist, database.Track.album, database.Track.title).limit(
-        max(1, min(limit, 500))
-    )
-    return [serialize_track(track) for track in rows]
+    return statement
 
 
 def normalize_smart_rules(rules: dict) -> dict:

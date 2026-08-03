@@ -626,6 +626,10 @@ class DownloadManager:
                 job.fallback_reason = self._fallback_reason_text()
                 job.error_type = None
                 self.db.commit()
+                from routers.music.smart_playlists import refresh_user_smart_playlists
+
+                if job.owner:
+                    refresh_user_smart_playlists(self.db, job.owner)
 
             except Exception as e:
                 logger.error(f"Critical error in job {job_id}: {e}")

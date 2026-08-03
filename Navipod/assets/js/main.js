@@ -183,7 +183,12 @@ window.resetPlaylistCover = playlists.resetPlaylistCover;
 // Library
 window.switchLibraryKind = library.switchLibraryKind;
 window.openLibraryFacet = library.openLibraryFacet;
+window.reloadLibraryFacets = library.reloadLibraryFacets;
+window.loadMoreLibraryFacets = library.loadMoreLibraryFacets;
 window.showCreateSmartPlaylistModal = library.showCreateSmartPlaylistModal;
+window.showEditSmartPlaylistModal = library.showEditSmartPlaylistModal;
+window.previewSmartPlaylist = library.previewSmartPlaylist;
+window.saveSmartPlaylist = library.saveSmartPlaylist;
 window.createSmartPlaylist = library.createSmartPlaylist;
 window.refreshSmartPlaylist = library.refreshSmartPlaylist;
 
@@ -267,6 +272,8 @@ if (window.USER_DATA?.is_admin) {
     window.resetPassword = admin.resetPassword;
     window.adminSearchLibrary = admin.adminSearchLibrary;
     window.adminFindDuplicates = admin.adminFindDuplicates;
+    window.adminAuditLibrary = admin.adminAuditLibrary;
+    window.adminRescanMetadata = admin.adminRescanMetadata;
     window.showDeleteTrackModal = admin.showDeleteTrackModal;
     window.adminDeleteTrack = admin.adminDeleteTrack;
 

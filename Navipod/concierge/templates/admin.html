@@ -169,9 +169,17 @@
                     <i data-lucide="copy" width="16" height="16"></i>
                     <span>Find Duplicates</span>
                 </button>
+                <button onclick="adminAuditLibrary()" class="admin-secondary-btn">
+                    <i data-lucide="stethoscope" width="16" height="16"></i>
+                    <span>Audit Library</span>
+                </button>
+                <button onclick="adminRescanMetadata()" class="admin-secondary-btn">
+                    <i data-lucide="scan-search" width="16" height="16"></i>
+                    <span>Rescan Missing Metadata</span>
+                </button>
             </div>
             <div id="library-results" class="admin-library-results">
-                <div class="admin-empty-state">Search for tracks or run a duplicate scan.</div>
+                <div class="admin-empty-state">Search tracks, audit files and metadata, or run a duplicate scan.</div>
             </div>
         </div>
     </section>

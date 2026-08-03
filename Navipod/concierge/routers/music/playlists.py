@@ -11,6 +11,7 @@ import uuid
 
 import database
 import httpx
+import library_service
 import manager
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -25,6 +26,15 @@ from .favorites import schedule_navidrome_sync
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _smart_rule_summary(raw_rules: str | None) -> str | None:
+    if not raw_rules:
+        return None
+    try:
+        return library_service.describe_smart_rules(json.loads(raw_rules))
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return "Rules need attention"
 
 
 # --- PYDANTIC MODELS ---
@@ -209,6 +219,7 @@ def fetch_playlist_summaries(
                 if viewer_id is not None
                 else False,
                 "is_smart": row.smart_rules_json is not None,
+                "smart_rule_summary": _smart_rule_summary(row.smart_rules_json),
                 "smart_updated_at": row.smart_updated_at.isoformat() if row.smart_updated_at else None,
             }
         )
@@ -246,6 +257,7 @@ def serialize_playlist_summary(db: Session, playlist, viewer_id: int | None = No
         if viewer_id is not None
         else False,
         "is_smart": playlist.smart_rules_json is not None,
+        "smart_rule_summary": _smart_rule_summary(playlist.smart_rules_json),
         "smart_updated_at": playlist.smart_updated_at.isoformat() if playlist.smart_updated_at else None,
     }
 

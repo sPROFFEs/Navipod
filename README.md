@@ -28,8 +28,10 @@ This repository has two levels:
 - Isolated per-user Navidrome containers managed by a central concierge service
 - Unified search across local tracks, YouTube, Spotify, Last.fm, and MusicBrainz
 - Shared download pool with deduplication and metadata enrichment
+- Searchable, paginated artist / album / genre library with album-artist grouping
+- Editable smart playlists with rule previews and automatic refresh after library or favorite changes
 - Local-library personal mixes (Repeat / Deep Cuts / Favorites / Rediscovery) plus remote recommendations
-- Admin panel: user management, system monitor, rotating backups, in-app updates
+- Admin panel: user management, library health audits, metadata rescans, rotating backups, in-app updates
 - Subsonic-compatible endpoints for mobile clients (Amperfy, Tempo, Symfonium…)
 - Native Android APK that wraps the web app with system media-session integration
 
@@ -106,20 +108,16 @@ Initial cert acquisition is one manual step before the auto-renewal loop takes o
 If you skipped admin creation, run this from the directory containing `docker-compose.yaml`:
 
 ```bash
-docker compose exec -T concierge python -c "
-import database, auth
-db = database.SessionLocal()
-hashed = auth.get_password_hash('change_me_now')
-new_user = database.User(username='admin', hashed_password=hashed, is_admin=True, is_active=True)
-db.add(new_user); db.flush()
-db.add(database.DownloadSettings(user_id=new_user.id, audio_quality='320'))
-if not db.query(database.SystemSettings).first():
-    db.add(database.SystemSettings(pool_limit_gb=100))
-db.commit(); db.close()
-"
+read -r -p "Admin username: " NAVIPOD_ADMIN_USERNAME
+read -r -s -p "Admin password: " NAVIPOD_ADMIN_PASSWORD; printf '\n'
+export NAVIPOD_ADMIN_USERNAME NAVIPOD_ADMIN_PASSWORD
+docker compose exec -T \
+  -e NAVIPOD_ADMIN_USERNAME -e NAVIPOD_ADMIN_PASSWORD \
+  concierge python create_admin.py
+unset NAVIPOD_ADMIN_USERNAME NAVIPOD_ADMIN_PASSWORD
 ```
 
-Change the username and password before running.
+The password is read without terminal echo, passed through the process environment rather than a command argument, and validated against Navipod's password policy.
 
 ## First-Time Configuration
 
@@ -225,6 +223,7 @@ Main variables in `.env.example`:
 | `DOMAIN` | Yes | Public host name, or `localhost` for local use. |
 | `ALLOWED_HOSTS` | Yes | Comma-separated FastAPI trusted hosts. |
 | `COOKIE_SECURE` | Yes | `true` for HTTPS / Cloudflare Tunnel, `false` only for local HTTP testing. |
+| `REMEMBER_SESSION_DAYS` | No | Persistent-session lifetime when a user explicitly selects “Remember me” (default: 30, capped at 365). Passwords are never stored. |
 | `HOST_DATA_ROOT` | No | Default: `/opt/saas-data`. |
 | `CONCURRENT_DOWNLOADS` | No | Max concurrent downloads per user. |
 | `IDLE_THRESHOLD_MINUTES` | No | Web inactivity threshold before a user container is reaped. |
@@ -242,7 +241,9 @@ Main variables in `.env.example`:
 
 **Permission errors writing `/opt/saas-data`** —
 ```bash
-sudo chown -R $USER:$USER /opt/saas-data && sudo chmod -R 775 /opt/saas-data
+sudo chown -R 1000:1000 /opt/saas-data
+sudo find /opt/saas-data -type d -exec chmod 750 {} +
+sudo find /opt/saas-data -type f -exec chmod 640 {} +
 ```
 
 **Backend can't control Docker** — verify `/var/run/docker.sock` is mounted into the `concierge` container.
@@ -252,6 +253,7 @@ sudo chown -R $USER:$USER /opt/saas-data && sudo chmod -R 775 /opt/saas-data
 ## Security
 
 - Change `SECRET_KEY` before production use.
+- “Remember me” stores only a signed, HttpOnly session cookie—not the password. Logout and password changes revoke it server-side.
 - Don't commit `.env`, `cookies.txt`, or database files.
 - The backend mounts the Docker socket — treat the host as privileged infrastructure.
 
