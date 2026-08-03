@@ -338,6 +338,8 @@
 .library-track-row {
     width: 100%;
     border: 0;
+    background: transparent;
+    appearance: none;
     color: inherit;
     text-align: left;
     font: inherit;
