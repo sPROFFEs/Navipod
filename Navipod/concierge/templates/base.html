@@ -25,6 +25,10 @@
          is <=768px, so desktop layouts stay untouched. -->
     <link rel="stylesheet" href="/assets/css/mobile_shell.css?v={{ static_v }}" media="(max-width: 768px)">
 
+    <!-- Relative ES-module imports otherwise bypass the cache token on
+         main.js and can mix incompatible files from different releases. -->
+    <script type="importmap">{{ javascript_import_map | tojson }}</script>
+
     <!-- PWA & Mobile Meta -->
     <link rel="manifest" href="/assets/site.webmanifest">
     <meta name="theme-color" content="#121212">
