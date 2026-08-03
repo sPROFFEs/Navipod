@@ -2,7 +2,6 @@ import subprocess
 import time
 
 from fastapi.templating import Jinja2Templates
-from static_assets import build_javascript_import_map
 
 
 def _compute_static_version() -> str:
@@ -29,6 +28,4 @@ def _compute_static_version() -> str:
 templates = Jinja2Templates(directory="templates")
 # Expose static asset version as a Jinja2 global so every template can use
 # {{ static_v }} without any Python-side boilerplate.
-static_version = _compute_static_version()
-templates.env.globals["static_v"] = static_version
-templates.env.globals["javascript_import_map"] = build_javascript_import_map(static_version)
+templates.env.globals["static_v"] = _compute_static_version()
