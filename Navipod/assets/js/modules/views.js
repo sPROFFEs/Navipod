@@ -14,6 +14,7 @@ import * as playlists from './playlists.js';
 import * as downloads from './downloads.js';
 import * as sync from './sync.js';
 import * as library from './library.js';
+import { initSystemMonitor } from './system_monitor.js';
 
 const SECRET_EYE_ICON = `
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -348,6 +349,9 @@ export async function renderExternalView(container, url) {
 
     if (url === '/user/settings') {
       initUserSettingsView(container);
+    }
+    if (url === '/admin/system') {
+      initSystemMonitor(container);
     }
     // Admin home page mounts the federation panel — bootstrap it the
     // same way as user settings, since inline <script> blocks in the

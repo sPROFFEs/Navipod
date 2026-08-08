@@ -28,6 +28,7 @@ def test_admin_user_statistics_have_responsive_styles_and_independent_polling():
     assets_root = Path(__file__).resolve().parents[2] / "assets"
     css = (assets_root / "css" / "admin_system.css").read_text(encoding="utf-8")
     javascript = (assets_root / "js" / "modules" / "system_monitor.js").read_text(encoding="utf-8")
+    views_javascript = (assets_root / "js" / "modules" / "views.js").read_text(encoding="utf-8")
     template = (Path(__file__).resolve().parents[1] / "templates" / "system_monitor.html").read_text(encoding="utf-8")
 
     assert 'id="user-statistics-panel"' in template
@@ -36,3 +37,6 @@ def test_admin_user_statistics_have_responsive_styles_and_independent_polling():
     assert "/admin/api/user-statistics" in javascript
     assert "window.setInterval(refreshUserStatistics, 30000)" in javascript
     assert "document.hidden" in javascript
+    assert "import { initSystemMonitor } from './system_monitor.js';" in views_javascript
+    assert "if (url === '/admin/system')" in views_javascript
+    assert "initSystemMonitor(container);" in views_javascript
