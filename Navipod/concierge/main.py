@@ -27,6 +27,7 @@ from fastapi.staticfiles import StaticFiles
 from http_client import http_client  # Moved to top level to avoid shutdown re-import issues
 from limiter import limiter
 from navipod_config import settings
+from request_middleware import RequestContextMiddleware
 from routers import admin, user
 from routers.music import router as music_router
 from shared_templates import templates
@@ -120,30 +121,13 @@ def _assert_secure_runtime_settings() -> None:
         )
 
 
-@app.middleware("http")
-async def set_i18n_context(request: Request, call_next):
-    lang = request.cookies.get("lang", "es")
-    if lang not in i18n.SUPPORTED_LANGS:
-        lang = i18n.DEFAULT_LANG
-    token = current_lang.set(lang)
-    try:
-        security.validate_same_origin(request)
-        response = await call_next(request)
-    finally:
-        current_lang.reset(token)
-    response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault("X-Frame-Options", "DENY")
-    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-    response.headers.setdefault(
-        "Content-Security-Policy",
-        "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://www.youtube.com https://s.ytimg.com; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
-        "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
-        "img-src 'self' data: blob: https:; media-src 'self' blob: https:; "
-        "frame-src https://www.youtube.com; connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
-    )
-    return response
+app.add_middleware(
+    RequestContextMiddleware,
+    language_context=current_lang,
+    supported_languages=i18n.SUPPORTED_LANGS,
+    default_language=i18n.DEFAULT_LANG,
+    validate_request=security.validate_same_origin,
+)
 
 
 # ...
