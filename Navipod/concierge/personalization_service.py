@@ -95,8 +95,10 @@ def _global_cache_dir() -> Path:
     return path
 
 
-def get_user_activity_db_path(username: str) -> Path:
-    return _user_cache_dir(username) / USER_ACTIVITY_DB_NAME
+def get_user_activity_db_path(username: str, *, create_parent: bool = True) -> Path:
+    if create_parent:
+        return _user_cache_dir(username) / USER_ACTIVITY_DB_NAME
+    return Path(f"/saas-data/users/{username}/cache") / USER_ACTIVITY_DB_NAME
 
 
 def get_mix_cache_path(username: str) -> Path:

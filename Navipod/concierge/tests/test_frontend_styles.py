@@ -22,3 +22,17 @@ def test_library_search_controls_and_facets_have_explicit_dark_styles():
     assert ".library-sort .library-icon-btn" in css
     assert "width: 44px;" in css
     assert ".library-facet-row:focus-visible" in css
+
+
+def test_admin_user_statistics_have_responsive_styles_and_independent_polling():
+    assets_root = Path(__file__).resolve().parents[2] / "assets"
+    css = (assets_root / "css" / "admin_system.css").read_text(encoding="utf-8")
+    javascript = (assets_root / "js" / "modules" / "system_monitor.js").read_text(encoding="utf-8")
+    template = (Path(__file__).resolve().parents[1] / "templates" / "system_monitor.html").read_text(encoding="utf-8")
+
+    assert 'id="user-statistics-panel"' in template
+    assert 'id="user-statistics-body"' in template
+    assert ".monitor-statistics-table td::before" in css
+    assert "/admin/api/user-statistics" in javascript
+    assert "window.setInterval(refreshUserStatistics, 30000)" in javascript
+    assert "document.hidden" in javascript

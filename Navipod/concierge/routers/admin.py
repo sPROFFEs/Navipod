@@ -6,6 +6,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+import admin_statistics_service
 import auth
 import database
 import library_maintenance
@@ -532,6 +533,31 @@ async def api_system_stats(
         },
         "pool": {"used": pool_used, "limit": pool_limit, "percent": pool_pct},
     }
+
+
+@router.get("/api/user-statistics")
+def api_user_statistics(
+    period: str = Query("30d"),
+    sort: str = Query("listening_seconds"),
+    order: str = Query("desc"),
+    limit: int = Query(admin_statistics_service.DEFAULT_PAGE_SIZE, ge=1, le=admin_statistics_service.MAX_PAGE_SIZE),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    admin: database.User = Depends(get_current_admin),
+):
+    """Return a bounded, near-real-time listening summary for regular users."""
+    try:
+        payload = admin_statistics_service.get_user_statistics(
+            db,
+            period=period,
+            sort=sort,
+            order=order,
+            limit=limit,
+            offset=offset,
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    return JSONResponse(payload, headers={"Cache-Control": "private, no-store"})
 
 
 @router.post("/system/purge-storage")

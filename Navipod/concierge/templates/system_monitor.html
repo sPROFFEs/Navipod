@@ -65,6 +65,63 @@
         </article>
     </section>
 
+    <section class="monitor-panel monitor-user-statistics" id="user-statistics-panel">
+        <div class="monitor-panel-header">
+            <div>
+                <h2>User Statistics</h2>
+                <p>Near-real-time listening totals from user activity. The current track appears after it ends or is skipped.</p>
+            </div>
+            <div class="monitor-actions monitor-statistics-controls">
+                <label class="monitor-control-label" for="user-statistics-period">Period</label>
+                <select id="user-statistics-period" class="monitor-select">
+                    <option value="24h">Last 24 hours</option>
+                    <option value="7d">Last 7 days</option>
+                    <option value="30d" selected>Last 30 days</option>
+                    <option value="year">This year</option>
+                    <option value="all">All time</option>
+                </select>
+                <label class="monitor-control-label" for="user-statistics-sort">Sort</label>
+                <select id="user-statistics-sort" class="monitor-select">
+                    <option value="listening_seconds" selected>Listening time</option>
+                    <option value="qualified_listens">Listens</option>
+                    <option value="last_listen_at">Last listen</option>
+                    <option value="username">Username</option>
+                </select>
+                <button type="button" class="monitor-secondary" id="user-statistics-refresh">
+                    <i data-lucide="refresh-cw"></i><span>Refresh</span>
+                </button>
+            </div>
+        </div>
+        <div class="monitor-panel-body">
+            <div class="monitor-statistics-summary" aria-live="polite">
+                <div><span>Users</span><strong id="user-statistics-users">—</strong></div>
+                <div><span>Active accounts</span><strong id="user-statistics-active">—</strong></div>
+                <div><span>Qualified listens</span><strong id="user-statistics-listens">—</strong></div>
+                <div><span>Listening time</span><strong id="user-statistics-time">—</strong></div>
+            </div>
+            <div class="monitor-statistics-status" id="user-statistics-status">Loading user statistics…</div>
+            <div class="monitor-statistics-table-wrap">
+                <table class="monitor-statistics-table">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Listening</th>
+                            <th>Collection</th>
+                            <th>Top music</th>
+                            <th>Last listen</th>
+                        </tr>
+                    </thead>
+                    <tbody id="user-statistics-body"></tbody>
+                </table>
+            </div>
+            <div class="monitor-statistics-pagination">
+                <button type="button" class="monitor-button" id="user-statistics-prev" disabled>Previous</button>
+                <span id="user-statistics-page">—</span>
+                <button type="button" class="monitor-button" id="user-statistics-next" disabled>Next</button>
+            </div>
+        </div>
+    </section>
+
     <section class="monitor-grid columns-2">
         <article class="monitor-panel">
             <div class="monitor-panel-header">
