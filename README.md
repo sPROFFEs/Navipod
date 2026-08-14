@@ -192,16 +192,56 @@ The app shell lives at `/portal`:
 
 ### Party rooms
 
-Every regular user can own one persistent room. The host chooses a 2–15 person
-limit, decides whether guests may add local-library songs, and can seed the
-queue from one of their playlists. The host controls playback and queue
-removal; connected browsers follow the server clock and correct drift while
-continuing to use the normal Navipod player and media controls.
+Party rooms let several Navipod users listen to one shared queue at the same
+time. Open the **Party** tab from Home to see every available room, its host,
+listener count, capacity, current track, and playback status.
 
-Rooms and queues survive restarts, but playback is paused after a restart or
-when the last listener disconnects. A room must be deleted before its owner can
-create another. Party queues are capped at 500 songs to bound live snapshot
-size, and every `/api/party/*` route requires a regular authenticated user.
+#### Create a room
+
+1. Open **Home → Party** and select **Create room**.
+2. Enter a room name and choose a capacity from 2 to 15 listeners.
+3. Optionally select one of your playlists to copy its songs into the initial
+   queue.
+4. Choose whether guests may search the local library and add songs.
+5. Select **Create and open room**.
+
+Each user may own one room. The room remains available until its owner deletes
+it, so the owner must delete an existing room before creating another. Rooms
+are currently discoverable by every signed-in regular user; private rooms,
+passwords, and invitation links are not yet supported.
+
+#### Join and listen
+
+Select any room from the Home shelf or Party list. Navipod temporarily switches
+the player from your personal queue to the room's track and server-owned clock.
+Play, pause, seeking, track changes, background media controls, and reconnects
+are synchronized for everyone. If the browser blocks automatic playback, use
+the on-screen **Tap to start listening** banner.
+
+Use **Leave** to disconnect from the room. Navipod restores the personal track,
+queue, shuffle/repeat settings, and playback position that were active before
+joining.
+
+| Action | Host | Guest |
+| --- | --- | --- |
+| Play, pause, seek, previous, next | Yes | Follows the host |
+| Add local-library songs | Yes | Only when enabled by the host |
+| Remove songs | Yes | No |
+| Delete the room | Yes | No |
+
+#### Persistence and limits
+
+- Rooms and their queues survive application restarts, but playback resumes in
+  a paused state after a restart.
+- Music stops when the last listener disconnects; the empty room remains open.
+- A short disconnect grace period prevents a page refresh or brief network drop
+  from stopping the room.
+- Multiple browser tabs from the same account count as one listener.
+- A room queue can contain at most 500 songs.
+- Party search only includes tracks already stored in the shared Navipod
+  library; it does not trigger remote searches or downloads.
+- Party endpoints require an authenticated regular user. Service accounts and
+  anonymous requests are rejected.
 
 Downloads progress as `pending → downloading → importing → completed`. Duplicates are reused via source/hash/fingerprint. Old finished jobs are pruned automatically.
 
