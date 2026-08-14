@@ -30,6 +30,7 @@ This repository has two levels:
 - Shared download pool with deduplication and metadata enrichment
 - Searchable, paginated artist / album / genre library with album-artist grouping
 - Editable smart playlists with rule previews and automatic refresh after library or favorite changes
+- Live party rooms with synchronized playback, shared queues, playlist seeding, and host controls
 - Local-library personal mixes (Repeat / Deep Cuts / Favorites / Rediscovery) plus remote recommendations
 - Admin panel: user management, library health audits, metadata rescans, rotating backups, in-app updates
 - Subsonic-compatible endpoints for mobile clients (Amperfy, Tempo, Symfonium…)
@@ -184,9 +185,23 @@ Use the same Navipod credentials. Compatible with Amperfy, Tempo, Symfonium, and
 The app shell lives at `/portal`:
 
 - **Home** — recommendations, personal mixes, Wrapped
+- **Party** — create or join a synchronized listening room from the Home tabs
 - **Search** — local + remote provider chips with preview/download
 - **Library / Favorites / Radios**
 - **Settings** — providers, cookies, metadata priority; admins also see Users / Operations / Updates / Backups / Monitor
+
+### Party rooms
+
+Every regular user can own one persistent room. The host chooses a 2–15 person
+limit, decides whether guests may add local-library songs, and can seed the
+queue from one of their playlists. The host controls playback and queue
+removal; connected browsers follow the server clock and correct drift while
+continuing to use the normal Navipod player and media controls.
+
+Rooms and queues survive restarts, but playback is paused after a restart or
+when the last listener disconnects. A room must be deleted before its owner can
+create another. Party queues are capped at 500 songs to bound live snapshot
+size, and every `/api/party/*` route requires a regular authenticated user.
 
 Downloads progress as `pending → downloading → importing → completed`. Duplicates are reused via source/hash/fingerprint. Old finished jobs are pruned automatically.
 

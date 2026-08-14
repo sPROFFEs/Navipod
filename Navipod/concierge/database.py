@@ -281,6 +281,46 @@ class PlaylistItem(Base):
     track = relationship("Track", back_populates="playlist_items")
 
 
+class PartyRoom(Base):
+    __tablename__ = "party_rooms"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    max_users = Column(Integer, default=5, nullable=False)
+    allow_guests_queue = Column(Boolean, default=True, nullable=False)
+    playback_status = Column(String, default="paused", nullable=False)
+    current_index = Column(Integer, default=-1, nullable=False)
+    playback_position_ms = Column(Integer, default=0, nullable=False)
+    playback_started_at = Column(DateTime, nullable=True)
+    revision = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+
+    owner = relationship("User")
+    queue_items = relationship(
+        "PartyRoomQueueItem",
+        back_populates="room",
+        cascade="all, delete-orphan",
+        order_by="PartyRoomQueueItem.position",
+    )
+
+
+class PartyRoomQueueItem(Base):
+    __tablename__ = "party_room_queue_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    room_id = Column(Integer, ForeignKey("party_rooms.id", ondelete="CASCADE"), nullable=False, index=True)
+    track_id = Column(Integer, ForeignKey("tracks.id", ondelete="CASCADE"), nullable=False, index=True)
+    added_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    position = Column(Integer, default=0, nullable=False)
+    added_at = Column(DateTime, default=func.now(), nullable=False)
+
+    room = relationship("PartyRoom", back_populates="queue_items")
+    track = relationship("Track")
+    added_by = relationship("User")
+
+
 class DownloadJob(Base):
     __tablename__ = "download_jobs"
     id = Column(Integer, primary_key=True, index=True)

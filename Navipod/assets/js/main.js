@@ -20,6 +20,7 @@ import * as library from './modules/library.js';
 // Saves ~24 KB on every non-admin page load.
 import * as lyrics from './modules/lyrics.js';
 import * as audioEngine from './modules/audio_engine.js';
+import * as party from './modules/party.js';
 
 function initUserMenu() {
   const userMenu = document.getElementById('user-menu');
@@ -76,11 +77,14 @@ function initKeyboardShortcuts() {
       document.getElementById('play-pause-btn')?.click();
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      state.audio.currentTime = Math.max(0, state.audio.currentTime - 10);
+      if (party.controller.isActive()) party.seekTo(Math.max(0, state.audio.currentTime - 10));
+      else state.audio.currentTime = Math.max(0, state.audio.currentTime - 10);
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
       if (state.audio.duration) {
-        state.audio.currentTime = Math.min(state.audio.duration - 0.5, state.audio.currentTime + 10);
+        const target = Math.min(state.audio.duration - 0.5, state.audio.currentTime + 10);
+        if (party.controller.isActive()) party.seekTo(target);
+        else state.audio.currentTime = target;
       }
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
@@ -232,6 +236,17 @@ window.setCrossfadePending = views.setCrossfadePending;
 window.markPlaybackPrefsDirty = views.markPlaybackPrefsDirty;
 window.savePlaybackPrefs = views.savePlaybackPrefs;
 
+// Party rooms
+window.showCreatePartyModal = party.showCreateModal;
+window.createPartyRoom = party.createRoom;
+window.partyControl = party.control;
+window.resumePartyAudio = party.resumeAudio;
+window.searchPartyTracks = party.searchTracks;
+window.addPartyTrack = party.addTrack;
+window.removePartyTrack = party.removeTrack;
+window.deletePartyRoom = party.deleteRoom;
+window.leavePartyRoom = party.leave;
+
 // Drop the user into the search view with a pre-filled query and run
 // it immediately. Used by the artist view's "Complete this album" CTA
 // and the top-tracks download buttons — they don't need their own
@@ -312,6 +327,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Setup player controls
   player.setupPlayer();
+  player.setPartyController(party.controller);
 
   // Lyrics panel — injected after player so the audio element exists
   // and the panel's timeupdate listener can bind cleanly.

@@ -16,6 +16,7 @@ let _activeListenSession = null;
 let _sessionPersistInterval = null;
 let _remoteQueueSaveTimer = null;
 let _trackTransitionInFlight = false;
+let _partyController = null;
 
 const PLAYBACK_SESSION_KEY = 'navipod.playback.session.v1';
 const PLAYBACK_SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -213,6 +214,10 @@ function applyQueueSnapshot(snapshot) {
 }
 
 export function persistPlaybackSession({ syncRemote = true } = {}) {
+  // A party room owns its own persistent queue and playback clock. Saving it
+  // into the listener's personal queue would make the party reappear as their
+  // private session after a reload.
+  if (_partyController?.isActive?.()) return;
   try {
     const snapshot = buildPlaybackSessionSnapshot();
     if (!snapshot) {
@@ -283,10 +288,18 @@ function ensureMediaSessionHandlers() {
   };
 
   safeSet('play', () => {
+    if (_partyController?.isActive?.()) {
+      _partyController.control('play');
+      return;
+    }
     state.audio.play().catch(() => {});
     ms.playbackState = 'playing';
   });
   safeSet('pause', () => {
+    if (_partyController?.isActive?.()) {
+      _partyController.control('pause');
+      return;
+    }
     state.audio.pause();
     ms.playbackState = 'paused';
   });
@@ -294,20 +307,36 @@ function ensureMediaSessionHandlers() {
   safeSet('nexttrack', () => playNext());
   safeSet('seekbackward', (details) => {
     const offset = (details && details.seekOffset) || 10;
+    if (_partyController?.isActive?.()) {
+      _partyController.seekTo(Math.max(0, state.audio.currentTime - offset));
+      return;
+    }
     state.audio.currentTime = Math.max(0, state.audio.currentTime - offset);
   });
   safeSet('seekforward', (details) => {
     const offset = (details && details.seekOffset) || 10;
+    if (_partyController?.isActive?.()) {
+      _partyController.seekTo(Math.max(0, state.audio.currentTime + offset));
+      return;
+    }
     if (Number.isFinite(state.audio.duration)) {
       state.audio.currentTime = Math.min(state.audio.duration, state.audio.currentTime + offset);
     }
   });
   safeSet('seekto', (details) => {
     if (details && details.seekTime != null) {
+      if (_partyController?.isActive?.()) {
+        _partyController.seekTo(details.seekTime);
+        return;
+      }
       state.audio.currentTime = details.seekTime;
     }
   });
   safeSet('stop', () => {
+    if (_partyController?.isActive?.()) {
+      _partyController.control('pause');
+      return;
+    }
     state.audio.pause();
     ms.playbackState = 'paused';
   });
@@ -625,8 +654,12 @@ export function updatePlayerUIForPreview(track) {
 
 // === MAIN PLAY TRACK FUNCTION ===
 
-export function playTrack(track) {
+export function playTrack(track, options = {}) {
   if (!track) return;
+  if (_partyController?.isActive?.() && !options.party) {
+    ui.showToast('Leave the party room before starting private playback', 'error');
+    return;
+  }
 
   _trackTransitionInFlight = Boolean(state.currentTrack?.db_id && track.db_id);
 
@@ -672,7 +705,13 @@ export function playTrack(track) {
     // the resource selection algorithm and on backgrounded tabs can drop the
     // bound MediaSession.
     state.audio.src = `/api/stream/${track.db_id}`;
-    state.audio
+    if (options.autoplay === false) {
+      _trackTransitionInFlight = false;
+      state.setIsPlaying(false);
+      ui.updatePlayButton();
+      return;
+    }
+    return state.audio
       .play()
       .then(() => {
         _trackTransitionInFlight = false;
@@ -853,6 +892,10 @@ export function playFromView(index) {
 // === NAVIGATION ===
 
 export async function playNext() {
+  if (_partyController?.isActive?.()) {
+    _partyController.control('next');
+    return;
+  }
   // 1. Priority: User Queue
   if (state.userQueue.length > 0) {
     const nextTrack = state.userQueue.shift();
@@ -892,6 +935,10 @@ export async function playNext() {
 }
 
 export function playPrev() {
+  if (_partyController?.isActive?.()) {
+    _partyController.control('previous');
+    return;
+  }
   const now = Date.now();
   const timeSinceLastClick = now - state.lastPrevClickTime;
   state.setLastPrevClickTime(now);
@@ -1048,6 +1095,10 @@ export function setupPlayer() {
   if (playBtn) {
     playBtn.addEventListener('click', () => {
       if (!state.currentTrack) return;
+      if (_partyController?.isActive?.()) {
+        _partyController.control(state.audio.paused ? 'play' : 'pause');
+        return;
+      }
       if (state.audio.paused && state.ytPlayer && state.ytPlayer.stopVideo) state.ytPlayer.stopVideo();
       state.audio.paused ? state.audio.play() : state.audio.pause();
     });
@@ -1088,6 +1139,11 @@ export function setupPlayer() {
   });
 
   state.audio.addEventListener('ended', () => {
+    if (_partyController?.isActive?.()) {
+      finalizeListenSession('ended');
+      _partyController.handleEnded?.();
+      return;
+    }
     // Repeat-one: audio.loop=true SHOULD prevent 'ended' from firing, but
     // iOS Safari (and Android Chrome after background suspension) ignore
     // loop=true reliably. Without this short-circuit the track advances
@@ -1160,9 +1216,11 @@ export function setupPlayer() {
         state.audio._endHandled = true;
         console.log('[BG-PLAY] Fallback triggered, advancing to next');
         if ('mediaSession' in navigator) {
-          navigator.mediaSession.playbackState = hasUpcomingTrack() ? 'playing' : 'none';
+          navigator.mediaSession.playbackState =
+            _partyController?.isActive?.() || hasUpcomingTrack() ? 'playing' : 'none';
         }
-        playNext();
+        if (_partyController?.isActive?.()) _partyController.handleEnded?.();
+        else playNext();
       }
     }
   });
@@ -1191,7 +1249,8 @@ export function setupPlayer() {
       } else {
         state.setIsSeeking(false);
         if (state.audio.duration) {
-          state.audio.currentTime = pct * state.audio.duration;
+          if (_partyController?.isActive?.()) _partyController.seekTo(pct * state.audio.duration);
+          else state.audio.currentTime = pct * state.audio.duration;
         }
       }
     });
@@ -1212,7 +1271,8 @@ export function setupPlayer() {
       } else {
         state.setIsSeeking(false);
         if (state.audio.duration) {
-          state.audio.currentTime = pct * state.audio.duration;
+          if (_partyController?.isActive?.()) _partyController.seekTo(pct * state.audio.duration);
+          else state.audio.currentTime = pct * state.audio.duration;
         }
       }
     });
@@ -1261,7 +1321,8 @@ export function setupPlayer() {
       if (reallyEnded && !state.audio._endHandled) {
         console.log('[BG-PLAY] Track ended while backgrounded, advancing...');
         state.audio._endHandled = true;
-        playNext();
+        if (_partyController?.isActive?.()) _partyController.handleEnded?.();
+        else playNext();
       } else if (state.audio.ended && !reallyEnded) {
         // iOS bogus 'ended' state — log so we can spot the symptom in
         // user reports without taking action.
@@ -1344,4 +1405,62 @@ export function setupPlayer() {
   window.addEventListener('beforeunload', () => {
     persistPlaybackSession();
   });
+}
+
+export function setPartyController(controller) {
+  _partyController = controller;
+}
+
+export function isPartyPlaybackActive() {
+  return Boolean(_partyController?.isActive?.());
+}
+
+export async function syncPartyPlayback(room) {
+  const track = room?.current_track;
+  if (!track) {
+    state.audio.pause();
+    return true;
+  }
+
+  const changed = Number(state.currentTrack?.db_id) !== Number(track.db_id);
+  if (changed) {
+    playTrack(track, { autoplay: false, party: true });
+    if (state.audio.readyState < 1) {
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, 2500);
+        state.audio.addEventListener(
+          'loadedmetadata',
+          () => {
+            clearTimeout(timer);
+            resolve();
+          },
+          { once: true }
+        );
+      });
+    }
+  }
+
+  const transitMs =
+    room.playback_status === 'playing'
+      ? Math.min(5000, Math.max(0, Date.now() - Number(room.server_time_ms || Date.now())))
+      : 0;
+  const targetSeconds = Math.max(0, (Number(room.playback_position_ms || 0) + transitMs) / 1000);
+  if (Number.isFinite(targetSeconds) && (changed || Math.abs(state.audio.currentTime - targetSeconds) > 1.25)) {
+    try {
+      state.audio.currentTime = Math.min(targetSeconds, state.audio.duration || targetSeconds);
+    } catch (_) {}
+  }
+
+  if (room.playback_status !== 'playing') {
+    state.audio.pause();
+    return true;
+  }
+  if (!state.audio.paused) return true;
+  try {
+    await state.audio.play();
+    return true;
+  } catch (error) {
+    if (error?.name !== 'NotAllowedError') console.warn('[PARTY] Playback sync failed:', error);
+    return false;
+  }
 }

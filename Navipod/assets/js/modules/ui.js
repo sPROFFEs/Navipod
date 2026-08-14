@@ -39,7 +39,7 @@ export function refreshIcons(scope) {
 
 /**
  * Spotify-style tab bar shown at the top of every Browse-level surface
- * (Home / Public / Discover / Radios) so users can flip between them
+ * (Home / Party / Public / Discover / Radios) so users can flip between them
  * without leaving the visual context. Each chip calls loadView() with
  * the corresponding canonical view name; the active one is highlighted
  * based on the argument.
@@ -51,6 +51,7 @@ export function refreshIcons(scope) {
 export function homeTabsBar(activeTab) {
   const tabs = [
     { key: 'all', label: 'All', view: 'home' },
+    { key: 'party', label: 'Party', view: 'party' },
     { key: 'public', label: 'Public', view: 'public' },
     { key: 'discovery', label: 'Discover', view: 'discovery' },
     { key: 'discover_radios', label: 'Radios', view: 'discover_radios' }

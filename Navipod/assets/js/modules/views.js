@@ -14,6 +14,7 @@ import * as playlists from './playlists.js';
 import * as downloads from './downloads.js';
 import * as sync from './sync.js';
 import * as library from './library.js';
+import * as party from './party.js';
 import { initSystemMonitor } from './system_monitor.js';
 
 const SECRET_EYE_ICON = `
@@ -279,6 +280,8 @@ export async function loadView(view, param = null, options = {}) {
     }
 
     if (view === 'home') await renderHome(container);
+    else if (view === 'party') await party.renderPartyList(container);
+    else if (view === 'party_room') await party.renderPartyRoom(container, Number(param));
     else if (view === 'library') await library.renderLibrary(container);
     else if (view === 'mix') {
       await renderMix(container, param);
@@ -499,18 +502,24 @@ export async function renderHome(container) {
   let sections = [];
   let mixes = [];
   let wrapped = null;
+  let partyRooms = [];
   state.setCurrentViewList([]);
 
   try {
     const currentYear = new Date().getFullYear();
-    const [recommendations, personalizedMixes, wrappedPayload] = await Promise.all([
+    const [recommendations, personalizedMixes, wrappedPayload, rooms] = await Promise.all([
       api.fetchRecommendations(),
       api.fetchMixes(),
-      api.fetchWrapped(currentYear)
+      api.fetchWrapped(currentYear),
+      party.fetchRooms().catch((error) => {
+        console.warn('Party rooms unavailable:', error);
+        return [];
+      })
     ]);
     sections = recommendations;
     mixes = personalizedMixes;
     wrapped = wrappedPayload?.visible !== false && wrappedPayload?.enabled !== false ? wrappedPayload : null;
+    partyRooms = rooms;
   } catch (e) {
     console.error('Recs error:', e);
   }
@@ -522,6 +531,7 @@ export async function renderHome(container) {
         <h1 class="hero-greeting">Good ${ui.getGreeting()}, <span class="hero-username">${username}</span></h1>
     </section>`;
 
+  html += party.renderHomeShelf(partyRooms);
   html += _renderQuickPicksGrid();
 
   if (wrapped) {

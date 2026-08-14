@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="/assets/css/ui_sidebar.css?v={{ static_v }}">
     <link rel="stylesheet" href="/assets/css/ui_header.css?v={{ static_v }}">
     <link rel="stylesheet" href="/assets/css/ui_home.css?v={{ static_v }}">
+    <link rel="stylesheet" href="/assets/css/ui_party.css?v={{ static_v }}">
     <link rel="stylesheet" href="/assets/css/ui_components.css?v={{ static_v }}">
     <link rel="stylesheet" href="/assets/css/ui_player.css?v={{ static_v }}">
     <link rel="stylesheet" href="/assets/css/ui_mobile.css?v={{ static_v }}">
@@ -41,6 +42,7 @@
                 "/assets/js/modules/library.js": "/assets/js/modules/library.js?v={{ static_v }}",
                 "/assets/js/modules/lyrics.js": "/assets/js/modules/lyrics.js?v={{ static_v }}",
                 "/assets/js/modules/player.js": "/assets/js/modules/player.js?v={{ static_v }}",
+                "/assets/js/modules/party.js": "/assets/js/modules/party.js?v={{ static_v }}",
                 "/assets/js/modules/playlists.js": "/assets/js/modules/playlists.js?v={{ static_v }}",
                 "/assets/js/modules/queue.js": "/assets/js/modules/queue.js?v={{ static_v }}",
                 "/assets/js/modules/radio.js": "/assets/js/modules/radio.js?v={{ static_v }}",
@@ -503,7 +505,7 @@
         window.markBottomNavActive = function (view) {
             const nav = document.getElementById('m-bottom-nav');
             if (!nav) return;
-            const homeViews      = new Set(['home', 'public', 'discover_radios', 'mix']);
+            const homeViews      = new Set(['home', 'party', 'party_room', 'public', 'discover_radios', 'mix']);
             const searchViews    = new Set(['search']);
             const discoveryViews = new Set(['discovery']);
             const libraryViews   = new Set(['library', 'playlist', 'favorites']);
