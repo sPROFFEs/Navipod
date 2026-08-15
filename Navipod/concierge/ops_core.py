@@ -1237,7 +1237,7 @@ def _migration_024_party_rooms(conn):
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
             CHECK (max_users >= 2 AND max_users <= 15),
-            CHECK (playback_status IN ('paused', 'playing'))
+            CHECK (playback_status IN ('paused', 'playing', 'loading'))
         )
     """)
     )
@@ -1261,6 +1261,86 @@ def _migration_024_party_rooms(conn):
         text("CREATE INDEX IF NOT EXISTS ix_party_queue_room_position ON party_room_queue_items(room_id, position)")
     )
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_party_queue_track_id ON party_room_queue_items(track_id)"))
+
+
+def _migration_025_party_room_loading_status(conn):
+    table_sql = conn.execute(
+        text("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'party_rooms'")
+    ).scalar()
+    if not table_sql or "'loading'" in table_sql.lower():
+        return
+
+    # SQLite cannot alter a CHECK constraint in place. Rebuild both related
+    # tables so foreign keys remain enabled and queued tracks are preserved.
+    conn.execute(text("DROP TABLE IF EXISTS party_room_queue_items_v2"))
+    conn.execute(text("DROP TABLE IF EXISTS party_rooms_v2"))
+    conn.execute(
+        text("""
+        CREATE TABLE party_rooms_v2 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_id INTEGER NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            max_users INTEGER NOT NULL DEFAULT 5,
+            allow_guests_queue INTEGER NOT NULL DEFAULT 1,
+            playback_status TEXT NOT NULL DEFAULT 'paused',
+            current_index INTEGER NOT NULL DEFAULT -1,
+            playback_position_ms INTEGER NOT NULL DEFAULT 0,
+            playback_started_at DATETIME,
+            revision INTEGER NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK (max_users >= 2 AND max_users <= 15),
+            CHECK (playback_status IN ('paused', 'playing', 'loading'))
+        )
+    """)
+    )
+    conn.execute(
+        text("""
+        INSERT INTO party_rooms_v2 (
+            id, owner_id, name, max_users, allow_guests_queue,
+            playback_status, current_index, playback_position_ms,
+            playback_started_at, revision, created_at, updated_at
+        )
+        SELECT
+            id, owner_id, name, max_users, allow_guests_queue,
+            playback_status, current_index, playback_position_ms,
+            playback_started_at, revision, created_at, updated_at
+        FROM party_rooms
+        """)
+    )
+    conn.execute(
+        text("""
+        CREATE TABLE party_room_queue_items_v2 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            track_id INTEGER NOT NULL,
+            added_by_user_id INTEGER,
+            position INTEGER NOT NULL DEFAULT 0,
+            added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (room_id) REFERENCES party_rooms_v2(id) ON DELETE CASCADE,
+            FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE,
+            FOREIGN KEY (added_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+    """)
+    )
+    conn.execute(
+        text("""
+        INSERT INTO party_room_queue_items_v2 (
+            id, room_id, track_id, added_by_user_id, position, added_at
+        )
+        SELECT id, room_id, track_id, added_by_user_id, position, added_at
+        FROM party_room_queue_items
+        """)
+    )
+
+    conn.execute(text("DROP TABLE party_room_queue_items"))
+    conn.execute(text("DROP TABLE party_rooms"))
+    conn.execute(text("ALTER TABLE party_rooms_v2 RENAME TO party_rooms"))
+    conn.execute(text("ALTER TABLE party_room_queue_items_v2 RENAME TO party_room_queue_items"))
+    conn.execute(text("CREATE UNIQUE INDEX ix_party_rooms_owner_id ON party_rooms(owner_id)"))
+    conn.execute(text("CREATE INDEX ix_party_queue_room_position ON party_room_queue_items(room_id, position)"))
+    conn.execute(text("CREATE INDEX ix_party_queue_track_id ON party_room_queue_items(track_id)"))
 
 
 def _migration_020_federation_outbound_peers(conn):
@@ -1308,6 +1388,7 @@ MIGRATIONS = [
     ("022_library_metadata_and_smart_playlists", _migration_022_library_metadata_and_smart_playlists),
     ("023_user_session_version", _migration_023_user_session_version),
     ("024_party_rooms", _migration_024_party_rooms),
+    ("025_party_room_loading_status", _migration_025_party_room_loading_status),
 ]
 
 
