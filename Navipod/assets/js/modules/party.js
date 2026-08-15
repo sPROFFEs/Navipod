@@ -262,7 +262,7 @@ function paintRoom(container) {
           <span>Now playing</span><h2>${current ? ui.escHtml(current.title) : 'Queue is waiting'}</h2><p>${current ? ui.escHtml(current.artist) : 'Add a song to get started.'}</p>
           ${
             room.is_owner
-              ? `<div class="party-owner-controls"><button onclick="partyControl('previous')"><i data-lucide="skip-back"></i></button><button class="party-control-primary" onclick="partyControl('${room.playback_status === 'playing' ? 'pause' : 'play'}')"><i data-lucide="${room.playback_status === 'playing' ? 'pause' : 'play'}"></i></button><button onclick="partyControl('next')"><i data-lucide="skip-forward"></i></button></div>`
+              ? `<div class="party-owner-controls"><button onclick="partyControl('previous')"><i data-lucide="skip-back"></i></button><button class="party-control-primary" onclick="partyControl('${['playing', 'loading'].includes(room.playback_status) ? 'pause' : 'play'}')" title="${room.playback_status === 'loading' ? 'Cancel loading' : ''}"><i data-lucide="${['playing', 'loading'].includes(room.playback_status) ? 'pause' : 'play'}"></i></button><button onclick="partyControl('next')"><i data-lucide="skip-forward"></i></button></div>`
               : `<div class="party-following"><i data-lucide="waves"></i> Playback follows the host</div>`
           }
         </div>
@@ -298,12 +298,12 @@ export async function control(action, expectedItemId = null) {
   if (!activeRoom) return;
   if (!activeRoom.is_owner) {
     if (action === 'play' && activeRoom.playback_status === 'playing') return resumeAudio();
-    if (action !== 'ended') {
+    if (!['ended', 'ready'].includes(action)) {
       ui.showToast('Only the host controls party playback', 'error');
       return;
     }
-    // The server accepts ended from guests only when the current track has
-    // no duration metadata; normal track advancement remains host-owned.
+    // The server accepts transition signals from guests only after the owner
+    // has left; normal playback control remains host-owned.
   }
   try {
     await request(`/rooms/${activeRoom.id}/control`, {
@@ -349,6 +349,11 @@ export function handleEnded() {
       control('ended', itemId);
     }
   }, 8500);
+}
+
+export function togglePlayback() {
+  if (!activeRoom) return;
+  control(['playing', 'loading'].includes(activeRoom.playback_status) ? 'pause' : 'play');
 }
 
 export async function resumeAudio() {
@@ -452,6 +457,7 @@ function restorePersonalPlayback() {
 export const controller = {
   isActive: () => Boolean(activeRoom),
   control,
+  togglePlayback,
   seekTo,
   handleEnded
 };

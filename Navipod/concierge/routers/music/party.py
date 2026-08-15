@@ -183,6 +183,7 @@ async def control_playback(room_id: int, payload: ControlRequest, request: Reque
             payload.position_ms,
             payload.expected_item_id,
             allow_guest_ended=not party_service.hub.is_member(room.id, room.owner_id),
+            allow_guest_ready=not party_service.hub.is_member(room.id, room.owner_id),
         )
         await party_service.hub.broadcast(room_id)
         return JSONResponse({"status": "ok"})

@@ -51,6 +51,12 @@ def _fresh_room(db_session, room_id):
     return db_session.query(database.PartyRoom).filter_by(id=room_id).one()
 
 
+def _start_room(db_session, room, owner):
+    party_service.control_room(db_session, room, owner, "play")
+    item = party_service._ordered_items(room)[room.current_index]
+    party_service.control_room(db_session, room, owner, "ready", expected_item_id=item.id)
+
+
 def _load_party_router_module():
     """Load the router without importing the aggregate music package and its optional providers."""
     package_name = "party_router_testpkg"
@@ -84,7 +90,7 @@ def test_last_listener_departure_pauses_but_does_not_delete_room(db_session):
 
     async def scenario():
         queue = await hub.subscribe(room, owner)
-        party_service.control_room(db_session, room, owner, "play")
+        _start_room(db_session, room, owner)
         await hub.unsubscribe(room.id, owner.id, queue)
         await asyncio.sleep(0.03)
 
@@ -100,7 +106,7 @@ def test_reconnect_inside_grace_period_does_not_pause_room(db_session):
 
     async def scenario():
         first = await hub.subscribe(room, owner)
-        party_service.control_room(db_session, room, owner, "play")
+        _start_room(db_session, room, owner)
         await hub.unsubscribe(room.id, owner.id, first)
         await asyncio.sleep(0.01)
         await hub.subscribe(room, owner)
@@ -119,7 +125,7 @@ def test_owner_can_leave_while_guests_keep_listening_then_last_guest_pauses(db_s
         owner_queue = await hub.subscribe(room, owner)
         guest_one = await hub.subscribe(room, guests[0])
         guest_two = await hub.subscribe(room, guests[1])
-        party_service.control_room(db_session, room, owner, "play")
+        _start_room(db_session, room, owner)
 
         await hub.unsubscribe(room.id, owner.id, owner_queue)
         await asyncio.sleep(0.02)
@@ -147,7 +153,7 @@ def test_multiple_tabs_count_once_and_only_last_tab_departure_pauses(db_session)
     async def scenario():
         first = await hub.subscribe(room, owner)
         second = await hub.subscribe(room, owner)
-        party_service.control_room(db_session, room, owner, "play")
+        _start_room(db_session, room, owner)
         assert len(hub.presence(room.id)["participants"]) == 1
 
         await hub.unsubscribe(room.id, owner.id, first)
@@ -168,7 +174,7 @@ def test_simultaneous_final_departures_pause_once(db_session):
     async def scenario():
         first = await hub.subscribe(room, owner)
         second = await hub.subscribe(room, guests[0])
-        party_service.control_room(db_session, room, owner, "play")
+        _start_room(db_session, room, owner)
         revision_before = room.revision
         await asyncio.gather(
             hub.unsubscribe(room.id, owner.id, first),
@@ -191,8 +197,8 @@ def test_emptying_one_room_does_not_pause_another_active_room(db_session):
     async def scenario():
         queue_one = await hub.subscribe(room_one, owner_one)
         await hub.subscribe(room_two, owner_two)
-        party_service.control_room(db_session, room_one, owner_one, "play")
-        party_service.control_room(db_session, room_two, owner_two, "play")
+        _start_room(db_session, room_one, owner_one)
+        _start_room(db_session, room_two, owner_two)
         await hub.unsubscribe(room_one.id, owner_one.id, queue_one)
         await asyncio.sleep(0.03)
 
@@ -224,7 +230,7 @@ def test_failed_sse_after_host_starts_playback_pauses_when_reservation_expires(d
 
     async def scenario():
         await hub.reserve(room, owner)
-        party_service.control_room(db_session, room, owner, "play")
+        _start_room(db_session, room, owner)
         await asyncio.sleep(0.03)
 
     asyncio.run(scenario())
@@ -238,7 +244,7 @@ def test_inflight_join_prevents_last_disconnect_from_pausing_room(db_session):
 
     async def scenario():
         owner_queue = await hub.subscribe(room, owner)
-        party_service.control_room(db_session, room, owner, "play")
+        _start_room(db_session, room, owner)
         await hub.reserve(room, guests[0])
         await hub.unsubscribe(room.id, owner.id, owner_queue)
         await asyncio.sleep(0.03)
@@ -397,6 +403,13 @@ def test_guest_can_end_unknown_duration_only_after_owner_reconnect_grace(db_sess
             db_session,
         )
         assert while_host_connected.status_code == 403
+        ready_while_host_connected = await routes.control_playback(
+            room.id,
+            routes.ControlRequest(action="ready", expected_item_id=first_item.id),
+            request,
+            db_session,
+        )
+        assert ready_while_host_connected.status_code == 403
 
         await hub.unsubscribe(room.id, owner.id, owner_queue)
         assert not hub.is_connected(room.id, owner.id)
@@ -416,9 +429,18 @@ def test_guest_can_end_unknown_duration_only_after_owner_reconnect_grace(db_sess
             db_session,
         )
         assert after_reconnect_grace.status_code == 200
+        second_item = party_service._ordered_items(room)[1]
+        guest_ready = await routes.control_playback(
+            room.id,
+            routes.ControlRequest(action="ready", expected_item_id=second_item.id),
+            request,
+            db_session,
+        )
+        assert guest_ready.status_code == 200
 
     asyncio.run(scenario())
     assert room.current_index == 1
+    assert room.playback_status == "playing"
 
 
 def test_deleted_room_disconnects_clients_and_rejects_late_sse_races(db_session):
@@ -473,7 +495,7 @@ def test_clock_tick_broadcasts_compact_state_to_every_listener(db_session):
     async def scenario():
         owner_queue = await hub.subscribe(room, owner)
         guest_queue = await hub.subscribe(room, guests[0])
-        party_service.control_room(db_session, room, owner, "play")
+        _start_room(db_session, room, owner)
         await hub.broadcast(room.id, include_queue=False)
         owner_payload = json.loads(await owner_queue.get())
         guest_payload = json.loads(await guest_queue.get())
@@ -488,7 +510,7 @@ def test_clock_tick_broadcasts_compact_state_to_every_listener(db_session):
 def test_auto_advance_tick_includes_fresh_queue_snapshot(db_session):
     owner, _, tracks, room = _room_fixture(db_session, track_count=2)
     hub = _hub_for(db_session)
-    party_service.control_room(db_session, room, owner, "play")
+    _start_room(db_session, room, owner)
     room.playback_position_ms = tracks[0].duration * 1000
     room.playback_started_at = party_service._utcnow()
     db_session.commit()
@@ -536,14 +558,14 @@ def test_empty_queue_rejects_actions_that_need_a_track(db_session, action):
 
 def test_removing_current_song_continues_with_successor(db_session):
     owner, _, tracks, room = _room_fixture(db_session)
-    party_service.control_room(db_session, room, owner, "play")
+    _start_room(db_session, room, owner)
     party_service.control_room(db_session, room, owner, "next")
     current_item = party_service._ordered_items(room)[1]
 
     party_service.remove_queue_item(db_session, room, owner, current_item.id)
 
     items = party_service._ordered_items(room)
-    assert room.playback_status == "playing"
+    assert room.playback_status == "loading"
     assert room.current_index == 1
     assert items[room.current_index].track_id == tracks[2].id
     assert room.playback_position_ms == 0
@@ -551,7 +573,7 @@ def test_removing_current_song_continues_with_successor(db_session):
 
 def test_removing_current_tail_stops_instead_of_replaying_previous_song(db_session):
     owner, _, _, room = _room_fixture(db_session, track_count=2)
-    party_service.control_room(db_session, room, owner, "play")
+    _start_room(db_session, room, owner)
     party_service.control_room(db_session, room, owner, "next")
     current_item = party_service._ordered_items(room)[1]
 
@@ -569,19 +591,45 @@ def test_play_after_natural_end_restarts_queue_from_first_song(db_session):
     room.playback_position_ms = tracks[1].duration * 1000
     db_session.commit()
 
-    party_service.control_room(db_session, room, owner, "play")
+    _start_room(db_session, room, owner)
 
     assert room.playback_status == "playing"
     assert room.current_index == 0
     assert room.playback_position_ms == 0
 
 
-def test_repeated_play_does_not_rewind_active_room_clock(db_session):
+def test_play_waits_for_matching_media_ready_before_clock_starts(db_session):
     owner, _, _, room = _room_fixture(db_session)
-    party_service.control_room(db_session, room, owner, "play")
-    room.playback_started_at -= timedelta(seconds=5)
+    item = party_service._ordered_items(room)[0]
 
     party_service.control_room(db_session, room, owner, "play")
+
+    assert room.playback_status == "loading"
+    assert room.playback_started_at is None
+    loading_payload = party_service.serialize_room(room)
+    assert loading_payload["playback_position_ms"] == 0
+    assert loading_payload["playback_starts_at_ms"] is None
+    revision = room.revision
+
+    party_service.control_room(db_session, room, owner, "ready", expected_item_id=item.id + 999)
+    assert room.playback_status == "loading"
+    assert room.revision == revision
+
+    party_service.control_room(db_session, room, owner, "ready", expected_item_id=item.id)
+    payload = party_service.serialize_room(room)
+    assert room.playback_status == "playing"
+    assert payload["playback_position_ms"] == 0
+    assert payload["playback_starts_at_ms"] > payload["server_time_ms"]
+    assert party_service.normalize_playback(room, party_service._utcnow()) is False
+    assert room.playback_position_ms == 0
+
+
+def test_repeated_play_does_not_rewind_active_room_clock(db_session):
+    owner, _, _, room = _room_fixture(db_session)
+    _start_room(db_session, room, owner)
+    room.playback_started_at = party_service._utcnow() - timedelta(seconds=5)
+
+    _start_room(db_session, room, owner)
 
     assert party_service.serialize_room(room)["playback_position_ms"] >= 4900
 
@@ -619,14 +667,14 @@ def test_host_end_event_advances_zero_duration_track_once(db_session):
     owner, _, tracks, room = _room_fixture(db_session, track_count=2)
     tracks[0].duration = 0
     db_session.commit()
-    party_service.control_room(db_session, room, owner, "play")
+    _start_room(db_session, room, owner)
     first_item = party_service._ordered_items(room)[0]
 
     party_service.control_room(db_session, room, owner, "ended", expected_item_id=first_item.id)
     revision_after_first = room.revision
     party_service.control_room(db_session, room, owner, "ended", expected_item_id=first_item.id)
 
-    assert room.playback_status == "playing"
+    assert room.playback_status == "loading"
     assert room.current_index == 1
     assert room.playback_position_ms == 0
     assert room.revision == revision_after_first
@@ -634,7 +682,7 @@ def test_host_end_event_advances_zero_duration_track_once(db_session):
 
 def test_host_end_event_pauses_on_final_song(db_session):
     owner, _, tracks, room = _room_fixture(db_session, track_count=1)
-    party_service.control_room(db_session, room, owner, "play")
+    _start_room(db_session, room, owner)
     item = party_service._ordered_items(room)[0]
 
     party_service.control_room(db_session, room, owner, "ended", expected_item_id=item.id)

@@ -17,6 +17,9 @@ let _sessionPersistInterval = null;
 let _remoteQueueSaveTimer = null;
 let _trackTransitionInFlight = false;
 let _partyController = null;
+let _partyScheduledStartTimer = null;
+let _partyScheduledStartKey = null;
+let _partyReadyKey = null;
 
 const PLAYBACK_SESSION_KEY = 'navipod.playback.session.v1';
 const PLAYBACK_SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -1096,7 +1099,7 @@ export function setupPlayer() {
     playBtn.addEventListener('click', () => {
       if (!state.currentTrack) return;
       if (_partyController?.isActive?.()) {
-        _partyController.control(state.audio.paused ? 'play' : 'pause');
+        _partyController.togglePlayback();
         return;
       }
       if (state.audio.paused && state.ytPlayer && state.ytPlayer.stopVideo) state.ytPlayer.stopVideo();
@@ -1415,6 +1418,28 @@ export function isPartyPlaybackActive() {
   return Boolean(_partyController?.isActive?.());
 }
 
+function waitForPartyMediaReady(timeoutMs = 4000) {
+  // readyState 3 is HAVE_FUTURE_DATA: enough buffered media to begin without
+  // immediately stalling, while remaining compatible with the lint/runtime setup.
+  if (state.audio.readyState >= 3) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ready) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      state.audio.removeEventListener('canplay', onReady);
+      state.audio.removeEventListener('error', onError);
+      resolve(ready);
+    };
+    const onReady = () => finish(true);
+    const onError = () => finish(false);
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    state.audio.addEventListener('canplay', onReady, { once: true });
+    state.audio.addEventListener('error', onError, { once: true });
+  });
+}
+
 export async function syncPartyPlayback(room) {
   const track = room?.current_track;
   if (!track) {
@@ -1425,6 +1450,31 @@ export async function syncPartyPlayback(room) {
   const changed = Number(state.currentTrack?.db_id) !== Number(track.db_id);
   if (changed) {
     playTrack(track, { autoplay: false, party: true });
+  }
+
+  if (room.playback_status === 'loading') {
+    clearTimeout(_partyScheduledStartTimer);
+    _partyScheduledStartTimer = null;
+    _partyScheduledStartKey = null;
+    state.audio.pause();
+    const ownerPresent = (room.participants || []).some((user) => user.id === room.owner_id);
+    const canSignalReady = room.is_owner || !ownerPresent;
+    const readyKey = `${track.db_id}:${room.current_item_id}:${room.revision}`;
+    if (canSignalReady && _partyReadyKey !== readyKey) {
+      _partyReadyKey = readyKey;
+      waitForPartyMediaReady().then((ready) => {
+        if (ready && _partyReadyKey === readyKey && _partyController?.isActive?.()) {
+          _partyController.control('ready', room.current_item_id);
+        } else if (_partyReadyKey === readyKey) {
+          _partyReadyKey = null;
+        }
+      });
+    }
+    return true;
+  }
+  _partyReadyKey = null;
+
+  if (changed) {
     if (state.audio.readyState < 1) {
       await new Promise((resolve) => {
         const timer = setTimeout(resolve, 2500);
@@ -1440,10 +1490,11 @@ export async function syncPartyPlayback(room) {
     }
   }
 
+  const startsAtMs = Number(room.playback_starts_at_ms || 0);
+  const serverTimeMs = Number(room.server_time_ms || Date.now());
+  const transitReferenceMs = startsAtMs > serverTimeMs ? startsAtMs : serverTimeMs;
   const transitMs =
-    room.playback_status === 'playing'
-      ? Math.min(5000, Math.max(0, Date.now() - Number(room.server_time_ms || Date.now())))
-      : 0;
+    room.playback_status === 'playing' ? Math.min(5000, Math.max(0, Date.now() - transitReferenceMs)) : 0;
   const targetSeconds = Math.max(0, (Number(room.playback_position_ms || 0) + transitMs) / 1000);
   if (Number.isFinite(targetSeconds) && (changed || Math.abs(state.audio.currentTime - targetSeconds) > 1.25)) {
     try {
@@ -1452,9 +1503,33 @@ export async function syncPartyPlayback(room) {
   }
 
   if (room.playback_status !== 'playing') {
+    clearTimeout(_partyScheduledStartTimer);
+    _partyScheduledStartTimer = null;
+    _partyScheduledStartKey = null;
     state.audio.pause();
     return true;
   }
+
+  const startDelayMs = startsAtMs - Date.now();
+  if (startDelayMs > 30) {
+    state.audio.pause();
+    const startKey = `${track.db_id}:${startsAtMs}`;
+    if (_partyScheduledStartKey !== startKey) {
+      clearTimeout(_partyScheduledStartTimer);
+      _partyScheduledStartKey = startKey;
+      _partyScheduledStartTimer = setTimeout(() => {
+        _partyScheduledStartTimer = null;
+        if (_partyScheduledStartKey !== startKey || !_partyController?.isActive?.()) return;
+        state.audio.play().catch((error) => {
+          if (error?.name !== 'NotAllowedError') console.warn('[PARTY] Scheduled playback failed:', error);
+        });
+      }, startDelayMs);
+    }
+    return true;
+  }
+  clearTimeout(_partyScheduledStartTimer);
+  _partyScheduledStartTimer = null;
+  _partyScheduledStartKey = null;
   if (!state.audio.paused) return true;
   try {
     await state.audio.play();

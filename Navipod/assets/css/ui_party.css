@@ -116,6 +116,7 @@
     text-transform: uppercase;
 }
 .party-status.playing { color: #d9ffea; background: #17643d; }
+.party-status.loading { color: #fff2c7; background: #66511a; }
 
 .party-text-action {
     color: var(--text-sub);

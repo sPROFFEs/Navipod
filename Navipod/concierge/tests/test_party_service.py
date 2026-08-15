@@ -28,6 +28,12 @@ def _library(db_session):
     return owner, guest, tracks, playlist
 
 
+def _start_room(db_session, room, owner):
+    party_service.control_room(db_session, room, owner, "play")
+    item = party_service._ordered_items(room)[room.current_index]
+    party_service.control_room(db_session, room, owner, "ready", expected_item_id=item.id)
+
+
 def test_room_is_unique_per_owner_and_can_seed_owned_playlist(db_session):
     owner, _, tracks, playlist = _library(db_session)
 
@@ -60,8 +66,8 @@ def test_guest_queue_permission_and_owner_controls(db_session):
     assert forbidden.value.status_code == 403
 
     party_service.add_track(db_session, room, owner, tracks[0].id)
-    party_service.control_room(db_session, room, owner, "play")
-    room.playback_started_at -= timedelta(seconds=4)
+    _start_room(db_session, room, owner)
+    room.playback_started_at = party_service._utcnow() - timedelta(seconds=4)
     snapshot = party_service.serialize_room(room)
     assert snapshot["playback_status"] == "playing"
     assert 3900 <= snapshot["playback_position_ms"] <= 4500
@@ -85,14 +91,17 @@ def test_queue_size_is_bounded(db_session, monkeypatch):
 def test_normalize_advances_queue_and_pauses_at_end(db_session):
     owner, _, tracks, playlist = _library(db_session)
     room = party_service.create_room(db_session, owner, "Clock", 5, True, playlist.id)
-    party_service.control_room(db_session, room, owner, "play")
-    room.playback_started_at -= timedelta(seconds=125)
+    _start_room(db_session, room, owner)
+    room.playback_started_at = party_service._utcnow() - timedelta(seconds=125)
 
     assert party_service.normalize_playback(room) is True
     assert room.current_index == 1
-    assert 4900 <= room.playback_position_ms <= 5500
+    assert room.playback_status == "loading"
+    assert room.playback_position_ms == 0
 
-    room.playback_started_at -= timedelta(seconds=180)
+    item = party_service._ordered_items(room)[room.current_index]
+    party_service.control_room(db_session, room, owner, "ready", expected_item_id=item.id)
+    room.playback_started_at = party_service._utcnow() - timedelta(seconds=180)
     assert party_service.normalize_playback(room) is True
     assert room.playback_status == "paused"
     assert room.current_index == 1
@@ -103,7 +112,7 @@ def test_empty_rooms_persist_but_startup_pauses_their_clock(db_session):
     owner, _, tracks, _ = _library(db_session)
     room = party_service.create_room(db_session, owner, "Persistent", 5, True)
     party_service.add_track(db_session, room, owner, tracks[0].id)
-    party_service.control_room(db_session, room, owner, "play")
+    _start_room(db_session, room, owner)
 
     assert party_service.pause_all_rooms(db_session) == 1
     assert db_session.query(database.PartyRoom).filter_by(id=room.id).one().playback_status == "paused"

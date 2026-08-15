@@ -10,7 +10,7 @@ import json
 import logging
 import threading
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import database
 from sqlalchemy import or_
@@ -20,6 +20,9 @@ MAX_ROOM_USERS = 15
 MIN_ROOM_USERS = 2
 MAX_ROOM_NAME = 80
 MAX_QUEUE_ITEMS = 500
+# Once the host confirms that the media resource is playable, this small lead
+# gives the ready event time to reach every listener before audio starts.
+PARTY_START_DELAY_MS = 750
 _write_lock = threading.RLock()
 logger = logging.getLogger(__name__)
 
@@ -63,6 +66,10 @@ def _effective_position_ms(room: database.PartyRoom, now: datetime | None = None
     return position + max(0, int((now - room.playback_started_at).total_seconds() * 1000))
 
 
+def _scheduled_start(now: datetime | None = None) -> datetime:
+    return (now or _utcnow()) + timedelta(milliseconds=PARTY_START_DELAY_MS)
+
+
 def normalize_playback(room: database.PartyRoom, now: datetime | None = None) -> bool:
     """Materialize elapsed time and advance over tracks that have ended."""
     if room.playback_status != "playing":
@@ -77,6 +84,10 @@ def normalize_playback(room: database.PartyRoom, now: datetime | None = None) ->
         return True
 
     now = now or _utcnow()
+    if room.playback_started_at and room.playback_started_at > now:
+        # A new resource is being preloaded by connected browsers. Keep the
+        # clock at zero until the shared start deadline arrives.
+        return False
     position_ms = _effective_position_ms(room, now)
     changed = False
     while room.current_index < len(items):
@@ -93,8 +104,13 @@ def normalize_playback(room: database.PartyRoom, now: datetime | None = None) ->
         room.playback_position_ms = max(0, int(items[-1].track.duration or 0) * 1000)
         room.playback_started_at = None
     else:
-        room.playback_position_ms = position_ms
-        room.playback_started_at = now
+        if changed:
+            room.playback_status = "loading"
+            room.playback_position_ms = 0
+            room.playback_started_at = None
+        else:
+            room.playback_position_ms = position_ms
+            room.playback_started_at = now
     if changed:
         room.revision += 1
     return changed
@@ -115,7 +131,13 @@ def serialize_room(room: database.PartyRoom, presence: dict | None = None, inclu
         "playback_status": room.playback_status,
         "playback_position_ms": _effective_position_ms(room, now),
         "server_time_ms": int(now.replace(tzinfo=timezone.utc).timestamp() * 1000),
+        "playback_starts_at_ms": (
+            int(room.playback_started_at.replace(tzinfo=timezone.utc).timestamp() * 1000)
+            if room.playback_status == "playing" and room.playback_started_at
+            else None
+        ),
         "current_index": room.current_index,
+        "current_item_id": current.id if current else None,
         "current_track": _track_dict(current.track) if current else None,
         "revision": room.revision,
         "active_users": len(participants),
@@ -253,7 +275,9 @@ def remove_queue_item(db: Session, room: database.PartyRoom, user: database.User
             else:
                 room.current_index = remove_index
                 room.playback_position_ms = 0
-                room.playback_started_at = _utcnow() if room.playback_status == "playing" else None
+                if room.playback_status == "playing":
+                    room.playback_status = "loading"
+                room.playback_started_at = None
         room.revision += 1
         db.commit()
 
@@ -266,8 +290,10 @@ def control_room(
     position_ms: int = 0,
     expected_item_id: int | None = None,
     allow_guest_ended: bool = False,
+    allow_guest_ready: bool = False,
 ) -> None:
-    if user.id != room.owner_id and not (action == "ended" and allow_guest_ended):
+    guest_transition_allowed = (action == "ended" and allow_guest_ended) or (action == "ready" and allow_guest_ready)
+    if user.id != room.owner_id and not guest_transition_allowed:
         raise PartyError("Only the room owner can control playback", 403)
     with _write_lock:
         # Previous/next are explicit index changes. Normalizing first at the
@@ -280,7 +306,7 @@ def control_room(
         if action == "play":
             if not items:
                 raise PartyError("Add a song before starting playback")
-            if room.playback_status == "playing":
+            if room.playback_status in {"playing", "loading"}:
                 # Repeated browser/media-session play events are idempotent.
                 # Resetting playback_started_at here would discard elapsed
                 # server time and rewind every listener.
@@ -297,8 +323,8 @@ def control_room(
                     # queue, not briefly play an already-finished resource.
                     room.current_index = 0
                     room.playback_position_ms = 0
-            room.playback_status = "playing"
-            room.playback_started_at = _utcnow()
+            room.playback_status = "loading"
+            room.playback_started_at = None
         elif action == "pause":
             room.playback_position_ms = _effective_position_ms(room)
             room.playback_status = "paused"
@@ -330,7 +356,8 @@ def control_room(
                 else:
                     room.current_index += 1
                     room.playback_position_ms = 0
-                    room.playback_started_at = _utcnow() if room.playback_status == "playing" else None
+                    room.playback_status = "loading"
+                    room.playback_started_at = None
             elif action == "next":
                 if room.current_index + 1 >= len(items):
                     room.playback_status = "paused"
@@ -341,7 +368,16 @@ def control_room(
                 room.current_index = max(0, room.current_index - 1)
             if action != "ended":
                 room.playback_position_ms = 0
-                room.playback_started_at = _utcnow() if room.playback_status == "playing" else None
+                if room.playback_status == "playing":
+                    room.playback_status = "loading"
+                room.playback_started_at = None
+        elif action == "ready":
+            current_item = items[room.current_index] if 0 <= room.current_index < len(items) else None
+            if not current_item or expected_item_id != current_item.id or room.playback_status != "loading":
+                return
+            room.playback_status = "playing"
+            room.playback_position_ms = 0
+            room.playback_started_at = _scheduled_start()
         else:
             raise PartyError("Unsupported playback action")
         room.revision += 1
@@ -350,7 +386,7 @@ def control_room(
 
 def pause_room(db: Session, room_id: int) -> bool:
     room = db.query(database.PartyRoom).filter(database.PartyRoom.id == room_id).first()
-    if not room or room.playback_status != "playing":
+    if not room or room.playback_status not in {"playing", "loading"}:
         return False
     room.playback_position_ms = _effective_position_ms(room)
     room.playback_status = "paused"
@@ -361,7 +397,7 @@ def pause_room(db: Session, room_id: int) -> bool:
 
 
 def pause_all_rooms(db: Session) -> int:
-    rooms = db.query(database.PartyRoom).filter(database.PartyRoom.playback_status == "playing").all()
+    rooms = db.query(database.PartyRoom).filter(database.PartyRoom.playback_status.in_(("playing", "loading"))).all()
     for room in rooms:
         room.playback_position_ms = _effective_position_ms(room)
         room.playback_status = "paused"
