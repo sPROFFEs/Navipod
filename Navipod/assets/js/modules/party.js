@@ -13,6 +13,10 @@ let reconnectProbeTimer = null;
 let streamGeneration = 0;
 let stateApplyChain = Promise.resolve();
 
+function setFullscreenPartyMode(enabled) {
+  document.getElementById('fullscreen-player')?.classList.toggle('party-player', enabled);
+}
+
 async function request(path, options = {}) {
   const response = await fetch(`/api/party${path}`, {
     credentials: 'include',
@@ -232,6 +236,7 @@ export async function renderPartyRoom(container, roomId) {
   } else {
     activeRoom = { ...activeRoom, ...data.room };
   }
+  setFullscreenPartyMode(true);
   paintRoom(container);
   connect(data.room.id);
 }
@@ -422,6 +427,7 @@ export function leave(navigate = true) {
   state.audio.pause();
   activeRoom = null;
   autoplayBlocked = false;
+  setFullscreenPartyMode(false);
   restorePersonalPlayback();
   if (navigate) window.loadView('party');
 }

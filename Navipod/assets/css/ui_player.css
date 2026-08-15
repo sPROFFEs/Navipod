@@ -20,6 +20,81 @@
     pointer-events: none;
 }
 
+/* Keep the primary transport control visually consistent with the other
+ * outline icons. Its larger hit area still communicates priority without a
+ * colored disc competing with the album art. */
+.player-footer .play-main,
+.player-footer .play-main.is-playing,
+.fullscreen-player .fs-play-main,
+.fullscreen-player .fs-play-main.is-playing {
+    color: var(--text-main);
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.player-footer .play-main:hover,
+.fullscreen-player .fs-play-main:hover {
+    color: #fff;
+    background: transparent;
+    box-shadow: none;
+}
+
+.player-footer .play-main svg,
+.fullscreen-player .fs-play-main svg {
+    fill: none;
+    stroke: currentColor;
+}
+
+.player-footer .play-main svg {
+    width: 27px;
+    height: 27px;
+}
+
+.fullscreen-player .fs-play-main svg {
+    width: 36px;
+    height: 36px;
+}
+
+.player-footer .play-main:focus-visible,
+.fullscreen-player .fs-play-main:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 3px;
+}
+
+/* Party playback gets its own atmosphere only in the expanded player. The
+ * personal player keeps the neutral background defined in style.css. */
+.fullscreen-player.party-player .fs-background {
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 16% 18%, rgba(244, 74, 139, 0.32), transparent 38%),
+        radial-gradient(circle at 84% 22%, rgba(46, 195, 224, 0.26), transparent 40%),
+        radial-gradient(circle at 52% 92%, rgba(255, 174, 66, 0.2), transparent 42%),
+        linear-gradient(145deg, #1c111d 0%, #101827 50%, #090c12 100%);
+}
+
+.fullscreen-player.party-player .fs-background::before {
+    content: '';
+    position: absolute;
+    inset: -18%;
+    background:
+        radial-gradient(circle at 30% 42%, rgba(255, 255, 255, 0.1), transparent 19%),
+        radial-gradient(circle at 70% 58%, rgba(255, 112, 67, 0.12), transparent 22%);
+    opacity: 0.8;
+    transform: translate3d(-2%, -1%, 0) scale(1);
+    animation: party-player-ambient 12s ease-in-out infinite alternate;
+    pointer-events: none;
+}
+
+@keyframes party-player-ambient {
+    to {
+        opacity: 1;
+        transform: translate3d(3%, 2%, 0) scale(1.08);
+    }
+}
+
 .player-cover,
 .track-cover-sm,
 .fs-cover {

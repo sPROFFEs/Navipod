@@ -276,6 +276,8 @@ export function updateFullscreenPlayButton() {
   if (fsPlayBtn) {
     fsPlayBtn.innerHTML = `<i data-lucide="${state.isPlaying ? 'pause' : 'play'}"></i>`;
     fsPlayBtn.classList.toggle('is-playing', state.isPlaying);
+    fsPlayBtn.setAttribute('aria-label', state.isPlaying ? 'Pause' : 'Play');
+    fsPlayBtn.title = state.isPlaying ? 'Pause' : 'Play';
   }
 
   if (fsShuffle) {
@@ -316,6 +318,8 @@ export function updatePlayButton() {
   if (btn) {
     btn.innerHTML = `<i data-lucide="${state.isPlaying ? 'pause' : 'play'}"></i>`;
     btn.classList.toggle('is-playing', state.isPlaying);
+    btn.setAttribute('aria-label', state.isPlaying ? 'Pause' : 'Play');
+    btn.title = state.isPlaying ? 'Pause' : 'Play';
   }
   updateFullscreenPlayButton();
   // updateFullscreenPlayButton already refreshes the fullscreen panel.
