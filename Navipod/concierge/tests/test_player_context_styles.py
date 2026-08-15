@@ -21,7 +21,17 @@ def test_party_gradient_is_scoped_to_active_fullscreen_party_player():
     css = (ASSETS_ROOT / "css" / "ui_player.css").read_text(encoding="utf-8")
     party_javascript = (ASSETS_ROOT / "js" / "modules" / "party.js").read_text(encoding="utf-8")
 
+    assert ".player-footer.party-player" in css
     assert ".fullscreen-player.party-player .fs-background" in css
     assert "@keyframes party-player-ambient" in css
-    assert "setFullscreenPartyMode(true);" in party_javascript
-    assert "setFullscreenPartyMode(false);" in party_javascript
+    assert "document.querySelector('.player-footer')?.classList.toggle('party-player', enabled)" in party_javascript
+    assert "setPartyPlayerMode(true);" in party_javascript
+    assert "setPartyPlayerMode(false);" in party_javascript
+
+
+def test_party_clock_sync_uses_server_relative_time_without_restarting_audio():
+    player_javascript = (ASSETS_ROOT / "js" / "modules" / "player.js").read_text(encoding="utf-8")
+
+    assert "startsAtMs - serverTimeMs" in player_javascript
+    assert "startsAtMs - Date.now()" not in player_javascript
+    assert "Date.now() - transitReferenceMs" not in player_javascript

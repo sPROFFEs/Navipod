@@ -13,8 +13,9 @@ let reconnectProbeTimer = null;
 let streamGeneration = 0;
 let stateApplyChain = Promise.resolve();
 
-function setFullscreenPartyMode(enabled) {
+function setPartyPlayerMode(enabled) {
   document.getElementById('fullscreen-player')?.classList.toggle('party-player', enabled);
+  document.querySelector('.player-footer')?.classList.toggle('party-player', enabled);
 }
 
 async function request(path, options = {}) {
@@ -236,7 +237,7 @@ export async function renderPartyRoom(container, roomId) {
   } else {
     activeRoom = { ...activeRoom, ...data.room };
   }
-  setFullscreenPartyMode(true);
+  setPartyPlayerMode(true);
   paintRoom(container);
   connect(data.room.id);
 }
@@ -427,7 +428,7 @@ export function leave(navigate = true) {
   state.audio.pause();
   activeRoom = null;
   autoplayBlocked = false;
-  setFullscreenPartyMode(false);
+  setPartyPlayerMode(false);
   restorePersonalPlayback();
   if (navigate) window.loadView('party');
 }

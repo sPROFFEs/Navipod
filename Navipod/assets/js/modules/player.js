@@ -1492,10 +1492,11 @@ export async function syncPartyPlayback(room) {
 
   const startsAtMs = Number(room.playback_starts_at_ms || 0);
   const serverTimeMs = Number(room.server_time_ms || Date.now());
-  const transitReferenceMs = startsAtMs > serverTimeMs ? startsAtMs : serverTimeMs;
-  const transitMs =
-    room.playback_status === 'playing' ? Math.min(5000, Math.max(0, Date.now() - transitReferenceMs)) : 0;
-  const targetSeconds = Math.max(0, (Number(room.playback_position_ms || 0) + transitMs) / 1000);
+  // Never compare a server timestamp to Date.now(): device clocks can differ
+  // by seconds. The server already sends an effective playback position, and
+  // a scheduled start is expressed as a delta on that same server clock.
+  const startDelayMs = startsAtMs > serverTimeMs ? Math.min(5000, startsAtMs - serverTimeMs) : 0;
+  const targetSeconds = Math.max(0, Number(room.playback_position_ms || 0) / 1000);
   if (Number.isFinite(targetSeconds) && (changed || Math.abs(state.audio.currentTime - targetSeconds) > 1.25)) {
     try {
       state.audio.currentTime = Math.min(targetSeconds, state.audio.duration || targetSeconds);
@@ -1510,7 +1511,6 @@ export async function syncPartyPlayback(room) {
     return true;
   }
 
-  const startDelayMs = startsAtMs - Date.now();
   if (startDelayMs > 30) {
     state.audio.pause();
     const startKey = `${track.db_id}:${startsAtMs}`;

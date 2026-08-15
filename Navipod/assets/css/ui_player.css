@@ -64,8 +64,15 @@
     outline-offset: 3px;
 }
 
-/* Party playback gets its own atmosphere only in the expanded player. The
- * personal player keeps the neutral background defined in style.css. */
+/* Party playback gets its own atmosphere in both player surfaces. Personal
+ * playback keeps the neutral backgrounds defined in style.css. */
+.player-footer.party-player {
+    background:
+        linear-gradient(100deg, rgba(244, 74, 139, 0.13), rgba(46, 195, 224, 0.09) 52%, rgba(255, 174, 66, 0.1)),
+        rgba(17, 21, 27, 0.98);
+    border-top-color: rgba(244, 74, 139, 0.3);
+}
+
 .fullscreen-player.party-player .fs-background {
     overflow: hidden;
     background:
