@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from navipod_config import settings
 from PIL import Image
+from playlist_files import normalize_playlist_name, playlist_m3u_filename
 from pydantic import BaseModel as PydanticBaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session, aliased
@@ -305,9 +306,8 @@ def generate_m3u_for_playlist(db: Session, playlist, username: str):
         except OSError as e:
             logger.debug("Could not chmod playlist directory %s: %s", playlist_dir, e)
 
-        # Sanitize playlist name for filename
-        safe_name = "".join(c for c in playlist.name if c.isalnum() or c in " -_").strip()
-        m3u_path = f"{playlist_dir}/{safe_name}.m3u"
+        previous_m3u_path = playlist.m3u_path
+        m3u_path = os.path.join(playlist_dir, playlist_m3u_filename(playlist.name, playlist.id))
 
         with open(m3u_path, "w", encoding="utf-8") as f:
             f.write("#EXTM3U\n")
@@ -326,6 +326,23 @@ def generate_m3u_for_playlist(db: Session, playlist, username: str):
         # Update playlist record
         playlist.m3u_path = m3u_path
         db.commit()
+        previous_path_is_shared = (
+            previous_m3u_path
+            and db.query(database.Playlist.id)
+            .filter(database.Playlist.id != playlist.id, database.Playlist.m3u_path == previous_m3u_path)
+            .first()
+            is not None
+        )
+        if (
+            previous_m3u_path
+            and previous_m3u_path != m3u_path
+            and not previous_path_is_shared
+            and os.path.exists(previous_m3u_path)
+        ):
+            try:
+                os.remove(previous_m3u_path)
+            except OSError as e:
+                logger.warning("Could not remove superseded playlist M3U %s: %s", previous_m3u_path, e)
         logger.info("Generated playlist M3U: %s", m3u_path)
         return m3u_path
     except Exception as e:
@@ -433,7 +450,12 @@ async def create_playlist(req: CreatePlaylistRequest, request: Request, db: Sess
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-    playlist = database.Playlist(name=req.name, owner_id=user.id)
+    try:
+        playlist_name = normalize_playlist_name(req.name)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    playlist = database.Playlist(name=playlist_name, owner_id=user.id)
     db.add(playlist)
     db.commit()
     db.refresh(playlist)
@@ -894,7 +916,14 @@ async def delete_playlist(playlist_id: int, request: Request, db: Session = Depe
         return JSONResponse({"error": "Playlist not found"}, status_code=404)
 
     # Delete M3U file
-    if playlist.m3u_path and os.path.exists(playlist.m3u_path):
+    m3u_path_is_shared = (
+        playlist.m3u_path
+        and db.query(database.Playlist.id)
+        .filter(database.Playlist.id != playlist.id, database.Playlist.m3u_path == playlist.m3u_path)
+        .first()
+        is not None
+    )
+    if playlist.m3u_path and not m3u_path_is_shared and os.path.exists(playlist.m3u_path):
         try:
             os.remove(playlist.m3u_path)
         except Exception as e:
@@ -935,26 +964,25 @@ async def update_playlist(
     if not playlist_is_editable_by_user(playlist, user):
         return JSONResponse({"error": "Synced copies cannot be renamed manually."}, status_code=403)
 
+    try:
+        playlist_name = normalize_playlist_name(payload.name)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
     old_name = playlist.name
 
-    # 1. Delete old M3U file
-    if playlist.m3u_path and os.path.exists(playlist.m3u_path):
-        try:
-            os.remove(playlist.m3u_path)
-        except OSError as e:
-            logger.warning("Error removing old playlist file before rename: %s", e)
-
-    # 2. Clean old remote playlist
+    # 1. Clean old remote playlist. The local M3U stays in place until its
+    # replacement has been written successfully by generate_m3u_for_playlist.
     await clean_remote_playlist(user.username, old_name)
 
-    # 3. Update playlist name
-    playlist.name = payload.name
+    # 2. Update playlist name
+    playlist.name = playlist_name
     db.commit()
 
-    # 4. Generate new M3U
+    # 3. Generate new M3U
     generate_m3u_for_playlist(db, playlist, user.username)
 
-    # 5. Trigger scan
+    # 4. Trigger scan
     schedule_playlist_sync(db, user, force_now=True)
     schedule_navidrome_sync(user.id, user.username, delay_seconds=2.0)
 

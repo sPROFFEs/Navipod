@@ -9,6 +9,7 @@ from typing import List, Optional
 
 import database
 from navipod_config import settings
+from playlist_files import normalize_playlist_name, playlist_m3u_filename
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -24,12 +25,12 @@ class M3UService:
         self.playlists_root.mkdir(parents=True, exist_ok=True)
 
     def create_playlist(self, name: str, source_url: str = None) -> database.Playlist:
-        safe_name = self._sanitize_name(name) or f"Playlist_{self.user.id}"
+        display_name = normalize_playlist_name(name)
         existing = (
             self.db.query(database.Playlist)
             .filter(
                 database.Playlist.owner_id == self.user.id,
-                database.Playlist.name == safe_name,
+                database.Playlist.name == display_name,
                 database.Playlist.source_playlist_id.is_(None),
             )
             .first()
@@ -39,15 +40,14 @@ class M3UService:
 
         playlist = database.Playlist(
             owner_id=self.user.id,
-            name=safe_name,
+            name=display_name,
             is_public=False,
-            m3u_path=str(self._build_m3u_path(safe_name)),
         )
         self.db.add(playlist)
         self.db.commit()
         self.db.refresh(playlist)
         self._write_m3u(playlist)
-        logger.info("Playlist created: %s for %s", safe_name, self.user.username)
+        logger.info("Playlist created: %s for %s", display_name, self.user.username)
         return playlist
 
     def delete_playlist(self, playlist_id: int) -> bool:
@@ -144,8 +144,8 @@ class M3UService:
             self._write_m3u(playlist)
 
     def _write_m3u(self, playlist: database.Playlist):
-        safe_name = self._sanitize_name(playlist.name) or f"Playlist_{playlist.id}"
-        m3u_path = self._build_m3u_path(safe_name)
+        previous_m3u_path = playlist.m3u_path
+        m3u_path = self._build_m3u_path(playlist.name, playlist.id)
         m3u_path.parent.mkdir(parents=True, exist_ok=True)
 
         items = (
@@ -169,6 +169,26 @@ class M3UService:
 
             playlist.m3u_path = str(m3u_path)
             self.db.commit()
+            previous_path_is_shared = (
+                previous_m3u_path
+                and self.db.query(database.Playlist.id)
+                .filter(
+                    database.Playlist.id != playlist.id,
+                    database.Playlist.m3u_path == previous_m3u_path,
+                )
+                .first()
+                is not None
+            )
+            if (
+                previous_m3u_path
+                and previous_m3u_path != str(m3u_path)
+                and not previous_path_is_shared
+                and os.path.exists(previous_m3u_path)
+            ):
+                try:
+                    os.remove(previous_m3u_path)
+                except OSError:
+                    logger.warning("Could not remove superseded playlist M3U %s", previous_m3u_path)
         except Exception:
             logger.exception("Error writing M3U for playlist %s", playlist.id)
 
@@ -182,16 +202,8 @@ class M3UService:
             .first()
         )
 
-    def _sanitize_name(self, name: str) -> str:
-        if not name:
-            return ""
-        unsafe = '<>:"/\\|?*'
-        for char in unsafe:
-            name = name.replace(char, "")
-        return name.strip()[:80]
-
-    def _build_m3u_path(self, safe_name: str) -> Path:
-        return self.playlists_root / f"{safe_name}.m3u"
+    def _build_m3u_path(self, name: str, playlist_id: int) -> Path:
+        return self.playlists_root / playlist_m3u_filename(name, playlist_id)
 
     def _render_track_path(self, filepath: str) -> str:
         normalized = filepath.replace("\\", "/")
@@ -200,11 +212,15 @@ class M3UService:
         return normalized
 
     def _delete_m3u_file(self, playlist: database.Playlist):
-        path = playlist.m3u_path or str(
-            self._build_m3u_path(self._sanitize_name(playlist.name) or f"Playlist_{playlist.id}")
+        path = playlist.m3u_path or str(self._build_m3u_path(playlist.name, playlist.id))
+        path_is_shared = (
+            self.db.query(database.Playlist.id)
+            .filter(database.Playlist.id != playlist.id, database.Playlist.m3u_path == path)
+            .first()
+            is not None
         )
         try:
-            if path and os.path.exists(path):
+            if path and not path_is_shared and os.path.exists(path):
                 os.remove(path)
         except Exception:
             logger.exception("Failed to delete M3U file for playlist %s", playlist.id)

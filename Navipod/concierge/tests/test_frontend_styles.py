@@ -24,6 +24,22 @@ def test_library_search_controls_and_facets_have_explicit_dark_styles():
     assert ".library-facet-row:focus-visible" in css
 
 
+def test_playlist_actions_use_minimal_outline_controls_on_desktop_and_mobile():
+    assets_root = Path(__file__).resolve().parents[2] / "assets"
+    desktop_css = (assets_root / "css" / "ui_components.css").read_text(encoding="utf-8")
+    mobile_css = (assets_root / "css" / "mobile_fixes.css").read_text(encoding="utf-8")
+    javascript = (assets_root / "js" / "modules" / "playlists.js").read_text(encoding="utf-8")
+
+    assert ".playlist-actions .btn-play-circle" in desktop_css
+    assert "background: transparent;" in desktop_css
+    assert "box-shadow: none;" in desktop_css
+    assert "fill: none;" in desktop_css
+    assert ".playlist-btn-label" in mobile_css
+    assert "display: none !important;" in mobile_css
+    assert "document.getElementById('playlist-title-${playlistId}').textContent" in javascript
+    assert 'maxlength="120"' in javascript
+
+
 def test_admin_user_statistics_have_responsive_styles_and_independent_polling():
     assets_root = Path(__file__).resolve().parents[2] / "assets"
     css = (assets_root / "css" / "admin_system.css").read_text(encoding="utf-8")

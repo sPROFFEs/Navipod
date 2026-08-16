@@ -57,11 +57,10 @@ export async function renderPlaylist(container, playlistId) {
     return '< 1 min';
   };
   const totalLabel = fmtTotal(totalSeconds);
-  const safePlaylistName = ui.escHtml(data.name || 'Playlist').replace(/'/g, "\\'");
   const ownerControls =
     isOwner && isEditable
       ? `
-        <button class="icon-btn-sm" onclick="showEditPlaylistModal(${playlistId}, '${safePlaylistName}')" title="Edit Name">
+        <button class="icon-btn-sm" onclick="showEditPlaylistModal(${playlistId}, document.getElementById('playlist-title-${playlistId}').textContent)" title="Edit Name">
             <i data-lucide="pencil" width="16"></i>
         </button>`
       : '';
@@ -121,7 +120,7 @@ export async function renderPlaylist(container, playlistId) {
       : '';
   const deleteButton = isOwner
     ? `
-        <button onclick="event.stopPropagation(); showDeletePlaylistModal(${playlistId}, '${ui.escHtml(data.name || 'Playlist')}')" class="btn-danger-outline playlist-action-btn" title="Delete" aria-label="Delete">
+        <button onclick="event.stopPropagation(); showDeletePlaylistModal(${playlistId}, document.getElementById('playlist-title-${playlistId}').textContent)" class="btn-danger-outline playlist-action-btn" title="Delete" aria-label="Delete">
             <i data-lucide="trash-2" width="16"></i>
             <span class="playlist-btn-label">Delete</span>
         </button>`
@@ -565,7 +564,7 @@ export function showCreatePlaylistModal(trackIdToAdd = null) {
             </div>
             <div class="modal-body">
                 <label class="modal-label">Playlist Name</label>
-                <input type="text" id="new-playlist-name" class="modal-input" placeholder="My awesome playlist..." autofocus>
+                <input type="text" id="new-playlist-name" class="modal-input" maxlength="120" placeholder="My awesome playlist..." autofocus>
             </div>
             <div class="modal-actions">
                 <button class="modal-btn-cancel" onclick="closeModal()">Cancel</button>
@@ -598,7 +597,7 @@ export function showEditPlaylistModal(id, currentName) {
   const html = `<div class="modal-overlay" onclick="closeModal()">
         <div class="modal" onclick="event.stopPropagation()">
             <h2 style="margin-bottom: 16px;">Rename Playlist</h2>
-            <input type="text" id="edit-playlist-name-input" class="modal-input" value="${ui.escHtml(currentName)}" placeholder="New playlist name" style="margin-bottom: 24px;">
+            <input type="text" id="edit-playlist-name-input" class="modal-input" value="${ui.escHtml(currentName)}" maxlength="120" placeholder="New playlist name" style="margin-bottom: 24px;">
             <div class="modal-actions">
                 <button class="modal-btn-cancel" onclick="closeModal()">Cancel</button>
                 <button class="modal-btn-primary" onclick="editPlaylistName('${id}', document.getElementById('edit-playlist-name-input').value)">Save</button>
@@ -642,6 +641,8 @@ export async function createPlaylist(trackIdToAdd = null) {
       ui.showToast('Playlist created!', 'success');
       if (state.currentViewName === 'library' && window.loadView) window.loadView('library');
       if (trackIdToAdd) await addToPlaylist(pl.id, trackIdToAdd);
+    } else {
+      ui.showToast(pl.error || 'Failed to create playlist', 'error');
     }
   } catch (e) {
     ui.showToast('Failed', 'error');
@@ -747,7 +748,8 @@ export async function editPlaylistName(id, newName) {
 
       renderPlaylist(document.getElementById('view-container'), id);
     } else {
-      ui.showToast('Failed to rename playlist', 'error');
+      const error = await res.json().catch(() => ({}));
+      ui.showToast(error.error || 'Failed to rename playlist', 'error');
     }
   } catch (e) {
     console.error(e);

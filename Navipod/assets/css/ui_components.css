@@ -1181,6 +1181,75 @@
     }
 }
 
+/* Playlist detail actions — quiet outline icons, consistent with the player. */
+.playlist-actions .btn-play-circle,
+.playlist-actions .btn-icon-pill,
+.playlist-actions .playlist-action-btn {
+    min-width: 44px;
+    height: 44px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-sub);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 10px;
+    transition: color 0.16s ease, background-color 0.16s ease;
+}
+
+.playlist-actions .btn-play-circle {
+    width: 44px;
+    padding: 0;
+    color: var(--text-main);
+}
+
+.playlist-actions .btn-icon-pill {
+    width: 44px;
+    padding: 0;
+}
+
+.playlist-actions .btn-play-circle svg,
+.playlist-actions .btn-icon-pill svg,
+.playlist-actions .playlist-action-btn svg {
+    fill: none;
+    stroke: currentColor;
+    margin: 0;
+}
+
+.playlist-actions .btn-play-circle:hover,
+.playlist-actions .btn-icon-pill:hover,
+.playlist-actions .playlist-action-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: transparent;
+    box-shadow: none;
+    color: var(--text-main);
+    transform: none;
+}
+
+.playlist-actions .btn-danger-outline,
+.playlist-actions .btn-danger-outline:hover {
+    color: #ff8585;
+}
+
+.playlist-actions .btn-play-circle:active,
+.playlist-actions .btn-icon-pill:active,
+.playlist-actions .playlist-action-btn:active {
+    background: rgba(255, 255, 255, 0.08);
+    transform: none;
+}
+
+.playlist-actions button:focus-visible {
+    outline: 2px solid var(--text-main);
+    outline-offset: 2px;
+}
+
+.playlist-actions button:disabled {
+    opacity: 0.45;
+}
+
 /* === Lyrics panel ======================================================= */
 /* Slide-in side panel anchored to the right edge. On desktop it sits
    above the player footer; on mobile it occupies the full screen and

@@ -12,6 +12,7 @@ import manager
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from navipod_config import settings
+from playlist_files import playlist_m3u_filename
 from sqlalchemy.orm import Session, joinedload
 
 from .core import get_current_user_safe, get_db
@@ -191,7 +192,7 @@ async def sync_navidrome_to_local(db: Session, user):
                 for pl in local_playlists:
                     if pl.name not in nd_playlist_names:
                         playlist_dir = f"{settings.MUSIC_ROOT}/{user.username}/music/playlists"
-                        m3u_path = os.path.join(playlist_dir, pl.name + ".m3u")
+                        m3u_path = pl.m3u_path or os.path.join(playlist_dir, playlist_m3u_filename(pl.name, pl.id))
 
                         if not os.path.exists(m3u_path):
                             logger.info("Deleting local playlist missing in Navidrome and disk: %s", pl.name)

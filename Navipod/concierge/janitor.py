@@ -3,6 +3,7 @@ import os
 import sys
 
 from database import Playlist, SessionLocal, User
+from playlist_files import playlist_m3u_filename
 from sqlalchemy.orm import Session
 
 # Configure Logging
@@ -33,12 +34,10 @@ def sync_playlists(db: Session):
         playlists = db.query(Playlist).filter(Playlist.owner_id == user.id).all()
         for pl in playlists:
             try:
-                # Sanitize filename
-                safe_name = "".join(c for c in pl.name if c.isalnum() or c in (" ", "-", "_")).strip()
-                if not safe_name:
-                    safe_name = f"Playlist_{pl.id}"
-
-                m3u_path = os.path.join(user_music_root, f"{safe_name}.m3u")
+                m3u_path = pl.m3u_path or os.path.join(
+                    user_music_root, "playlists", playlist_m3u_filename(pl.name, pl.id)
+                )
+                os.makedirs(os.path.dirname(m3u_path), mode=0o750, exist_ok=True)
 
                 with open(m3u_path, "w", encoding="utf-8") as f:
                     f.write("#EXTM3U\n")
@@ -79,6 +78,10 @@ def sync_playlists(db: Session):
                             # For Phase 2/4 we assume Pool.
                             pass
 
+                if pl.m3u_path != m3u_path:
+                    pl.m3u_path = m3u_path
+                    db.commit()
+
                 logger.info(f"Synced Playlist: {pl.name} for {user.username}")
 
             except Exception as e:
@@ -104,10 +107,7 @@ def reap_orphans(db: Session):
         playlists = db.query(Playlist).filter(Playlist.owner_id == user.id).all()
         expected_names: set[str] = set()
         for pl in playlists:
-            safe_name = "".join(c for c in pl.name if c.isalnum() or c in (" ", "-", "_")).strip()
-            if not safe_name:
-                safe_name = f"Playlist_{pl.id}"
-            expected_names.add(f"{safe_name}.m3u")
+            expected_names.add(os.path.basename(pl.m3u_path or playlist_m3u_filename(pl.name, pl.id)))
 
         # Remove any .m3u file that has no corresponding playlist record
         try:
