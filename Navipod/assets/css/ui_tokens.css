@@ -1,26 +1,63 @@
+/* ── Spotify-aligned design tokens ──────────────────────────────────
+ * Three-surface charcoal system: #121212 base → #181818 cards →
+ * #1f1f1f interactive fills. Album art carries every drop of color;
+ * green (#1ed760) is functional only — play buttons, active states,
+ * primary CTAs. No glassmorphism, no gradient orbs, no noise overlay.
+ * ────────────────────────────────────────────────────────────────── */
+
 :root {
-    --primary: #149a51;
-    --primary-hover: #118547;
-    --accent: #149a51;
-    --background: #111315;
-    --surface-0: #16191c;
-    --surface-1: #1b1f23;
-    --surface-2: #232931;
-    --surface-3: #2a313a;
-    --border-subtle: #2f3640;
-    --border-strong: #434c57;
-    --text-main: #eef2f6;
-    --text-sub: #98a2ad;
-    --text-faint: #737d89;
-    --danger: #c94f4f;
-    --warning: #b7791f;
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.24);
-    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.22);
-    --radius-sm: 8px;
-    --radius-md: 10px;
-    --radius-lg: 12px;
-    --sidebar-width: 252px;
-    --player-height: 88px;
+    /* Brand — reserved for play buttons, active states, CTAs only */
+    --primary: #1ed760;
+    --primary-hover: #1fdf64;
+    --accent: #1ed760;
+
+    /* Three-surface charcoal */
+    --background: #121212;
+    --surface-0: #181818;
+    --surface-1: #1f1f1f;
+    --surface-2: #282828;
+    --surface-3: #333333;
+
+    /* Borders — Spotify uses soft rgba whites, not hard hex grays */
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --border-strong: rgba(255, 255, 255, 0.12);
+
+    /* Backward-compat aliases for legacy --glass-* vars still referenced
+     * across style.css. Maps to the new Spotify border tokens so all
+     * existing rules work without 20 individual edits. */
+    --glass-border: rgba(255, 255, 255, 0.06);
+    --glass-border-highlight: rgba(255, 255, 255, 0.12);
+    --glass-bg: var(--surface-0);
+    --glass-blur: none;
+
+    /* Text — binary: white for emphasis, #b3b3b3 for secondary */
+    --text-main: #ffffff;
+    --text-sub: #b3b3b3;
+    --text-faint: #7c7c7c;
+
+    /* Semantic */
+    --danger: #f3727f;
+    --warning: #ffa42b;
+
+    /* Shadows — heavy and atmospheric, never sharp */
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
+    --shadow-md: rgba(0, 0, 0, 0.3) 0px 8px 8px;
+    --shadow-lg: rgba(0, 0, 0, 0.5) 0px 8px 24px;
+
+    /* Radius — organic scaling, pills for interactive, 4-8px for cards */
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-pill: 9999px;
+
+    /* Layout */
+    --sidebar-width: 280px;
+    --player-height: 90px;
+
+    /* Motion — Spotify uses 0.2s for immediate audio feedback */
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --dur-fast: 0.12s;
+    --dur: 0.2s;
 }
 
 * {
@@ -28,11 +65,6 @@
 }
 
 body {
-    background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 22%),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
-        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
-        var(--background);
-    background-size: auto, 24px 24px, 24px 24px, auto;
+    background: var(--background);
     color: var(--text-main);
 }

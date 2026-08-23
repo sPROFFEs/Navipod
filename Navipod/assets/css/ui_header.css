@@ -5,7 +5,7 @@
  * ───────────────────────────────────────────────────────────────────*/
 
 .main-view {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 18%), var(--surface-1);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 18%), var(--surface-0);
     border: 0;
     border-radius: 0;
 }
@@ -13,8 +13,8 @@
 .top-bar {
     height: 64px;
     padding: 0 24px;
-    background: rgba(22, 25, 28, 0.92);
-    border-bottom: 1px solid var(--border-subtle);
+    background: rgba(24, 24, 24, 0.92);
+    border-bottom: 0;
     display: grid;
     grid-template-columns: minmax(120px, auto) minmax(0, 1fr) minmax(120px, auto);
     align-items: center;

@@ -1,23 +1,7 @@
-:root {
-    --primary: #1DB954;
-    --primary-hover: #1ed760;
-    --accent: #a855f7;
-    /* Purple accent */
-    --background: #050505;
-
-    /* Glass Theme Variables */
-    --glass-bg: rgba(20, 20, 25, 0.65);
-    --glass-border: rgba(255, 255, 255, 0.08);
-    --glass-border-highlight: rgba(255, 255, 255, 0.15);
-    --glass-blur: blur(25px);
-
-    --text-main: #ffffff;
-    --text-sub: rgba(255, 255, 255, 0.65);
-    --surface-hover: rgba(255, 255, 255, 0.08);
-
-    --sidebar-width: 260px;
-    --player-height: 90px;
-}
+/* All design tokens now live in ui_tokens.css — this file consumes them.
+ * Removed: glass theme vars, gradient orb backgrounds, noise overlay.
+ * Spotify's design is flat charcoal — the only color comes from album
+ * art and the green play button. */
 
 * {
     margin: 0;
@@ -60,78 +44,10 @@ body {
     user-select: none;
 }
 
-/* --- BACKGROUND EFFECTS --- */
-.noise-overlay {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-    opacity: 0.05;
-}
-
-.smoke-container {
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    overflow: hidden;
-    background: #000;
-}
-
-.gradient-orb {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(80px);
-    opacity: 0.4;
-    mix-blend-mode: screen;
-    animation: move-and-morph 20s infinite alternate ease-in-out;
-}
-
-.orb-1 {
-    width: 50vw;
-    height: 50vw;
-    background: linear-gradient(135deg, rgba(29, 185, 84, 0.3) 0%, transparent 70%);
-    top: -10%;
-    left: -10%;
-    animation-duration: 25s;
-}
-
-.orb-2 {
-    width: 45vw;
-    height: 45vw;
-    background: linear-gradient(135deg, rgba(168, 85, 247, 0.3) 0%, transparent 70%);
-    bottom: -10%;
-    right: -10%;
-    animation-delay: -5s;
-    animation-duration: 30s;
-}
-
-.orb-3 {
-    width: 30vw;
-    height: 30vw;
-    background: linear-gradient(135deg, rgba(255, 80, 150, 0.15) 0%, transparent 70%);
-    top: 40%;
-    left: 30%;
-    animation-delay: -10s;
-    animation-duration: 22s;
-}
-
-@keyframes move-and-morph {
-    0% {
-        transform: translate(0, 0) scale(1);
-        border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
-    }
-
-    50% {
-        transform: translate(30px, -30px) scale(1.1);
-        border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%;
-    }
-
-    100% {
-        transform: translate(-20px, 20px) scale(0.9);
-        border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
-    }
-}
+/* --- BACKGROUND ---
+ * Spotify is flat charcoal — no orbs, no noise, no gradients. The
+ * three-surface token system (#121212 → #181818 → #1f1f1f) handles
+ * all visual depth through elevation, not decorative effects. */
 
 /* --- LAYOUT --- */
 .app-layout {
@@ -143,20 +59,18 @@ body {
     height: 100vh;
     position: relative;
     z-index: 1;
+    background: var(--background);
 }
 
 .app-layout:has(.player-footer:not(.player-hidden)) {
     grid-template-rows: 1fr var(--player-height);
 }
 
-
 .glass-panel {
-    background: var(--glass-bg);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    border: 1px solid var(--glass-border);
-    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-    border-radius: 12px;
+    background: var(--surface-0);
+    border: 0;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
 }
 
 /* --- SIDEBAR --- */
@@ -179,10 +93,11 @@ body {
 
 .sidebar::-webkit-scrollbar-thumb {
     border-radius: 3px;
+    background: var(--surface-2);
 }
 
 .sidebar::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.25);
+    background: var(--surface-3);
 }
 
 .sidebar-close {
@@ -299,11 +214,12 @@ body {
     align-items: center;
     gap: 10px;
     min-height: 38px;
-    background: rgba(0, 0, 0, 0.3);
+    background: var(--surface-1);
     padding: 4px 8px 4px 4px;
-    border-radius: 10px;
-    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-pill);
+    border: 0;
     cursor: pointer;
+    transition: background-color var(--dur) var(--ease);
 }
 
 .user-menu-trigger::-webkit-details-marker {
@@ -312,19 +228,19 @@ body {
 
 .user-menu-trigger:hover,
 .user-menu[open] .user-menu-trigger {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.14);
+    background: var(--surface-2);
 }
 
 .avatar-circle {
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    background: var(--accent);
+    background: var(--surface-3);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: black;
+    color: var(--text-main);
+    overflow: hidden;
 }
 
 .user-name {
@@ -346,10 +262,10 @@ body {
     right: 0;
     min-width: 188px;
     padding: 6px;
-    background: #17191f;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 10px;
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.34);
+    background: var(--surface-2);
+    border: 0;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
     z-index: 1200;
 }
 
@@ -370,29 +286,30 @@ body {
     align-items: center;
     gap: 10px;
     padding: 0 10px;
-    border: 1px solid transparent;
-    border-radius: 8px;
+    border: 0;
+    border-radius: var(--radius-sm);
     background: transparent;
-    color: #f3f4f6;
+    color: var(--text-sub);
     text-decoration: none;
     font: inherit;
     cursor: pointer;
     text-align: left;
+    transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease);
 }
 
 .user-menu-item:hover,
 .user-menu-action:hover {
-    background: rgba(255, 255, 255, 0.05);
-    border-color: rgba(255, 255, 255, 0.08);
+    background: var(--surface-3);
+    color: var(--text-main);
 }
 
 .user-menu-action-danger {
-    color: #fecaca;
+    color: var(--danger);
 }
 
 .user-menu-action-danger:hover {
-    background: rgba(127, 29, 29, 0.28);
-    border-color: rgba(220, 38, 38, 0.22);
+    background: rgba(243, 114, 127, 0.15);
+    color: var(--danger);
 }
 
 .user-menu-panel i,
@@ -506,48 +423,37 @@ body {
 .play-main {
     width: 40px;
     height: 40px;
-    background: var(--accent);
-    border: 1px solid transparent;
+    background: var(--primary);
+    border: 0;
     border-radius: 50%;
-    color: #0b1410;
+    color: #000;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 12px rgba(20, 154, 81, 0.28);
-    transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: none;
+    transition: transform var(--dur) var(--ease), background-color var(--dur) var(--ease);
 }
 
 .play-main.is-playing {
-    background: rgba(20, 154, 81, 0.16);
-    color: var(--accent);
-    border-color: rgba(20, 154, 81, 0.4);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    box-shadow: 0 4px 15px rgba(20, 154, 81, 0.25);
+    background: var(--primary);
+    color: #000;
 }
 
 .play-main:hover {
-    transform: scale(1.05);
-    box-shadow: 0 6px 18px rgba(20, 154, 81, 0.4);
+    transform: scale(1.06);
+    background: var(--primary-hover);
 }
 
 .active-control {
-    color: var(--accent) !important;
-    filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.4));
-    transition: color 0.3s ease, filter 0.3s ease;
-    animation: pulse-glow 1.5s ease-in-out infinite;
+    color: var(--primary) !important;
+    filter: none;
+    transition: color var(--dur) var(--ease);
+    animation: none;
 }
 
 @keyframes pulse-glow {
-
-    0%,
-    100% {
-        filter: drop-shadow(0 0 6px rgba(168, 85, 247, 0.4));
-    }
-
-    50% {
-        filter: drop-shadow(0 0 14px rgba(168, 85, 247, 0.7));
-    }
+    /* Kept for compat with any inline reference, but no longer applied. */
+    0%, 100% { filter: none; }
 }
 
 .playback-bar-container {
@@ -562,35 +468,41 @@ body {
 .progress-bar-bg {
     flex: 1;
     height: 4px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 2px;
+    background: var(--surface-3);
+    border-radius: var(--radius-pill);
     position: relative;
     cursor: pointer;
+    transition: height var(--dur) var(--ease);
 }
 
 .progress-bar-fill {
     height: 100%;
-    background: var(--accent);
-    border-radius: 2px;
+    background: var(--text-sub);
+    border-radius: var(--radius-pill);
     width: 0%;
     position: relative;
+    transition: background var(--dur) var(--ease);
 }
 
 .progress-knob {
-    width: 10px;
-    height: 10px;
-    background: white;
+    width: 12px;
+    height: 12px;
+    background: #fff;
     border-radius: 50%;
     position: absolute;
-    right: -5px;
+    right: -6px;
     top: 50%;
     transform: translate(0, -50%) scale(0);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    transition: transform 0.1s;
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--dur) var(--ease);
+}
+
+.progress-bar-bg:hover {
+    height: 6px;
 }
 
 .progress-bar-bg:hover .progress-bar-fill {
-    background: #b366ff;
+    background: var(--primary);
 }
 
 .progress-bar-bg:hover .progress-knob {
@@ -605,39 +517,44 @@ body {
 }
 
 .volume-bar-bg {
-    width: 80px;
+    width: 93px;
     height: 4px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 2px;
+    background: var(--surface-3);
+    border-radius: var(--radius-pill);
     position: relative;
     cursor: pointer;
+    transition: height var(--dur) var(--ease);
 }
 
 .volume-bar-fill {
     height: 100%;
-    background: white;
-    border-radius: 2px;
+    background: var(--text-sub);
+    border-radius: var(--radius-pill);
     width: 70%;
     position: relative;
-    transition: background 0.2s;
+    transition: background var(--dur) var(--ease);
 }
 
 .volume-knob {
-    width: 10px;
-    height: 10px;
-    background: white;
+    width: 12px;
+    height: 12px;
+    background: #fff;
     border-radius: 50%;
     position: absolute;
-    right: -5px;
+    right: -6px;
     top: 50%;
     transform: translate(0, -50%) scale(0);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    transition: transform 0.1s;
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--dur) var(--ease);
     z-index: 2;
 }
 
+.volume-bar-bg:hover {
+    height: 6px;
+}
+
 .volume-bar-bg:hover .volume-bar-fill {
-    background: var(--accent);
+    background: var(--primary);
 }
 
 .volume-bar-bg:hover .volume-knob {
@@ -671,17 +588,23 @@ body {
     align-items: center;
     gap: 10px;
     padding: 10px 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-    transition: 0.2s;
+    border-bottom: 0;
+    border-radius: var(--radius-sm);
+    transition: background-color var(--dur) var(--ease);
+    margin: 2px 8px;
 }
 
 .queue-item:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--surface-2);
 }
 
 .queue-item.current {
-    background: rgba(168, 85, 247, 0.1);
-    border-left: 3px solid var(--accent);
+    background: transparent;
+    border-left: 0;
+}
+
+.queue-item.current .queue-title {
+    color: var(--primary);
 }
 
 .queue-img {
@@ -715,9 +638,9 @@ body {
 }
 
 .queue-section-title {
-    color: var(--accent);
+    color: var(--primary);
     font-size: 0.72rem;
-    font-weight: 800;
+    font-weight: 700;
     letter-spacing: 0.08em;
     padding: 12px 16px 8px;
     text-transform: uppercase;
@@ -731,9 +654,9 @@ body {
 }
 
 .queue-context-card {
-    background: rgba(255, 255, 255, 0.035);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
+    background: var(--surface-0);
+    border: 0;
+    border-radius: var(--radius-lg);
     margin: 12px 12px 16px;
     overflow: hidden;
 }
@@ -793,7 +716,7 @@ body {
 
 /* Queue drag-and-drop states */
 .queue-item.dragging { opacity: 0.35; }
-.queue-item.drag-over { box-shadow: 0 -2px 0 0 var(--accent) inset; }
+.queue-item.drag-over { box-shadow: 0 -2px 0 0 var(--primary) inset; }
 
 /* --- RESPONSIVE --- */
 @media (max-width: 768px) {
@@ -936,14 +859,14 @@ body {
 }
 
 .btn-primary {
-    background: var(--accent);
-    color: white;
+    background: var(--primary);
+    color: #000;
     border: none;
     padding: 10px 24px;
-    border-radius: 10px;
+    border-radius: var(--radius-pill);
     font-weight: 700;
     cursor: pointer;
-    transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform var(--dur) var(--ease), background-color var(--dur) var(--ease);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -952,13 +875,13 @@ body {
 }
 
 .btn-primary:hover {
-    opacity: 0.9;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 15px rgba(168, 85, 247, 0.4);
+    background: var(--primary-hover);
+    transform: scale(1.04);
+    box-shadow: none;
 }
 
 .btn-primary:active {
-    transform: translateY(0);
+    transform: scale(1);
 }
 
 .btn-glass {
@@ -1001,11 +924,9 @@ body {
 }
 
 .admin-section {
-    background: var(--glass-bg);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    border: 1px solid var(--glass-border);
-    border-radius: 16px;
+    background: var(--surface-0);
+    border: 0;
+    border-radius: var(--radius-lg);
     margin-bottom: 32px;
 }
 
@@ -1066,14 +987,14 @@ body {
 }
 
 .admin-btn-primary {
-    background: var(--accent);
-    color: white;
+    background: var(--primary);
+    color: #000;
     border: none;
-    border-radius: 10px;
+    border-radius: var(--radius-pill);
     font-weight: 700;
     font-size: 0.95rem;
     cursor: pointer;
-    transition: 0.2s;
+    transition: transform var(--dur) var(--ease), background-color var(--dur) var(--ease);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1081,8 +1002,9 @@ body {
 }
 
 .admin-btn-primary:hover {
-    opacity: 0.9;
-    box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
+    background: var(--primary-hover);
+    transform: scale(1.04);
+    box-shadow: none;
 }
 
 .admin-btn-secondary {
@@ -1243,27 +1165,29 @@ body {
 
 /* --- COMPONENTS: CARDS --- */
 .card-img-container {
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-md);
     position: relative;
-    border: 1px solid var(--glass-border);
+    border: 0;
 }
 
 .play-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0);
     visibility: hidden;
     opacity: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: 0.2s;
-    backdrop-filter: blur(2px);
+    transition: opacity var(--dur) var(--ease), background var(--dur) var(--ease);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 .card:hover .play-overlay {
     visibility: visible;
     opacity: 1;
+    background: rgba(0, 0, 0, 0.35);
 }
 
 .play-btn-card {
@@ -1271,34 +1195,40 @@ body {
     height: 48px;
     border-radius: 50%;
     background: var(--primary);
-    color: black;
+    color: #000;
     border: none;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transform: scale(0.9);
-    transition: 0.2s;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    transform: translateY(8px) scale(0.9);
+    opacity: 0;
+    transition: transform var(--dur) var(--ease), opacity var(--dur) var(--ease), background-color var(--dur) var(--ease);
+    box-shadow: var(--shadow-md);
+}
+
+.card:hover .play-btn-card {
+    transform: translateY(0) scale(1);
+    opacity: 1;
 }
 
 .play-btn-card:hover {
-    transform: scale(1);
+    transform: scale(1.1);
     background: var(--primary-hover);
 }
 
 /* "+ Add to playlist" button inside card play-overlay */
 .play-btn-add-pl {
-    background: rgba(20, 154, 81, 0.18) !important;
-    border: 1px solid rgba(20, 154, 81, 0.45) !important;
-    color: var(--accent) !important;
+    background: var(--surface-2) !important;
+    border: 0 !important;
+    color: var(--text-main) !important;
     width: 38px;
     height: 38px;
 }
 .play-btn-add-pl:hover {
-    background: var(--accent) !important;
-    color: #0b1410 !important;
-    transform: scale(1.05) !important;
+    background: var(--surface-3) !important;
+    color: #fff !important;
+    transform: scale(1.1) !important;
 }
 
 /* Cover skeleton shimmer while loading */
@@ -1337,15 +1267,15 @@ body {
     grid-template-columns: 40px 1fr 100px 120px;
     align-items: center;
     padding: 10px 16px;
-    border-radius: 8px;
-    border: 1px solid transparent;
-    transition: 0.2s;
+    border-radius: var(--radius-sm);
+    border: 0;
+    transition: background-color var(--dur) var(--ease);
     cursor: pointer;
 }
 
 .track-row:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.05);
+    background: var(--surface-2);
+    border-color: transparent;
 }
 
 .track-row.header {
@@ -1433,7 +1363,7 @@ body {
     background: rgba(255, 255, 255, 0.03) !important;
 }
 .track-row.drag-over {
-    box-shadow: 0 -2px 0 0 var(--accent) inset;
+    box-shadow: 0 -2px 0 0 var(--primary) inset;
     border-radius: 0;
 }
 
@@ -1542,7 +1472,7 @@ body {
 
 .action-btn-inline.liked {
     opacity: 1;
-    color: var(--accent);
+    color: var(--primary);
 }
 
 .action-btn-inline.danger:hover {
@@ -1791,13 +1721,13 @@ body {
     bottom: 120px;
     left: 50%;
     transform: translateX(-50%);
-    background: var(--glass-bg);
-    backdrop-filter: blur(10px);
-    border: 1px solid var(--glass-border-highlight);
-    color: white;
+    background: var(--surface-2);
+    backdrop-filter: none;
+    border: 0;
+    color: var(--text-main);
     padding: 12px 24px;
-    border-radius: 30px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    border-radius: var(--radius-pill);
+    box-shadow: var(--shadow-lg);
     display: flex;
     align-items: center;
     gap: 12px;
@@ -1862,15 +1792,15 @@ body {
 }
 
 .modal {
-    background: var(--glass-bg);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    border: 1px solid var(--glass-border);
-    border-radius: 16px;
+    background: var(--surface-2);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: 0;
+    border-radius: var(--radius-lg);
     padding: 24px;
     width: 400px;
     max-width: 90vw;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow-lg);
     transform: scale(0.95);
     transition: 0.3s;
 }
@@ -2105,19 +2035,20 @@ body {
 }
 
 .modal-btn-primary {
-    background: var(--accent);
-    color: white;
+    background: var(--primary);
+    color: #000;
     border: none;
     padding: 10px 24px;
-    border-radius: 8px;
+    border-radius: var(--radius-pill);
     font-weight: 700;
     cursor: pointer;
-    transition: 0.2s;
+    transition: transform var(--dur) var(--ease), background-color var(--dur) var(--ease);
 }
 
 .modal-btn-primary:hover {
-    opacity: 0.9;
-    box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
+    background: var(--primary-hover);
+    transform: scale(1.04);
+    box-shadow: none;
 }
 
 .modal-btn-danger {
@@ -2239,7 +2170,7 @@ body {
 
 .job-progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, var(--accent), #d8b4fe);
+    background: var(--primary);
     border-radius: 10px;
     transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -2512,24 +2443,25 @@ body {
 }
 
 .btn-primary-lg {
-    background: var(--accent);
-    color: white;
+    background: var(--primary);
+    color: #000;
     border: none;
     padding: 12px 28px;
-    border-radius: 50px;
+    border-radius: var(--radius-pill);
     font-weight: 700;
     font-size: 1rem;
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 10px;
-    transition: all 0.2s ease;
-    box-shadow: 0 4px 15px rgba(168, 85, 247, 0.3);
+    transition: transform var(--dur) var(--ease), background-color var(--dur) var(--ease);
+    box-shadow: none;
 }
 
 .btn-primary-lg:hover {
-    transform: scale(1.05);
-    box-shadow: 0 6px 20px rgba(168, 85, 247, 0.4);
+    background: var(--primary-hover);
+    transform: scale(1.04);
+    box-shadow: none;
 }
 
 .btn-primary-lg:active {
@@ -2577,13 +2509,13 @@ body {
 
 /* --- TRACK ROW HOVER FX --- */
 .glass-hover {
-    transition: background 0.2s, border-color 0.2s;
-    border: 1px solid transparent;
+    transition: background-color var(--dur) var(--ease);
+    border: 0;
 }
 
 .glass-hover:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.05);
+    background: var(--surface-2);
+    border-color: transparent;
 }
 
 .num-text {
@@ -2608,7 +2540,7 @@ body {
 }
 
 .playing-icon {
-    color: var(--accent);
+    color: var(--primary);
     width: 16px;
     height: 16px;
     animation: pulse 2s infinite;
@@ -2719,7 +2651,7 @@ body {
 .music-bar {
     width: 6px;
     height: 100%;
-    background: var(--accent);
+    background: var(--primary);
     border-radius: 4px;
     animation: eq-bounce 1s ease-in-out infinite;
 }
@@ -2762,9 +2694,9 @@ body {
 .fs-background {
     position: absolute;
     inset: 0;
-    background: linear-gradient(180deg, rgba(20, 20, 30, 0.98) 0%, rgba(10, 10, 15, 1) 100%);
-    backdrop-filter: blur(60px);
-    -webkit-backdrop-filter: blur(60px);
+    background: var(--background);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     z-index: -1;
 }
 
@@ -2785,9 +2717,9 @@ body {
     top: 0;
     left: 50%;
     transform: translateX(-50%);
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: white;
+    background: var(--surface-2);
+    border: 0;
+    color: var(--text-main);
     border-radius: 50%;
     width: 48px;
     height: 48px;
@@ -2795,20 +2727,19 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
+    transition: background-color var(--dur) var(--ease);
 }
 
 .fs-minimize:hover {
-    background: rgba(255, 255, 255, 0.15);
-    transform: translateX(-50%) scale(1.1);
+    background: var(--surface-3);
 }
 
 .fs-cover {
     width: 280px;
     height: 280px;
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     object-fit: cover;
-    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5), 0 0 100px rgba(168, 85, 247, 0.15);
+    box-shadow: var(--shadow-lg);
     margin-bottom: 32px;
     margin-top: 40px;
     transition: transform 0.3s;
@@ -2865,27 +2796,28 @@ body {
 .fs-play-main {
     width: 72px !important;
     height: 72px !important;
-    background: var(--accent);
-    border: 1px solid transparent;
+    background: var(--primary);
+    border: 0;
     border-radius: 50%;
-    color: #0b1410;
+    color: #000;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 8px 25px rgba(20, 154, 81, 0.32);
-    transition: all 0.3s;
+    box-shadow: none;
+    transition: transform var(--dur) var(--ease), background-color var(--dur) var(--ease);
 }
 
 .fs-play-main.is-playing {
-    background: rgba(20, 154, 81, 0.16);
-    color: var(--accent);
-    border-color: rgba(20, 154, 81, 0.4);
-    box-shadow: 0 8px 25px rgba(20, 154, 81, 0.3);
+    background: var(--primary);
+    color: #000;
+    border-color: transparent;
+    box-shadow: none;
 }
 
 .fs-play-main:hover {
-    transform: scale(1.1);
-    box-shadow: 0 12px 35px rgba(20, 154, 81, 0.45);
+    transform: scale(1.06);
+    background: var(--primary-hover);
+    box-shadow: none;
 }
 
 .fs-progress-container {
@@ -2900,16 +2832,16 @@ body {
 .fs-progress-bar {
     flex: 1;
     height: 6px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 3px;
+    background: var(--surface-3);
+    border-radius: var(--radius-pill);
     position: relative;
     cursor: pointer;
 }
 
 .fs-progress-fill {
     height: 100%;
-    background: var(--accent);
-    border-radius: 3px;
+    background: var(--primary);
+    border-radius: var(--radius-pill);
     position: relative;
     transition: width 0.1s linear;
 }
@@ -2962,8 +2894,8 @@ body {
 }
 
 .fs-action-btn.active {
-    color: var(--accent);
-    filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.4));
+    color: var(--primary);
+    filter: none;
 }
 
 /* Mobile */
@@ -3173,7 +3105,7 @@ body {
     width: 32px;
     height: 32px;
     border: 3px solid rgba(255, 255, 255, 0.2);
-    border-top-color: var(--accent);
+    border-top-color: var(--primary);
     border-radius: 50%;
     animation: avatar-spin 0.8s linear infinite;
 }

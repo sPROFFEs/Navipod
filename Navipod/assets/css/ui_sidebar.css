@@ -28,9 +28,9 @@
 }
 
 .sidebar {
-    background: var(--surface-1);
+    background: var(--surface-0);
     border: 0;
-    border-radius: 10px;
+    border-radius: var(--radius-lg);
     padding: 0;
     /* The legacy .sidebar rule in style.css sets overflow-y:auto here,
      * which would cause the whole sidebar (including the header) to
@@ -41,13 +41,13 @@
     overflow-y: hidden !important;
     display: flex;
     flex-direction: column;
-    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-color: var(--surface-3) transparent;
     /* Establish a stacking context so the header z-index works locally. */
     isolation: isolate;
 }
 
 .sidebar::-webkit-scrollbar-thumb {
-    background: var(--border-strong);
+    background: var(--surface-3);
     border-radius: 999px;
 }
 
@@ -61,11 +61,9 @@
 .sidebar-head {
     padding: 12px 12px 8px 12px;
     flex-shrink: 0;
-    /* Sit above the scrolling list so when items scroll up they cleanly
-     * disappear behind the header instead of bleeding across it. */
     position: relative;
     z-index: 2;
-    background: var(--surface-1);
+    background: var(--surface-0);
 }
 
 .sidebar-toggle {
@@ -195,9 +193,9 @@
  * 8px further left than the rest, looking off-axis. */
 .sidebar-item-favorites {
     position: sticky;
-    top: -4px;                         /* offset .sidebar-list's padding-top:4px */
+    top: -4px;
     z-index: 2;
-    background: var(--surface-1);
+    background: var(--surface-0);
     margin: -4px -8px 4px -8px;
     padding: 10px 16px 6px 16px;
 }

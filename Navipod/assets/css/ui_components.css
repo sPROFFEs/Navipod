@@ -2,21 +2,21 @@
 .empty-state.glass-panel,
 .modal,
 .queue-panel {
-    background: var(--surface-0);
-    border: 1px solid var(--border-subtle);
+    background: var(--surface-2);
+    border: 0;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--shadow-lg);
 }
 
 .search-input-wrapper {
     display: flex;
     align-items: center;
     gap: 16px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
     padding: 16px 28px;
     margin-bottom: 32px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
 
 .search-panel {
@@ -24,13 +24,13 @@
 }
 
 .search-input-wrapper:hover {
-    background: var(--surface-2);
-    border-color: var(--border-strong);
+    background: var(--surface-3);
+    border-color: transparent;
 }
 
 .search-input-wrapper:focus-within {
-    background: var(--surface-2);
-    border-color: var(--border-strong);
+    background: var(--surface-3);
+    border-color: transparent;
     box-shadow: var(--shadow-md);
     transform: none;
 }
@@ -55,29 +55,30 @@
 
 .chip {
     padding: 8px 14px;
-    border-radius: var(--radius-sm);
-    background: var(--surface-0);
-    border: 1px solid var(--border-subtle);
-    color: var(--text-sub);
+    border-radius: var(--radius-pill);
+    background: var(--surface-2);
+    border: 0;
+    color: var(--text-main);
     font-size: 0.88rem;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
     backdrop-filter: none;
 }
 
 .chip:hover {
-    background: var(--surface-2);
-    color: var(--text-main);
+    background: var(--surface-3);
+    color: #fff;
     box-shadow: none;
     transform: none;
 }
 
 .chip.active {
     background: var(--surface-3);
-    border-color: var(--border-strong);
+    border-color: transparent;
     box-shadow: none;
     transform: none;
+    color: #fff;
 }
 
 .chip.spotify.active,
@@ -89,16 +90,16 @@
 
 .card {
     cursor: pointer;
-    background: transparent;
-    border: 1px solid transparent;
+    background: var(--surface-0);
+    border: 0;
     border-radius: var(--radius-md);
-    padding: 10px;
-    transition: background-color 0.2s ease, border-color 0.2s ease;
+    padding: 12px;
+    transition: background-color var(--dur) var(--ease);
 }
 
 .card:hover {
-    background: rgba(255, 255, 255, 0.03);
-    border-color: var(--border-subtle);
+    background: var(--surface-2);
+    border-color: transparent;
     box-shadow: none;
     transform: none;
 }
@@ -109,15 +110,16 @@
     overflow: hidden;
     margin-bottom: 12px;
     border-radius: var(--radius-sm);
-    box-shadow: none;
-    border: 1px solid var(--border-subtle);
+    box-shadow: var(--shadow-md);
+    border: 0;
+    position: relative;
 }
 
 .card-img-container img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: transform 0.2s ease;
+    transition: transform var(--dur) var(--ease);
 }
 
 .card-img-container img.mix-cover-img {
@@ -195,9 +197,9 @@
 .music-loader .music-bar {
     width: 5px;
     min-height: 8px;
-    background: linear-gradient(180deg, #d56b9a 0%, var(--accent) 100%);
+    background: linear-gradient(180deg, var(--text-sub) 0%, var(--primary) 100%);
     border-radius: 3px;
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04);
+    box-shadow: none;
 }
 
 .empty-icon {
@@ -303,8 +305,8 @@
 }
 
 .library-filter.active {
-    background: rgba(47, 191, 113, 0.18);
-    color: #6ee7a7;
+    background: var(--surface-3);
+    color: var(--primary);
 }
 
 .library-sort {
@@ -332,7 +334,7 @@
 }
 
 .library-sort select.modal-input option {
-    background: var(--surface-1);
+    background: var(--surface-2);
     color: var(--text-main);
 }
 
@@ -340,7 +342,7 @@
     grid-area: submit;
     width: 44px;
     height: 44px;
-    border: 1px solid var(--border-subtle);
+    border: 0;
     border-radius: var(--radius-sm);
     background: var(--surface-2);
     color: var(--text-main);
@@ -348,7 +350,6 @@
 
 .library-sort .library-icon-btn:hover,
 .library-sort .library-icon-btn:active {
-    border-color: var(--border-strong);
     background: var(--surface-3);
 }
 
@@ -603,7 +604,7 @@
     gap: 12px;
     align-items: center;
     padding: 14px;
-    border: 1px solid var(--border-subtle);
+    border: 0;
     border-radius: var(--radius-md);
     background: var(--surface-0);
 }
@@ -627,8 +628,8 @@
     justify-content: center;
     width: 40px;
     height: 40px;
-    border: 1px solid var(--border-subtle);
-    border-radius: 10px;
+    border: 0;
+    border-radius: var(--radius-sm);
     color: var(--text-sub);
     background: var(--surface-1);
     flex: 0 0 auto;
@@ -692,13 +693,17 @@
 }
 
 .discovery-card {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 12px;
+    background: var(--surface-0);
+    border: 0;
+    border-radius: var(--radius-md);
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    transition: transform 0.18s ease, opacity 0.22s ease;
+    transition: background-color var(--dur) var(--ease);
+}
+
+.discovery-card:hover {
+    background: var(--surface-2);
 }
 
 .discovery-card.dismissing {
