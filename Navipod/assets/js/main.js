@@ -164,6 +164,9 @@ window.toggleFavoriteFromPlayer = favorites.toggleFavoriteFromPlayer;
 // Playlists
 window.showAddToPlaylistModal = playlists.showAddToPlaylistModal;
 window.closeAddToPlaylistFlyout = playlists.closeAddToPlaylistFlyout;
+window.showCreatePlaylistInline = playlists.showCreatePlaylistInline;
+window.createPlaylistInline = playlists.createPlaylistInline;
+window._atpBackToList = playlists._atpBackToList;
 window.showCreatePlaylistModal = playlists.showCreatePlaylistModal;
 window.showDeletePlaylistModal = playlists.showDeletePlaylistModal;
 window.showEditPlaylistModal = playlists.showEditPlaylistModal;

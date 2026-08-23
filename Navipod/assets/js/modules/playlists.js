@@ -592,14 +592,16 @@ function _renderAddToPlaylistFlyout(trackId, editablePlaylists, anchorRect) {
       <span class="atp-title">Add to playlist</span>
       <button class="atp-close" onclick="closeAddToPlaylistFlyout()"><i data-lucide="x"></i></button>
     </div>
-    <div class="atp-search">
-      <i data-lucide="search"></i>
-      <input type="text" id="atp-search-input" placeholder="Find a playlist" autocomplete="off">
-    </div>
-    <div class="atp-list" id="atp-list">${listHtml}</div>
-    <button class="atp-new-btn" onclick="showCreatePlaylistModal(${trackId})">
-      <i data-lucide="plus"></i> New playlist
-    </button>`;
+    <div class="atp-body" id="atp-body">
+      <div class="atp-search">
+        <i data-lucide="search"></i>
+        <input type="text" id="atp-search-input" placeholder="Find a playlist" autocomplete="off">
+      </div>
+      <div class="atp-list" id="atp-list">${listHtml}</div>
+      <button class="atp-new-btn" onclick="showCreatePlaylistInline(${trackId})">
+        <i data-lucide="plus"></i> New playlist
+      </button>
+    </div>`;
 
   document.body.appendChild(flyout);
 
@@ -624,27 +626,7 @@ function _renderAddToPlaylistFlyout(trackId, editablePlaylists, anchorRect) {
   });
 
   // Wire up the live search filter.
-  document.getElementById('atp-search-input')?.addEventListener('input', (e) => {
-    const q = e.target.value.toLowerCase().trim();
-    const items = document.querySelectorAll('#atp-list .atp-item');
-    let visible = 0;
-    items.forEach((el) => {
-      const name = el.dataset.name || '';
-      const match = !q || name.toLowerCase().includes(q);
-      el.style.display = match ? '' : 'none';
-      if (match) visible++;
-    });
-    const empty = document.getElementById('atp-no-results');
-    if (visible === 0 && !empty) {
-      const el = document.createElement('p');
-      el.id = 'atp-no-results';
-      el.className = 'atp-empty';
-      el.textContent = 'No playlists found.';
-      document.getElementById('atp-list')?.appendChild(el);
-    } else if (visible > 0 && empty) {
-      empty.remove();
-    }
-  });
+  _wireAtpSearch();
 
   // Close on outside click.
   setTimeout(() => {
@@ -689,6 +671,130 @@ function _atpScrollGuard(e) {
   const flyout = document.getElementById('atp-flyout');
   if (flyout && flyout.contains(e.target)) return;
   closeAddToPlaylistFlyout();
+}
+
+/** Swaps the flyout body from the playlist list to an inline
+ * "Create playlist" name-input form — Spotify does the same: the
+ * list fades out and a name field + Create button appears in the
+ * same panel. No second modal. */
+export function showCreatePlaylistInline(trackIdToAdd = null) {
+  const body = document.getElementById('atp-body');
+  if (!body) return;
+
+  body.innerHTML = `
+    <div class="atp-create-form">
+      <input type="text" id="atp-create-input" class="atp-create-input" maxlength="120" placeholder="Playlist name" autocomplete="off">
+      <div class="atp-create-actions">
+        <button class="atp-create-cancel" onclick="_atpBackToList()">Back</button>
+        <button class="atp-create-submit" onclick="createPlaylistInline(${trackIdToAdd ?? 'null'})">
+          <i data-lucide="check"></i> Create
+        </button>
+      </div>
+    </div>`;
+
+  lucide.createIcons();
+  const input = document.getElementById('atp-create-input');
+  if (input) {
+    input.focus();
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        createPlaylistInline(trackIdToAdd);
+      } else if (e.key === 'Escape') {
+        _atpBackToList();
+      }
+    });
+  }
+}
+
+/** Creates a playlist from the inline flyout form, then if a trackId
+ * was provided, adds the track to the new playlist and closes the
+ * flyout with a success toast. */
+export async function createPlaylistInline(trackIdToAdd = null) {
+  const input = document.getElementById('atp-create-input');
+  const name = input?.value?.trim();
+  if (!name) {
+    ui.showToast('Enter a name', 'error');
+    input?.focus();
+    return;
+  }
+  try {
+    const res = await fetch(`${state.API}/playlists`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    const pl = await res.json();
+    if (res.ok) {
+      const playlists = [...state.userPlaylists, pl];
+      state.setUserPlaylists(playlists);
+      if (window.trackRecentPlaylist) await window.trackRecentPlaylist(pl.id);
+      else if (window.renderSidebarPlaylists) window.renderSidebarPlaylists();
+      if (trackIdToAdd) {
+        await addToPlaylist(pl.id, trackIdToAdd);
+        closeAddToPlaylistFlyout();
+      } else {
+        // No track context — just go back to the list showing the new entry.
+        _atpBackToList();
+      }
+    } else {
+      ui.showToast(pl.error || 'Failed to create playlist', 'error');
+    }
+  } catch (e) {
+    ui.showToast('Failed', 'error');
+  }
+}
+
+/** Restores the flyout body to the playlist list view (used as Back
+ * button from the inline create form). Re-renders the list with
+ * fresh state.userPlaylists so any just-created playlist shows up. */
+function _atpBackToList() {
+  const flyout = document.getElementById('atp-flyout');
+  if (!flyout) return;
+  const editablePlaylists = state.userPlaylists.filter((p) => p.is_editable !== false);
+  const listHtml =
+    editablePlaylists.length > 0
+      ? editablePlaylists.map(_renderAtpItem).join('')
+      : '<p class="atp-empty">No playlists yet. Create one below.</p>';
+  const body = document.getElementById('atp-body');
+  if (!body) return;
+  body.innerHTML = `
+    <div class="atp-search">
+      <i data-lucide="search"></i>
+      <input type="text" id="atp-search-input" placeholder="Find a playlist" autocomplete="off">
+    </div>
+    <div class="atp-list" id="atp-list">${listHtml}</div>
+    <button class="atp-new-btn" onclick="showCreatePlaylistInline(${_atpTrackId ?? 'null'})">
+      <i data-lucide="plus"></i> New playlist
+    </button>`;
+  lucide.createIcons();
+  document.getElementById('atp-search-input')?.focus();
+  // Re-wire search.
+  _wireAtpSearch();
+}
+
+function _wireAtpSearch() {
+  document.getElementById('atp-search-input')?.addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase().trim();
+    const items = document.querySelectorAll('#atp-list .atp-item');
+    let visible = 0;
+    items.forEach((el) => {
+      const name = el.dataset.name || '';
+      const match = !q || name.toLowerCase().includes(q);
+      el.style.display = match ? '' : 'none';
+      if (match) visible++;
+    });
+    const empty = document.getElementById('atp-no-results');
+    if (visible === 0 && !empty) {
+      const el = document.createElement('p');
+      el.id = 'atp-no-results';
+      el.className = 'atp-empty';
+      el.textContent = 'No playlists found.';
+      document.getElementById('atp-list')?.appendChild(el);
+    } else if (visible > 0 && empty) {
+      empty.remove();
+    }
+  });
 }
 
 export function closeAddToPlaylistFlyout() {

@@ -2162,3 +2162,79 @@
     width: 16px;
     height: 16px;
 }
+
+/* ── Inline create-playlist form (inside the flyout) ────────────── */
+
+.atp-create-form {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.atp-create-input {
+    width: 100%;
+    padding: 12px 14px;
+    background: var(--surface-3, #333);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+    border-radius: var(--radius-sm, 4px);
+    color: var(--text-main, #fff);
+    font-size: 0.95rem;
+    font-family: inherit;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.15s ease;
+}
+.atp-create-input:focus {
+    border-color: var(--primary, #1ed760);
+}
+.atp-create-input::placeholder {
+    color: var(--text-sub, #b3b3b3);
+}
+
+.atp-create-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.atp-create-cancel {
+    padding: 8px 16px;
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-pill, 9999px);
+    color: var(--text-sub, #b3b3b3);
+    font-size: 0.85rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: color 0.12s ease, background-color 0.12s ease;
+}
+.atp-create-cancel:hover {
+    color: var(--text-main, #fff);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.atp-create-submit {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 20px;
+    background: var(--primary, #1ed760);
+    border: 0;
+    border-radius: var(--radius-pill, 9999px);
+    color: #000;
+    font-size: 0.85rem;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    transition: transform 0.1s ease, background-color 0.12s ease;
+}
+.atp-create-submit:hover {
+    background: var(--primary-hover, #1fdf64);
+    transform: scale(1.04);
+}
+.atp-create-submit i, .atp-create-submit svg {
+    width: 16px;
+    height: 16px;
+}
