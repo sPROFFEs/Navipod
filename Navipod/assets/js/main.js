@@ -163,6 +163,7 @@ window.toggleFavoriteFromPlayer = favorites.toggleFavoriteFromPlayer;
 
 // Playlists
 window.showAddToPlaylistModal = playlists.showAddToPlaylistModal;
+window.closeAddToPlaylistFlyout = playlists.closeAddToPlaylistFlyout;
 window.showCreatePlaylistModal = playlists.showCreatePlaylistModal;
 window.showDeletePlaylistModal = playlists.showDeletePlaylistModal;
 window.showEditPlaylistModal = playlists.showEditPlaylistModal;
@@ -231,6 +232,7 @@ window.submitTrackDeleteRequest = views.submitTrackDeleteRequest;
 window.showTrackActionsSheet = views.showTrackActionsSheet;
 window.closeTrackActionsSheet = views.closeTrackActionsSheet;
 window.openTrackMenu = views.openTrackMenu;
+window.openAddToPlaylistFlyout = views.openAddToPlaylistFlyout;
 window.showContextMenu = views.showContextMenu;
 window.closeContextMenu = views.closeContextMenu;
 window.renderArtist = views.renderArtist;

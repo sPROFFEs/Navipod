@@ -1241,7 +1241,6 @@ export function closeContextMenu() {
   menu.classList.remove('open');
   setTimeout(() => menu.remove(), 150);
   document.removeEventListener('click', _ctxMenuOutsideClick, true);
-  document.removeEventListener('contextmenu', _ctxMenuSupressNav, true);
   window.removeEventListener('resize', closeContextMenu);
   window.removeEventListener('scroll', closeContextMenu, true);
 }
@@ -1250,7 +1249,6 @@ function _ctxMenuOutsideClick(e) {
   const menu = document.getElementById('track-context-menu');
   if (menu && !menu.contains(e.target)) closeContextMenu();
 }
-function _ctxMenuSupressNav(e) { e.preventDefault(); }
 
 export function showContextMenu(encodedData, playlistId, x, y) {
   closeContextMenu();
@@ -1281,7 +1279,7 @@ export function showContextMenu(encodedData, playlistId, x, y) {
       <i data-lucide="list-plus"></i><span>Add to Queue</span></div>`);
   }
   if (canAddToPlaylist) {
-    actions.push(`<div class="ctx-item" onclick="showAddToPlaylistModal(${item.db_id}); closeContextMenu()">
+    actions.push(`<div class="ctx-item" onclick="openAddToPlaylistFlyout(${item.db_id}, this)">
       <i data-lucide="plus"></i><span>Add to Playlist</span></div>`);
   }
   // Smart radio + artist nav — available for any track
@@ -1324,7 +1322,6 @@ export function showContextMenu(encodedData, playlistId, x, y) {
 
   // Close on outside click, scroll, or resize.
   document.addEventListener('click', _ctxMenuOutsideClick, true);
-  document.addEventListener('contextmenu', _ctxMenuSupressNav, true);
   window.addEventListener('resize', closeContextMenu);
   window.addEventListener('scroll', closeContextMenu, true);
 }
@@ -1336,11 +1333,12 @@ export function initContextMenu() {
     if (!row) return;
     e.preventDefault();
     // Extract the encoded track data from the three-dots button's
-    // onclick (openTrackMenu or showTrackActionsSheet).
+    // onclick attribute. The regex grabs the first two arguments
+    // (encoded data + playlistId), ignoring the optional `this` arg.
     const moreBtn = row.querySelector('.action-btn-more');
     if (moreBtn) {
       const oc = moreBtn.getAttribute('onclick') || '';
-      const m = oc.match(/(?:openTrackMenu|showTrackActionsSheet)\('([^']+)',\s*(null|[\d]+)\)/);
+      const m = oc.match(/(?:openTrackMenu|showTrackActionsSheet)\('([^']+)',\s*(null|[\d]+)/);
       if (m) showContextMenu(m[1], m[2] === 'null' ? null : Number(m[2]), e.clientX, e.clientY);
     }
   });
@@ -1357,6 +1355,21 @@ export function openTrackMenu(encodedData, playlistId, anchorEl) {
   } else {
     showContextMenu(encodedData, playlistId, window.innerWidth / 2, window.innerHeight / 2);
   }
+}
+
+/** Opens the Add-to-Playlist flyout anchored to the context-menu item
+ * that was clicked. Captures the anchor's rect before closing the
+ * context menu (which detaches the element from the DOM). */
+export function openAddToPlaylistFlyout(trackId, anchorEl) {
+  const rect = anchorEl ? anchorEl.getBoundingClientRect() : null;
+  // Use a synthetic anchor element so showAddToPlaylistModal can
+  // position relative to where the user clicked.
+  closeContextMenu();
+  // Small delay so the context menu's removal animation doesn't
+  // interfere with the flyout's positioning.
+  setTimeout(() => {
+    playlists.showAddToPlaylistModal(trackId, rect);
+  }, 50);
 }
 
 // === CARD CLICK HANDLER ===

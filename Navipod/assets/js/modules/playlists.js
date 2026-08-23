@@ -485,22 +485,31 @@ export function playPlaylistShuffle() {
   if (window.renderQueue) window.renderQueue();
 }
 
-// === MODALS ===
+// === ADD TO PLAYLIST FLYOUT ===
+//
+// Spotify-style floating panel with a search box. Opens as a flyout
+// (not a full-screen modal) so the user can search/filter playlists
+// inline. Falls back to the modal on mobile where screen space is
+// too tight for a floating panel.
 
-export async function showAddToPlaylistModal(trackId) {
+let _atpTrackId = null;
+let _atpAlreadyIn = new Set();
+
+export async function showAddToPlaylistModal(trackId, anchorEl = null) {
+  _atpTrackId = trackId;
   const editablePlaylists = state.userPlaylists.filter((p) => p.is_editable !== false);
 
   // Fetch which of those playlists already contain this track so we
   // can render a green check (already added) instead of a "+" button
   // on those rows. Network call is local — ~10–50 ms — so we await
   // before rendering to avoid a flicker between the two states.
-  let alreadyIn = new Set();
+  _atpAlreadyIn = new Set();
   if (trackId && editablePlaylists.length) {
     try {
       const r = await fetch(`${state.API}/tracks/${trackId}/playlists`, { credentials: 'include' });
       if (r.ok) {
         const d = await r.json();
-        alreadyIn = new Set(d.playlist_ids || []);
+        _atpAlreadyIn = new Set(d.playlist_ids || []);
       }
     } catch {
       // On failure we just render everything as addable; the backend
@@ -508,8 +517,18 @@ export async function showAddToPlaylistModal(trackId) {
     }
   }
 
+  // On mobile, use the full modal (more vertical space, easier touch).
+  if (window.innerWidth <= 768 || !anchorEl) {
+    _renderAddToPlaylistModal(trackId, editablePlaylists);
+    return;
+  }
+
+  _renderAddToPlaylistFlyout(trackId, editablePlaylists, anchorEl);
+}
+
+function _renderAddToPlaylistModal(trackId, editablePlaylists) {
   const renderItem = (p) => {
-    const isMember = alreadyIn.has(p.id);
+    const isMember = _atpAlreadyIn.has(p.id);
     const thumb = p.thumbnail || '/static/img/default_cover.png';
     const trackCount = p.track_count || 0;
     const trailing = isMember
@@ -553,6 +572,126 @@ export async function showAddToPlaylistModal(trackId) {
     </div>`;
   document.getElementById('modal-container').innerHTML = html;
   lucide.createIcons();
+}
+
+function _renderAddToPlaylistFlyout(trackId, editablePlaylists, anchorRect) {
+  // Remove any existing flyout.
+  document.getElementById('atp-flyout')?.remove();
+
+  const flyout = document.createElement('div');
+  flyout.id = 'atp-flyout';
+  flyout.className = 'atp-flyout';
+
+  const listHtml =
+    editablePlaylists.length > 0
+      ? editablePlaylists.map(_renderAtpItem).join('')
+      : '<p class="atp-empty">No playlists yet. Create one below.</p>';
+
+  flyout.innerHTML = `
+    <div class="atp-header">
+      <span class="atp-title">Add to playlist</span>
+      <button class="atp-close" onclick="closeAddToPlaylistFlyout()"><i data-lucide="x"></i></button>
+    </div>
+    <div class="atp-search">
+      <i data-lucide="search"></i>
+      <input type="text" id="atp-search-input" placeholder="Find a playlist" autocomplete="off">
+    </div>
+    <div class="atp-list" id="atp-list">${listHtml}</div>
+    <button class="atp-new-btn" onclick="showCreatePlaylistModal(${trackId})">
+      <i data-lucide="plus"></i> New playlist
+    </button>`;
+
+  document.body.appendChild(flyout);
+
+  // Position: anchor to the right of the clicked element, fall back
+  // to below if there's no room. anchorRect can be a DOMRect or an
+  // element with getBoundingClientRect.
+  requestAnimationFrame(() => {
+    const ar = anchorRect && anchorRect.width !== undefined ? anchorRect : anchorRect.getBoundingClientRect();
+    const fr = flyout.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let left = ar.right + 8;
+    let top = ar.top;
+    // If no room on the right, open on the left side.
+    if (left + fr.width > vw - 8) left = Math.max(8, ar.left - fr.width - 8);
+    // Clamp vertically.
+    if (top + fr.height > vh - 8) top = Math.max(8, vh - fr.height - 8);
+    flyout.style.left = left + 'px';
+    flyout.style.top = top + 'px';
+    flyout.classList.add('open');
+    document.getElementById('atp-search-input')?.focus();
+  });
+
+  // Wire up the live search filter.
+  document.getElementById('atp-search-input')?.addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase().trim();
+    const items = document.querySelectorAll('#atp-list .atp-item');
+    let visible = 0;
+    items.forEach((el) => {
+      const name = el.dataset.name || '';
+      const match = !q || name.toLowerCase().includes(q);
+      el.style.display = match ? '' : 'none';
+      if (match) visible++;
+    });
+    const empty = document.getElementById('atp-no-results');
+    if (visible === 0 && !empty) {
+      const el = document.createElement('p');
+      el.id = 'atp-no-results';
+      el.className = 'atp-empty';
+      el.textContent = 'No playlists found.';
+      document.getElementById('atp-list')?.appendChild(el);
+    } else if (visible > 0 && empty) {
+      empty.remove();
+    }
+  });
+
+  // Close on outside click.
+  setTimeout(() => {
+    document.addEventListener('click', _atpOutsideClick, true);
+  }, 0);
+  window.addEventListener('resize', closeAddToPlaylistFlyout);
+  window.addEventListener('scroll', closeAddToPlaylistFlyout, true);
+
+  lucide.createIcons();
+}
+
+function _renderAtpItem(p) {
+  const isMember = _atpAlreadyIn.has(p.id);
+  const thumb = p.thumbnail || '/static/img/default_cover.png';
+  const trackCount = p.track_count || 0;
+  const safeName = ui.escHtml(p.name).replace(/"/g, '&quot;');
+  const trailing = isMember
+    ? `<i data-lucide="check" class="atp-item-check"></i>`
+    : `<i data-lucide="plus" class="atp-item-add"></i>`;
+  const clickAttr = isMember ? '' : `onclick="addToPlaylist(${p.id}, ${_atpTrackId})"`;
+  const stateClass = isMember ? 'atp-item--member' : '';
+  return `
+    <div class="atp-item ${stateClass}" ${clickAttr} data-name="${safeName}">
+      <div class="atp-item-thumb">
+        <img src="${thumb}" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'" alt="">
+      </div>
+      <div class="atp-item-info">
+        <span class="atp-item-name">${ui.escHtml(p.name)}</span>
+        <span class="atp-item-count">Playlist · ${trackCount} song${trackCount !== 1 ? 's' : ''}</span>
+      </div>
+      ${trailing}
+    </div>`;
+}
+
+function _atpOutsideClick(e) {
+  const flyout = document.getElementById('atp-flyout');
+  if (flyout && !flyout.contains(e.target)) closeAddToPlaylistFlyout();
+}
+
+export function closeAddToPlaylistFlyout() {
+  const flyout = document.getElementById('atp-flyout');
+  if (!flyout) return;
+  flyout.classList.remove('open');
+  setTimeout(() => flyout.remove(), 150);
+  document.removeEventListener('click', _atpOutsideClick, true);
+  window.removeEventListener('resize', closeAddToPlaylistFlyout);
+  window.removeEventListener('scroll', closeAddToPlaylistFlyout, true);
 }
 
 export function showCreatePlaylistModal(trackIdToAdd = null) {

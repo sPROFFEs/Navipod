@@ -1961,3 +1961,204 @@
     background: var(--border-subtle, rgba(255, 255, 255, 0.08));
     margin: 4px 8px;
 }
+
+/* ── Add-to-Playlist flyout (Spotify-style search panel) ───────────
+ * Floating panel with a search box that filters the playlist list in
+ * real-time. Opens anchored to the context menu item that triggered
+ * it. Flat charcoal, hairline border, green accent on hover. */
+
+.atp-flyout {
+    position: fixed;
+    z-index: 10001;
+    width: 320px;
+    max-width: calc(100vw - 16px);
+    max-height: 440px;
+    background: var(--surface-2, #282828);
+    border-radius: var(--radius-sm, 4px);
+    box-shadow: var(--shadow-lg, rgba(0, 0, 0, 0.5) 0px 8px 24px);
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    transform: scale(0.96);
+    transform-origin: top left;
+    transition: opacity 0.12s var(--ease, ease), transform 0.12s var(--ease, ease);
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.atp-flyout.open {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
+}
+
+.atp-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px 8px;
+}
+
+.atp-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-main, #fff);
+}
+
+.atp-close {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: transparent;
+    border: 0;
+    color: var(--text-sub, #b3b3b3);
+    cursor: pointer;
+    transition: background-color 0.12s ease, color 0.12s ease;
+}
+.atp-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-main, #fff);
+}
+.atp-close i, .atp-close svg {
+    width: 16px;
+    height: 16px;
+}
+
+.atp-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 12px 8px;
+    padding: 8px 12px;
+    background: var(--surface-3, #333);
+    border-radius: var(--radius-sm, 4px);
+}
+.atp-search i, .atp-search svg {
+    width: 16px;
+    height: 16px;
+    color: var(--text-sub, #b3b3b3);
+    flex-shrink: 0;
+}
+.atp-search input {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    outline: none;
+    color: var(--text-main, #fff);
+    font-size: 0.88rem;
+    font-family: inherit;
+}
+.atp-search input::placeholder {
+    color: var(--text-sub, #b3b3b3);
+}
+
+.atp-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 4px;
+    min-height: 60px;
+}
+.atp-list::-webkit-scrollbar {
+    width: 6px;
+}
+.atp-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+}
+
+.atp-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm, 4px);
+    cursor: pointer;
+    transition: background-color 0.1s ease;
+}
+.atp-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+.atp-item--member {
+    opacity: 0.5;
+    cursor: default;
+}
+.atp-item--member:hover {
+    background: transparent;
+}
+
+.atp-item-thumb {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-sm, 4px);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.atp-item-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.atp-item-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.atp-item-name {
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--text-main, #fff);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.atp-item-count {
+    font-size: 0.75rem;
+    color: var(--text-sub, #b3b3b3);
+}
+.atp-item-add, .atp-item-check {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    color: var(--text-sub, #b3b3b3);
+}
+.atp-item-check {
+    color: var(--primary, #1ed760);
+}
+
+.atp-empty {
+    padding: 16px;
+    text-align: center;
+    color: var(--text-sub, #b3b3b3);
+    font-size: 0.85rem;
+}
+
+.atp-new-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    margin: 4px;
+    background: transparent;
+    border: 0;
+    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    color: var(--text-sub, #b3b3b3);
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.1s ease, color 0.1s ease;
+    border-radius: 0 0 var(--radius-sm, 4px) var(--radius-sm, 4px);
+}
+.atp-new-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-main, #fff);
+}
+.atp-new-btn i, .atp-new-btn svg {
+    width: 16px;
+    height: 16px;
+}
