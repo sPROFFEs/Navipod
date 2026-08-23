@@ -1242,12 +1242,19 @@ export function closeContextMenu() {
   setTimeout(() => menu.remove(), 150);
   document.removeEventListener('click', _ctxMenuOutsideClick, true);
   window.removeEventListener('resize', closeContextMenu);
-  window.removeEventListener('scroll', closeContextMenu, true);
+  window.removeEventListener('scroll', _ctxMenuScrollGuard, true);
 }
 
 function _ctxMenuOutsideClick(e) {
   const menu = document.getElementById('track-context-menu');
   if (menu && !menu.contains(e.target)) closeContextMenu();
+}
+// Close on scroll UNLESS the scroll originated from inside the menu
+// itself (e.g. scrolling the menu's own playlist/action list).
+function _ctxMenuScrollGuard(e) {
+  const menu = document.getElementById('track-context-menu');
+  if (menu && menu.contains(e.target)) return;
+  closeContextMenu();
 }
 
 export function showContextMenu(encodedData, playlistId, x, y) {
@@ -1323,7 +1330,7 @@ export function showContextMenu(encodedData, playlistId, x, y) {
   // Close on outside click, scroll, or resize.
   document.addEventListener('click', _ctxMenuOutsideClick, true);
   window.addEventListener('resize', closeContextMenu);
-  window.addEventListener('scroll', closeContextMenu, true);
+  window.addEventListener('scroll', _ctxMenuScrollGuard, true);
 }
 
 /** Attach right-click handler to track rows. Called once on app init. */

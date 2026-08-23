@@ -651,7 +651,7 @@ function _renderAddToPlaylistFlyout(trackId, editablePlaylists, anchorRect) {
     document.addEventListener('click', _atpOutsideClick, true);
   }, 0);
   window.addEventListener('resize', closeAddToPlaylistFlyout);
-  window.addEventListener('scroll', closeAddToPlaylistFlyout, true);
+  window.addEventListener('scroll', _atpScrollGuard, true);
 
   lucide.createIcons();
 }
@@ -683,6 +683,13 @@ function _atpOutsideClick(e) {
   const flyout = document.getElementById('atp-flyout');
   if (flyout && !flyout.contains(e.target)) closeAddToPlaylistFlyout();
 }
+// Close on scroll UNLESS the scroll originated from inside the
+// flyout itself (e.g. scrolling the playlist list).
+function _atpScrollGuard(e) {
+  const flyout = document.getElementById('atp-flyout');
+  if (flyout && flyout.contains(e.target)) return;
+  closeAddToPlaylistFlyout();
+}
 
 export function closeAddToPlaylistFlyout() {
   const flyout = document.getElementById('atp-flyout');
@@ -691,7 +698,7 @@ export function closeAddToPlaylistFlyout() {
   setTimeout(() => flyout.remove(), 150);
   document.removeEventListener('click', _atpOutsideClick, true);
   window.removeEventListener('resize', closeAddToPlaylistFlyout);
-  window.removeEventListener('scroll', closeAddToPlaylistFlyout, true);
+  window.removeEventListener('scroll', _atpScrollGuard, true);
 }
 
 export function showCreatePlaylistModal(trackIdToAdd = null) {
