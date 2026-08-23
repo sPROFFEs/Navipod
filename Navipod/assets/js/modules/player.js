@@ -16,6 +16,10 @@ let _activeListenSession = null;
 let _sessionPersistInterval = null;
 let _remoteQueueSaveTimer = null;
 let _trackTransitionInFlight = false;
+// Repeat-one: when active, the FIRST end-of-track restarts the current song;
+// the SECOND end advances to the next track and turns repeat off. This gives
+// "play this song once more, then continue" instead of infinite loop.
+let _repeatOnePending = false;
 let _partyController = null;
 let _partyScheduledStartTimer = null;
 let _partyScheduledStartKey = null;
@@ -268,10 +272,15 @@ async function requestPersistentStorage() {
   }
 }
 
-function applyPlaybackModes() {
+export function applyPlaybackModes() {
   if (state.audio) {
-    state.audio.loop = state.repeatMode === 'one';
+    // Repeat-one is handled manually via _repeatOnePending (one re-play,
+    // then auto-advance + turn off). Never set audio.loop=true — that
+    // loops infinitely with no way to advance after one repeat.
+    state.audio.loop = false;
   }
+  // Arm the one-shot repeat when repeat-one is active and a track is playing.
+  _repeatOnePending = state.repeatMode === 'one' && !!state.currentTrack;
 }
 
 // Register MediaSession action handlers exactly once. Re-registering on every
@@ -400,6 +409,19 @@ function syncTransportControlButtons() {
       state.repeatMode === 'one' ? `<i data-lucide="repeat-1"></i>` : `<i data-lucide="repeat"></i>`;
   }
 
+  lucide.createIcons();
+}
+
+// Update both footer and fullscreen repeat buttons after a mode change.
+// Called when repeat-one auto-disables after its one-shot re-play.
+function _updateRepeatButton() {
+  const footerBtn = document.getElementById('btn-repeat');
+  if (footerBtn) {
+    footerBtn.classList.toggle('active-control', state.repeatMode !== 'off');
+    footerBtn.innerHTML =
+      state.repeatMode === 'one' ? `<i data-lucide="repeat-1"></i>` : `<i data-lucide="repeat"></i>`;
+  }
+  ui.updateFullscreenPlayButton();
   lucide.createIcons();
 }
 
@@ -708,11 +730,10 @@ export function playTrack(track, options = {}) {
     // the resource selection algorithm and on backgrounded tabs can drop the
     // bound MediaSession.
     //
-    // Re-apply loop mode before src assignment: audio.loop is a property of
-    // the element, not the resource. If the user had repeat-one on for the
-    // previous track and then skipped manually, loop would still be true and
-    // the NEW track would loop forever. Conversely, if they enabled
-    // repeat-one after starting a track, the loop flag was never set.
+    // Apply playback modes before src assignment. This sets audio.loop
+    // to false (we never use native loop — repeat-one is a one-shot
+    // handled in 'ended'/'play') and arms _repeatOnePending if repeat-
+    // one is active.
     applyPlaybackModes();
     state.audio.src = `/api/stream/${track.db_id}`;
     if (options.autoplay === false) {
@@ -1034,6 +1055,19 @@ let _prefetchController = null;
 function resolveNextTrackForPrefetch() {
   if (_partyController?.isActive?.()) return null;
 
+  // Repeat-one: the first end replays the current track. After that
+  // one-shot, repeat turns off and the next track plays. Prefetch the
+  // next track during the first play so the post-repeat advance is
+  // gapless. During the re-play (_repeatOnePending false), the current
+  // track is already cached — no prefetch needed.
+  if (state.repeatMode === 'one') {
+    return _repeatOnePending ? _resolveNextTrackAfterCurrent() : null;
+  }
+
+  return _resolveNextTrackAfterCurrent();
+}
+
+function _resolveNextTrackAfterCurrent() {
   // 1. User Queue (peek, don't consume)
   if (state.userQueue.length > 0) {
     return state.userQueue[0];
@@ -1227,6 +1261,9 @@ export function setupPlayer() {
     ui.updatePlayButton();
     state.audio._endHandled = false;
     state.audio._fadeOutStarted = false;
+    // Arm one-shot repeat-one for this track instance. This covers both
+    // the initial play and the re-play after the first end.
+    _repeatOnePending = state.repeatMode === 'one' && !!state.currentTrack;
     acquirePlaybackLock();
     startPlaybackSessionPersistence();
     persistPlaybackSession();
@@ -1262,16 +1299,26 @@ export function setupPlayer() {
     // 'ended' event calls playNext() a SECOND time and skips a track.
     if (state.audio._endHandled) return;
 
+    // Stale 'ended' guard: after playNext() swaps src to the new track,
+    // the browser may still fire 'ended' for the OLD resource. At that
+    // point currentTime is ~0 (new track just started), not near
+    // duration. Detect and ignore these stale events to prevent
+    // double-advancing / skipping tracks ("repeat-all does nothing").
+    const _dur = Number(state.audio.duration) || 0;
+    const _cur = Number(state.audio.currentTime) || 0;
+    if (_dur > 0 && _cur < _dur - 1.0) return;
+
     if (_partyController?.isActive?.()) {
       finalizeListenSession('ended');
       _partyController.handleEnded?.();
       return;
     }
-    // Repeat-one: audio.loop=true SHOULD prevent 'ended' from firing, but
-    // iOS Safari (and Android Chrome after background suspension) ignore
-    // loop=true reliably. Without this short-circuit the track advances
-    // — user-reported as "repeat-one doesn't work in fullscreen".
-    if (state.repeatMode === 'one' && state.currentTrack) {
+    // Repeat-one: one-shot re-play. First end restarts the current track;
+    // second end turns repeat off and advances to the next song.
+    if (state.repeatMode === 'one' && _repeatOnePending && state.currentTrack) {
+      _repeatOnePending = false; // consume the one-shot
+      state.setRepeatMode('off');
+      _updateRepeatButton();
       state.audio.currentTime = 0;
       state.audio.play().catch(() => {});
       finalizeListenSession('repeat-one');
@@ -1310,12 +1357,15 @@ export function setupPlayer() {
     // Prefetch the next track's stream + cover ~15s before the current
     // track ends. This warms the browser HTTP cache so the <audio>
     // element's Range request resolves instantly on transition,
-    // eliminating the gap of silence between tracks. Skipped in
-    // repeat-one (same track) and party mode (host controls the clock).
+    // eliminating the gap of silence between tracks. Skipped in party
+    // mode (host controls the clock). During repeat-one's first play
+    // (_repeatOnePending true), prefetch the next track so the advance
+    // after the one-shot replay is gapless. During the re-play itself,
+    // the current track is already cached — no prefetch needed.
     // Early in playback (duration not known yet) this is a no-op.
     try {
       if (
-        state.repeatMode !== 'one' &&
+        !(state.repeatMode === 'one' && !_repeatOnePending) &&
         state.audio.duration > 0 &&
         state.audio.duration - state.audio.currentTime <= 15 &&
         state.audio.currentTime > 0
@@ -1331,11 +1381,13 @@ export function setupPlayer() {
     // user-configured fade duration drives both how early we start
     // and the ramp. Idempotent because once fadeOut() schedules the
     // ramp, scheduling it again with the same duration is harmless.
+    // Skip during repeat-one's re-play (current track restarts, no
+    // transition to crossfade into).
     try {
       const xfDur = audioEngine.getCrossfadeSeconds();
       if (
         xfDur > 0 &&
-        state.repeatMode !== 'one' &&
+        !(state.repeatMode === 'one' && !_repeatOnePending) &&
         state.audio.duration &&
         !state.audio._fadeOutStarted &&
         state.audio.currentTime >= state.audio.duration - xfDur - 0.1 &&
@@ -1349,11 +1401,7 @@ export function setupPlayer() {
     }
 
     if (state.audio.duration && state.audio.currentTime >= state.audio.duration - 0.5) {
-      // Repeat-one: audio.loop (or the 'ended' short-circuit on browsers
-      // that ignore loop) restarts this track. With loop=true 'ended'
-      // never fires, so this fallback was the FIRST thing to run at the
-      // end of the track — and it advanced to the next song, which is
-      // why the repeat button "didn't work" everywhere loop is honored.
+      // Repeat-one: one-shot re-play handled in 'ended'. Don't advance here.
       if (state.repeatMode === 'one') return;
       if (!state.audio._endHandled) {
         state.audio._endHandled = true;
@@ -1464,8 +1512,23 @@ export function setupPlayer() {
       if (reallyEnded && !state.audio._endHandled) {
         console.log('[BG-PLAY] Track ended while backgrounded, advancing...');
         state.audio._endHandled = true;
-        if (_partyController?.isActive?.()) _partyController.handleEnded?.();
-        else playNext();
+        if (_partyController?.isActive?.()) {
+          _partyController.handleEnded?.();
+        } else if (state.repeatMode === 'one' && _repeatOnePending && state.currentTrack) {
+          // One-shot repeat-one: replay the current track once, then
+          // turn repeat off. Mirrors the 'ended' handler logic for the
+          // backgrounded case (iOS/Android resume path).
+          _repeatOnePending = false;
+          state.setRepeatMode('off');
+          _updateRepeatButton();
+          state.audio.currentTime = 0;
+          state.audio._endHandled = false;
+          state.audio.play().catch(() => {});
+          finalizeListenSession('repeat-one');
+          beginListenSession(state.currentTrack);
+        } else {
+          playNext();
+        }
       } else if (state.audio.ended && !reallyEnded) {
         // iOS bogus 'ended' state — log so we can spot the symptom in
         // user reports without taking action.

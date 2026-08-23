@@ -81,7 +81,13 @@ export function toggleRepeat() {
   const next = state.repeatMode === 'off' ? 'all' : state.repeatMode === 'all' ? 'one' : 'off';
   state.setRepeatMode(next);
 
-  if (state.audio) state.audio.loop = next === 'one';
+  // Never use audio.loop — it loops infinitely. Repeat-one is a one-shot
+  // handled in player.js's 'ended'/'play' events via _repeatOnePending.
+  if (state.audio) state.audio.loop = false;
+
+  // Arm/disarm the one-shot repeat. applyPlaybackModes() sets
+  // _repeatOnePending = (repeatMode === 'one' && currentTrack).
+  player.applyPlaybackModes();
 
   const footerBtn = document.getElementById('btn-repeat');
   _renderRepeatButton(footerBtn, next);
