@@ -70,13 +70,22 @@ export function homeTabsBar(activeTab) {
 
 // === TOAST NOTIFICATIONS ===
 //
-// Matches the minimalist player-control language: transparent glass surface,
-// subtle border, small radius, muted accent color, soft blur. No heavy
-// colored fills or oversized pill shapes.
+// Spotify-aligned: flat charcoal surface, no blur, green accent for
+// success/error color-coding via left border. Supports an optional
+// action button (e.g. "Undo") rendered inline to the right of the
+// message — matches Spotify's "Added to X" pattern.
 
 let _toastTimer = null;
 
-export function showToast(msg, type = 'info') {
+/**
+ * Show a toast notification.
+ * @param {string} msg - Message text.
+ * @param {'info'|'success'|'error'} type - Controls accent color.
+ * @param {{label:string, callback:Function}|null} action - Optional
+ *   inline action button (e.g. {label:'Undo', callback:fn}). When
+ *   provided, the toast stays for 5s (vs 3s) and dismisses on click.
+ */
+export function showToast(msg, type = 'info', action = null) {
   document.querySelectorAll('.toast-msg').forEach((t) => t.remove());
   if (_toastTimer) {
     clearTimeout(_toastTimer);
@@ -84,14 +93,34 @@ export function showToast(msg, type = 'info') {
   }
   const toast = document.createElement('div');
   toast.className = `toast-msg toast-${type}`;
-  toast.innerText = msg;
+  if (action) toast.classList.add('toast-msg--action');
+
+  const text = document.createElement('span');
+  text.className = 'toast-msg-text';
+  text.innerText = msg;
+  toast.appendChild(text);
+
+  if (action) {
+    const btn = document.createElement('button');
+    btn.className = 'toast-msg-action';
+    btn.innerText = action.label;
+    btn.onclick = () => {
+      _dismissToast(toast);
+      try { action.callback(); } catch (e) { console.error('[toast] action error:', e); }
+    };
+    toast.appendChild(btn);
+  }
+
   document.body.appendChild(toast);
-  // Trigger the CSS transition on next frame.
   requestAnimationFrame(() => toast.classList.add('toast-msg--show'));
-  _toastTimer = setTimeout(() => {
-    toast.classList.remove('toast-msg--show');
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
+  _toastTimer = setTimeout(() => _dismissToast(toast), action ? 5000 : 3000);
+}
+
+function _dismissToast(toast) {
+  if (!toast || !toast.parentNode) return;
+  if (_toastTimer) { clearTimeout(_toastTimer); _toastTimer = null; }
+  toast.classList.remove('toast-msg--show');
+  setTimeout(() => toast.remove(), 300);
 }
 
 // === MODAL UTILITIES ===

@@ -230,6 +230,9 @@ window.showTrackDeleteRequestModal = views.showTrackDeleteRequestModal;
 window.submitTrackDeleteRequest = views.submitTrackDeleteRequest;
 window.showTrackActionsSheet = views.showTrackActionsSheet;
 window.closeTrackActionsSheet = views.closeTrackActionsSheet;
+window.openTrackMenu = views.openTrackMenu;
+window.showContextMenu = views.showContextMenu;
+window.closeContextMenu = views.closeContextMenu;
 window.renderArtist = views.renderArtist;
 window.startSmartRadio = views.startSmartRadio;
 window.setCrossfadePending = views.setCrossfadePending;
@@ -317,6 +320,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initKeyboardShortcuts();
   initOfflineAwareness();
   views.initSpaHistory();
+  views.initContextMenu();
 
   // YouTube IFrame API is loaded lazily on first preview to avoid an
   // unconditional cross-origin script on app boot. See player.playPreview.

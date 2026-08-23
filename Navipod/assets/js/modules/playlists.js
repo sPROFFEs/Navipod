@@ -672,13 +672,37 @@ export async function addToPlaylist(playlistId, trackId) {
       });
       state.setUserPlaylists(next);
       ui.closeModal();
-      ui.showToast('Added to playlist!', 'success');
+      // Spotify-style "Added to {playlist}" toast with Undo.
+      const pl = state.userPlaylists.find((p) => p.id === playlistId);
+      const plName = pl ? pl.name : 'playlist';
+      ui.showToast(`Added to ${plName}`, 'success', {
+        label: 'Undo',
+        callback: () => _undoAddToPlaylist(playlistId, trackId)
+      });
     } else {
       const err = await res.json();
       ui.showToast(err.error || 'Failed', 'error');
     }
   } catch (e) {
     ui.showToast('Failed', 'error');
+  }
+}
+
+/** Undo callback for the add-to-playlist action toast. Re-removes the
+ * track and shows a confirming toast so the user knows it was undone. */
+async function _undoAddToPlaylist(playlistId, trackId) {
+  try {
+    const res = await fetch(`${state.API}/playlists/${playlistId}/remove/${trackId}`, { method: 'DELETE' });
+    if (res.ok) {
+      const next = state.userPlaylists.map((p) => {
+        if (p.id !== playlistId) return p;
+        return { ...p, track_count: Math.max(0, (Number(p.track_count) || 1) - 1) };
+      });
+      state.setUserPlaylists(next);
+      ui.showToast('Removed from playlist');
+    }
+  } catch (e) {
+    ui.showToast('Could not undo', 'error');
   }
 }
 

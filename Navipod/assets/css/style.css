@@ -1578,9 +1578,42 @@ body {
     transform: scale(1.1);
 }
 
-/* Desktop: the three-dots button is hidden — individual buttons are used */
+/* Desktop: three-dots opens the right-click context menu (positioned
+ * below the button). Individual inline buttons are hidden in favor of
+ * the context menu — matches Spotify desktop where rows show only a
+ * like heart + three-dots. */
 .action-btn-more {
-    display: none !important;
+    display: flex !important;
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    padding: 0;
+    border-radius: 50%;
+    background: transparent;
+    border: none;
+    color: var(--text-sub, #b3b3b3);
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.track-row:hover .action-btn-more,
+.action-btn-more:focus-visible {
+    opacity: 1;
+}
+
+.action-btn-more:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-main, #fff);
+}
+
+.action-btn-more i,
+.action-btn-more svg {
+    width: 18px;
+    height: 18px;
 }
 
 /* --- TRACK ACTIONS BOTTOM SHEET (mobile) --- */
@@ -1716,41 +1749,46 @@ body {
 }
 
 /* --- COMPONENTS: MODAL & TOAST --- */
+/* Legacy .toast class — aliased to the new Spotify toast tokens.
+ * Active toasts use .toast-msg (see ui_components.css). This rule
+ * covers any stale references and keeps them visually consistent. */
 .toast {
     position: fixed;
-    bottom: 120px;
+    bottom: calc(var(--player-height, 90px) + 16px);
     left: 50%;
     transform: translateX(-50%);
     background: var(--surface-2);
     backdrop-filter: none;
     border: 0;
+    border-left: 4px solid var(--text-sub);
     color: var(--text-main);
-    padding: 12px 24px;
-    border-radius: var(--radius-pill);
+    padding: 14px 20px;
+    border-radius: var(--radius-sm);
     box-shadow: var(--shadow-lg);
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 20px;
     opacity: 0;
     pointer-events: none;
     transition: 0.3s;
-    z-index: 2000;
-    font-weight: 600;
+    z-index: 9999;
+    font-weight: 500;
+    font-size: 0.88rem;
+    max-width: 480px;
+    width: max-content;
 }
 
 .toast.show {
     opacity: 1;
-    transform: translate(-50%, -10px);
+    transform: translate(-50%, -8px);
 }
 
 .toast.success {
-    border-color: rgba(74, 222, 128, 0.4);
-    color: #4ade80;
+    border-left-color: var(--primary);
 }
 
 .toast.error {
-    border-color: rgba(239, 68, 68, 0.4);
-    color: #ef4444;
+    border-left-color: var(--danger);
 }
 
 .sidebar-overlay {

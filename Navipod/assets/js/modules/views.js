@@ -1058,9 +1058,9 @@ export function createTrackRow(item, idx, playlistId = null) {
                 <i data-lucide="${srcMeta.icon}" style="color: ${srcMeta.color};"></i>
             </span>
 
-            <!-- Mobile three-dots: shown only on ≤768 px via CSS -->
+            <!-- Three-dots: context menu on desktop, bottom sheet on mobile -->
             <button class="action-btn action-btn-more"
-                    onclick="showTrackActionsSheet('${data}', ${playlistId || 'null'})"
+                    onclick="openTrackMenu('${data}', ${playlistId || 'null'}, this)"
                     title="More options">
                 <i data-lucide="more-vertical"></i>
             </button>
@@ -1113,7 +1113,7 @@ export function createPlaylistTrackRow(item, idx, playlistId = null) {
             ${playlistId ? `<button class="action-btn-inline danger" onclick="event.stopPropagation(); showRemoveFromPlaylistModal(${playlistId}, ${item.id}, '${_safeTitle}')" title="Remove from playlist"><i data-lucide="trash-2"></i></button>` : ''}
             <span class="track-duration">${duration}</span>
             <button class="action-btn action-btn-more"
-                    onclick="event.stopPropagation(); showTrackActionsSheet('${data}', ${playlistId || 'null'})"
+                    onclick="event.stopPropagation(); openTrackMenu('${data}', ${playlistId || 'null'}, this)"
                     title="More options">
                 <i data-lucide="more-vertical"></i>
             </button>
@@ -1225,6 +1225,138 @@ export function showTrackActionsSheet(encodedData, playlistId) {
   // Trigger enter animation on next paint
   requestAnimationFrame(() => requestAnimationFrame(() => sheet.classList.add('open')));
   if (window.lucide) lucide.createIcons();
+}
+
+// === DESKTOP RIGHT-CLICK CONTEXT MENU ===
+//
+// Spotify desktop exposes track management (add to playlist, add to
+// queue, like, go to artist, etc.) via a right-click context menu
+// instead of inline icon buttons cluttering every row. This mirrors
+// that: right-clicking any .track-row opens a floating dropdown at
+// the cursor with the same action set as the mobile bottom sheet.
+
+export function closeContextMenu() {
+  const menu = document.getElementById('track-context-menu');
+  if (!menu) return;
+  menu.classList.remove('open');
+  setTimeout(() => menu.remove(), 150);
+  document.removeEventListener('click', _ctxMenuOutsideClick, true);
+  document.removeEventListener('contextmenu', _ctxMenuSupressNav, true);
+  window.removeEventListener('resize', closeContextMenu);
+  window.removeEventListener('scroll', closeContextMenu, true);
+}
+
+function _ctxMenuOutsideClick(e) {
+  const menu = document.getElementById('track-context-menu');
+  if (menu && !menu.contains(e.target)) closeContextMenu();
+}
+function _ctxMenuSupressNav(e) { e.preventDefault(); }
+
+export function showContextMenu(encodedData, playlistId, x, y) {
+  closeContextMenu();
+
+  const item = JSON.parse(decodeURIComponent(atob(encodedData)));
+  const isLiked = state.userFavorites.has(item.db_id || item.id);
+  const canLike = item.is_local && item.db_id;
+  const canAddToPlaylist = item.is_local && item.db_id;
+  const safeTitle = ui.escHtml(item.title || 'Unknown').replace(/'/g, "\\'");
+  const safeArtist = ui.escHtml(item.artist || 'Unknown').replace(/'/g, "\\'");
+
+  const actions = [];
+
+  if (!item.is_local) {
+    actions.push(`<div class="ctx-item" onclick="playPreview('${encodedData}'); closeContextMenu()">
+      <i data-lucide="eye"></i><span>Preview</span></div>`);
+  }
+  if (canLike) {
+    actions.push(`<div class="ctx-item ${isLiked ? 'liked' : ''}" onclick="toggleFavorite(${item.db_id}, null); closeContextMenu()">
+      <i data-lucide="heart"></i><span>${isLiked ? 'Remove from Liked' : 'Save to Liked'}</span></div>`);
+  }
+  if (!item.is_local) {
+    actions.push(`<div class="ctx-item" onclick="triggerDownload('${encodedData}'); closeContextMenu()">
+      <i data-lucide="download"></i><span>Download to Library</span></div>`);
+  }
+  if (item.is_local) {
+    actions.push(`<div class="ctx-item" onclick="addToQueue('${encodedData}'); closeContextMenu()">
+      <i data-lucide="list-plus"></i><span>Add to Queue</span></div>`);
+  }
+  if (canAddToPlaylist) {
+    actions.push(`<div class="ctx-item" onclick="showAddToPlaylistModal(${item.db_id}); closeContextMenu()">
+      <i data-lucide="plus"></i><span>Add to Playlist</span></div>`);
+  }
+  // Smart radio + artist nav — available for any track
+  actions.push(`<div class="ctx-item" onclick="startSmartRadio('${safeArtist}', '${safeTitle}'); closeContextMenu()">
+    <i data-lucide="radio"></i><span>Start Radio</span></div>`);
+  actions.push(`<div class="ctx-item" onclick="loadView('artist', '${safeArtist}'); closeContextMenu()">
+    <i data-lucide="user"></i><span>Go to Artist</span></div>`);
+
+  if (item.is_local) {
+    actions.push(`<div class="ctx-item warning" onclick="showTrackDeleteRequestModal(${item.db_id || item.id}, '${safeTitle}', '${safeArtist}'); closeContextMenu()">
+      <i data-lucide="flag"></i><span>Request Deletion</span></div>`);
+  }
+  if (playlistId) {
+    actions.push(`<div class="ctx-sep"></div>`);
+    actions.push(`<div class="ctx-item danger" onclick="showRemoveFromPlaylistModal(${playlistId}, ${item.id}, '${safeTitle}'); closeContextMenu()">
+      <i data-lucide="trash-2"></i><span>Remove from Playlist</span></div>`);
+  }
+
+  const menu = document.createElement('div');
+  menu.id = 'track-context-menu';
+  menu.className = 'track-context-menu';
+  menu.innerHTML = `<div class="ctx-list">${actions.join('')}</div>`;
+  document.body.appendChild(menu);
+
+  // Position: clamp to viewport so the menu never overflows the edge.
+  requestAnimationFrame(() => {
+    const rect = menu.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let left = x;
+    let top = y;
+    if (left + rect.width > vw - 8) left = Math.max(8, vw - rect.width - 8);
+    if (top + rect.height > vh - 8) top = Math.max(8, vh - rect.height - 8);
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+    menu.classList.add('open');
+  });
+
+  if (window.lucide) lucide.createIcons();
+
+  // Close on outside click, scroll, or resize.
+  document.addEventListener('click', _ctxMenuOutsideClick, true);
+  document.addEventListener('contextmenu', _ctxMenuSupressNav, true);
+  window.addEventListener('resize', closeContextMenu);
+  window.addEventListener('scroll', closeContextMenu, true);
+}
+
+/** Attach right-click handler to track rows. Called once on app init. */
+export function initContextMenu() {
+  document.addEventListener('contextmenu', (e) => {
+    const row = e.target.closest('.track-row');
+    if (!row) return;
+    e.preventDefault();
+    // Extract the encoded track data from the three-dots button's
+    // onclick (openTrackMenu or showTrackActionsSheet).
+    const moreBtn = row.querySelector('.action-btn-more');
+    if (moreBtn) {
+      const oc = moreBtn.getAttribute('onclick') || '';
+      const m = oc.match(/(?:openTrackMenu|showTrackActionsSheet)\('([^']+)',\s*(null|[\d]+)\)/);
+      if (m) showContextMenu(m[1], m[2] === 'null' ? null : Number(m[2]), e.clientX, e.clientY);
+    }
+  });
+}
+
+/** Dispatcher: opens the context menu on desktop (≥769px) or the
+ * bottom sheet on mobile. Called by the three-dots button onclick. */
+export function openTrackMenu(encodedData, playlistId, anchorEl) {
+  if (window.innerWidth <= 768) {
+    showTrackActionsSheet(encodedData, playlistId);
+  } else if (anchorEl) {
+    const r = anchorEl.getBoundingClientRect();
+    showContextMenu(encodedData, playlistId, r.left, r.bottom + 4);
+  } else {
+    showContextMenu(encodedData, playlistId, window.innerWidth / 2, window.innerHeight / 2);
+  }
 }
 
 // === CARD CLICK HANDLER ===
