@@ -1794,3 +1794,47 @@
         font-size: 0.78rem;
     }
 }
+
+/* ── Toast notifications ──────────────────────────────────────────
+ * Matches the minimalist player-control language: transparent glass
+ * surface, subtle border, small radius, muted accent color, soft
+ * blur. No heavy colored fills or oversized pill shapes. */
+
+.toast-msg {
+    position: fixed;
+    bottom: calc(var(--player-height, 90px) + 16px);
+    left: 50%;
+    transform: translateX(-50%) translateY(8px);
+    background: var(--surface-1, #1b1f23);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border-subtle, #2f3640);
+    color: var(--text-main, #eef2f6);
+    padding: 10px 18px;
+    border-radius: var(--radius-md, 10px);
+    font-weight: 500;
+    font-size: 0.85rem;
+    max-width: 340px;
+    width: max-content;
+    text-align: center;
+    word-break: break-word;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    z-index: 9999;
+    box-shadow: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.24));
+}
+
+.toast-msg.toast-msg--show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+.toast-msg.toast-success {
+    border-color: rgba(20, 154, 81, 0.35);
+}
+
+.toast-msg.toast-error {
+    border-color: rgba(201, 79, 79, 0.35);
+    color: #e57373;
+}

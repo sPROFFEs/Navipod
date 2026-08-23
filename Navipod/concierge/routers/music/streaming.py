@@ -2,6 +2,7 @@
 Audio streaming and cover art endpoints.
 """
 
+import asyncio
 import io
 import logging
 import mimetypes
@@ -29,6 +30,12 @@ logger = logging.getLogger(__name__)
 MEDIA_ROOTS = ("/saas-data/pool", "/saas-data/users")
 CACHE_ROOTS = ("/saas-data/cache", "/saas-data/cover_cache")
 STREAM_CHUNK_SIZE = 256 * 1024
+# Stream responses are cookie-authenticated, so the cache directive must be
+# "private" (browser cache only, never a shared proxy cache). A long max-age
+# lets the browser reuse the cached byte ranges for instant seeking and
+# re-plays of the same track without re-downloading. The ETag/filepath is
+# implicit in the URL (track_id never changes content), so this is safe.
+STREAM_CACHE_CONTROL = "private, max-age=86400"
 
 
 def _resolve_allowed_media_path(raw_path: str | None) -> Path | None:
@@ -175,6 +182,19 @@ def _extract_embedded_cover(audio) -> bytes | None:
     return None
 
 
+def _resize_cover(cover_data: bytes) -> bytes | None:
+    """Resize + transcode cover art to a 400px JPEG. Runs in a thread."""
+    try:
+        img = Image.open(io.BytesIO(cover_data))
+        img.thumbnail((400, 400))
+        img = img.convert("RGB")
+        img_bytes = io.BytesIO()
+        img.save(img_bytes, "JPEG", quality=80)
+        return img_bytes.getvalue()
+    except Exception:
+        return None
+
+
 @router.get("/api/cover/{track_id:int}")
 async def get_cover(track_id: int, request: Request, db: Session = Depends(get_db)):
     """Extract cover art from the audio file's embedded picture, with disk caching.
@@ -192,7 +212,7 @@ async def get_cover(track_id: int, request: Request, db: Session = Depends(get_d
     cached = _resolve_allowed_cache_path(cached)
     if cached:
         if track:
-            return FileResponse(str(cached))
+            return FileResponse(str(cached), headers={"Cache-Control": "private, max-age=604800"})
         # Stale cache for a deleted track — clean it up so the next request
         # for this id (potentially a different track that reused the rowid)
         # extracts fresh artwork instead of returning the previous cover.
@@ -202,19 +222,19 @@ async def get_cover(track_id: int, request: Request, db: Session = Depends(get_d
     if not track or not media_path:
         return RedirectResponse("/static/img/default_cover.png")
 
+    # mutagen.File() + PIL decode are CPU-bound and can take 50-200ms on a
+    # large FLAC/MP3. Running them inline blocks the event loop — every
+    # other request (including audio streams) stalls behind the first cover
+    # extraction. Offload to a thread so playback is never blocked by cover
+    # art lookups on first play.
     try:
-        audio = mutagen.File(str(media_path))
-        cover_data = _extract_embedded_cover(audio)
+        cover_data = await asyncio.to_thread(_extract_embedded_cover, mutagen.File(str(media_path)))
 
         if cover_data:
-            img = Image.open(io.BytesIO(cover_data))
-            img.thumbnail((400, 400))
-            img = img.convert("RGB")
-
-            img_bytes = io.BytesIO()
-            img.save(img_bytes, "JPEG", quality=80)
-            cache_path = cover_cache.cache_cover(track_id, img_bytes.getvalue())
-            return FileResponse(str(cache_path))
+            img_bytes = await asyncio.to_thread(_resize_cover, cover_data)
+            if img_bytes:
+                cache_path = cover_cache.cache_cover(track_id, img_bytes)
+                return FileResponse(str(cache_path), headers={"Cache-Control": "private, max-age=604800"})
 
     except Exception as e:
         logger.warning("Error extracting cover for %s: %s", track_id, e)
@@ -247,7 +267,11 @@ async def stream_track_authorized(track_id: int, request: Request, db: Session):
         return StreamingResponse(
             _iter_file_chunks(file_path),
             media_type=content_type,
-            headers={"Content-Length": str(file_size), "Accept-Ranges": "bytes"},
+            headers={
+                "Content-Length": str(file_size),
+                "Accept-Ranges": "bytes",
+                "Cache-Control": STREAM_CACHE_CONTROL,
+            },
         )
 
     # Range Requested
@@ -267,6 +291,7 @@ async def stream_track_authorized(track_id: int, request: Request, db: Session):
                 "Content-Range": f"bytes {start}-{end}/{file_size}",
                 "Accept-Ranges": "bytes",
                 "Content-Length": str(chunk_size),
+                "Cache-Control": STREAM_CACHE_CONTROL,
             },
         )
     except Exception as e:
@@ -277,7 +302,11 @@ async def stream_track_authorized(track_id: int, request: Request, db: Session):
             with file_path.open("rb") as f:
                 yield from f
 
-        return StreamingResponse(iterfile(), media_type=content_type)
+        return StreamingResponse(
+            iterfile(),
+            media_type=content_type,
+            headers={"Cache-Control": STREAM_CACHE_CONTROL},
+        )
 
 
 @router.get("/api/track/{track_id}/gain")

@@ -86,3 +86,4 @@ Navipod/**/*.pyd
 docs/*
 !docs/DEPLOYMENT.md
 spotifyapi.txt
+.gstack/

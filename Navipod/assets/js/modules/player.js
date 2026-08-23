@@ -707,6 +707,13 @@ export function playTrack(track, options = {}) {
     // Assigning src triggers the load automatically — explicit load() resets
     // the resource selection algorithm and on backgrounded tabs can drop the
     // bound MediaSession.
+    //
+    // Re-apply loop mode before src assignment: audio.loop is a property of
+    // the element, not the resource. If the user had repeat-one on for the
+    // previous track and then skipped manually, loop would still be true and
+    // the NEW track would loop forever. Conversely, if they enabled
+    // repeat-one after starting a track, the loop flag was never set.
+    applyPlaybackModes();
     state.audio.src = `/api/stream/${track.db_id}`;
     if (options.autoplay === false) {
       _trackTransitionInFlight = false;
@@ -718,6 +725,9 @@ export function playTrack(track, options = {}) {
       .play()
       .then(() => {
         _trackTransitionInFlight = false;
+        // Reset prefetch state for the new now-playing track so the
+        // timeupdate handler can prefetch the track after THIS one.
+        _prefetchedTrackId = null;
         state.setIsPlaying(true);
         ui.updatePlayButton();
         acquirePlaybackLock();
@@ -999,6 +1009,110 @@ function hasUpcomingTrack() {
   return false;
 }
 
+// === NEXT-TRACK PREFETCH ===
+//
+// The single biggest source of "gap between tracks" is that the browser
+// doesn't know about the next track until playNext() assigns src. By the
+// time the TCP handshake + Range request + first byte arrives, the user
+// has heard 200-800ms of silence.
+//
+// This resolves the next track the same way playNext() does — WITHOUT
+// consuming it from the queue — and issues a low-priority fetch() on
+// its stream URL. The browser populates its HTTP cache and (if the track
+// is small enough) buffers the whole file. When playTrack() fires
+// moments later, the <audio> element's Range request hits the browser
+// cache instantly and playback starts with zero perceptible gap.
+//
+// We also prefetch the cover art URL for the next track so the player
+// UI swaps instantly on transition.
+//
+// Party mode is excluded: the host controls the clock and the next track
+// may not be deterministic from the listener's side.
+let _prefetchedTrackId = null;
+let _prefetchController = null;
+
+function resolveNextTrackForPrefetch() {
+  if (_partyController?.isActive?.()) return null;
+
+  // 1. User Queue (peek, don't consume)
+  if (state.userQueue.length > 0) {
+    return state.userQueue[0];
+  }
+
+  // 2. Regular Context Queue
+  if (state.contextQueue.length === 0) return null;
+
+  let nextIdx = state.contextIndex + 1;
+  if (nextIdx >= state.contextQueue.length) {
+    if (state.repeatMode === 'all') {
+      nextIdx = 0;
+    } else {
+      return null; // shuffle-without-context and end-of-queue handled by playNext
+    }
+  }
+  return state.contextQueue[nextIdx] || null;
+}
+
+function _prefetchTrack(track) {
+  if (!track?.db_id) return;
+
+  // Don't re-prefetch the same track or the currently-playing one.
+  if (_prefetchedTrackId === track.db_id) return;
+  if (state.currentTrack?.db_id === track.db_id) return;
+
+  // Abort any in-flight prefetch from a previous track.
+  if (_prefetchController) {
+    try {
+      _prefetchController.abort();
+    } catch (_) {}
+  }
+
+  _prefetchedTrackId = track.db_id;
+  try {
+    _prefetchController = new AbortController();
+  } catch (_) {
+    _prefetchController = null;
+  }
+
+  const streamUrl = `/api/stream/${track.db_id}`;
+  const signal = _prefetchController?.signal;
+
+  // Issue the fetch with a Range header matching what the <audio> element
+  // will request (first chunk). This warms the browser HTTP cache so the
+  // subsequent audio.src assignment resolves from cache. We read the body
+  // to completion to ensure the entry is committed to the cache.
+  fetch(streamUrl, {
+    method: 'GET',
+    headers: { Range: 'bytes=0-262143' },
+    signal,
+    cache: 'force-cache'
+  })
+    .then((res) => {
+      // Drain the body so the full response is cached.
+      if (res.body && res.body.getReader) {
+        const reader = res.body.getReader();
+        const drain = () =>
+          reader
+            .read()
+            .then(({ done }) => {
+              if (!done) drain();
+            })
+            .catch(() => {});
+        drain();
+      }
+    })
+    .catch(() => {
+      // Aborted or network error — non-critical, playTrack will fetch normally.
+    });
+
+  // Prefetch the cover image too so the UI swaps instantly.
+  if (track.thumbnail) {
+    const coverUrl = track.thumbnail.startsWith('http') ? track.thumbnail : track.thumbnail;
+    const img = new Image();
+    img.src = coverUrl;
+  }
+}
+
 function clearFinishedPlaybackState() {
   finalizeListenSession('finished');
   state.setCurrentTrack(null);
@@ -1142,6 +1256,12 @@ export function setupPlayer() {
   });
 
   state.audio.addEventListener('ended', () => {
+    // The timeupdate handler already calls playNext() ~0.5s before the
+    // track actually ends. When the browser then fires 'ended', the
+    // new track may already be loading. Without this guard, the stale
+    // 'ended' event calls playNext() a SECOND time and skips a track.
+    if (state.audio._endHandled) return;
+
     if (_partyController?.isActive?.()) {
       finalizeListenSession('ended');
       _partyController.handleEnded?.();
@@ -1186,6 +1306,26 @@ export function setupPlayer() {
   state.audio.addEventListener('timeupdate', () => {
     updateListenProgress();
     ui.updateUIProgress(state.audio.currentTime, state.audio.duration);
+
+    // Prefetch the next track's stream + cover ~15s before the current
+    // track ends. This warms the browser HTTP cache so the <audio>
+    // element's Range request resolves instantly on transition,
+    // eliminating the gap of silence between tracks. Skipped in
+    // repeat-one (same track) and party mode (host controls the clock).
+    // Early in playback (duration not known yet) this is a no-op.
+    try {
+      if (
+        state.repeatMode !== 'one' &&
+        state.audio.duration > 0 &&
+        state.audio.duration - state.audio.currentTime <= 15 &&
+        state.audio.currentTime > 0
+      ) {
+        const next = resolveNextTrackForPrefetch();
+        if (next) _prefetchTrack(next);
+      }
+    } catch (_) {
+      // Prefetch is best-effort; never let it break playback.
+    }
 
     // Trigger crossfade-out a few seconds before the track ends. The
     // user-configured fade duration drives both how early we start

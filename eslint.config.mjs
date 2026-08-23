@@ -19,6 +19,7 @@ export default [
         Event: "readonly",
         FormData: "readonly",
         Headers: "readonly",
+        Image: "readonly",
         MediaMetadata: "readonly",
         URL: "readonly",
         URLSearchParams: "readonly",

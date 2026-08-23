@@ -69,15 +69,29 @@ export function homeTabsBar(activeTab) {
 }
 
 // === TOAST NOTIFICATIONS ===
+//
+// Matches the minimalist player-control language: transparent glass surface,
+// subtle border, small radius, muted accent color, soft blur. No heavy
+// colored fills or oversized pill shapes.
+
+let _toastTimer = null;
 
 export function showToast(msg, type = 'info') {
   document.querySelectorAll('.toast-msg').forEach((t) => t.remove());
+  if (_toastTimer) {
+    clearTimeout(_toastTimer);
+    _toastTimer = null;
+  }
   const toast = document.createElement('div');
-  toast.className = 'toast-msg';
-  toast.style.cssText = `position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:${type === 'error' ? '#e74c3c' : type === 'success' ? '#1DB954' : '#333'};color:white;padding:12px 24px;border-radius:30px;font-weight:600;font-size:0.9rem;z-index:9999;box-shadow:0 5px 20px rgba(0,0,0,0.4);border: 1px solid rgba(255,255,255,0.1);max-width:350px;width:max-content;text-align:center;word-break:break-word;`;
+  toast.className = `toast-msg toast-${type}`;
   toast.innerText = msg;
   document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 4000);
+  // Trigger the CSS transition on next frame.
+  requestAnimationFrame(() => toast.classList.add('toast-msg--show'));
+  _toastTimer = setTimeout(() => {
+    toast.classList.remove('toast-msg--show');
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
 }
 
 // === MODAL UTILITIES ===
