@@ -1243,6 +1243,28 @@ export function setupPlayer() {
   applyPlaybackModes();
   ensureMediaSessionHandlers();
 
+  // ── Mini-player tap-to-expand ──────────────────────────────────
+  // Desktop: clicking the track title/artist (not just the cover
+  // image) opens the fullscreen player. Mobile: tapping anywhere on
+  // the banner except interactive controls opens it.
+  const footer = document.querySelector('.player-footer');
+  if (footer) {
+    footer.addEventListener('click', (e) => {
+      // Let buttons and their icons do their own thing.
+      if (e.target.closest('button, .icon-btn-sm, #play-pause-btn, .control-btn, .progress-bar-bg, .progress-knob, .volume-bar-bg, .volume-knob')) return;
+      // Let the cover img keep its own onclick (it already calls
+      // toggleFullscreenPlayer and adds cursor:pointer).
+      if (e.target.id === 'player-cover') return;
+      ui.toggleFullscreenPlayer();
+    });
+    // Mark track-info as clickable so it shows the pointer cursor
+    // on desktop (separate from the banner-wide mobile tap target).
+    const trackInfo = footer.querySelector('.track-info');
+    if (trackInfo) {
+      trackInfo.style.cursor = 'pointer';
+    }
+  }
+
   if (playBtn) {
     playBtn.addEventListener('click', () => {
       if (!state.currentTrack) return;
