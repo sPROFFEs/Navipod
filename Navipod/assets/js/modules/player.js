@@ -626,14 +626,20 @@ export function updatePlayerUI(track) {
 function _setArtistLabel(el, artist) {
   if (!el) return;
   const name = artist || 'Unknown';
-  if (!artist || artist === 'Unknown') {
-    el.textContent = name;
-    el.style.cursor = 'default';
+  el.textContent = name;
+  el.classList.remove('artist-link-inline');
+
+  // On mobile the whole mini-player banner is a tap target to open
+  // the fullscreen player (delegated handler in setupPlayer). Skip
+  // the artist-navigation onclick so it doesn't steal the tap and
+  // stopPropagation before the footer handler runs.
+  const isMobile = window.matchMedia('(max-width: 768px)').matches;
+  if (!artist || artist === 'Unknown' || isMobile) {
+    el.style.cursor = isMobile ? 'pointer' : 'default';
     el.onclick = null;
     return;
   }
-  // Use textContent for safety; handler navigates to the artist view.
-  el.textContent = name;
+  // Desktop: clicking the artist name navigates to the artist view.
   el.style.cursor = 'pointer';
   el.classList.add('artist-link-inline');
   el.onclick = (e) => {
