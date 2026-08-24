@@ -1252,17 +1252,11 @@ export function setupPlayer() {
     footer.addEventListener('click', (e) => {
       // Let buttons and their icons do their own thing.
       if (e.target.closest('button, .icon-btn-sm, #play-pause-btn, .control-btn, .progress-bar-bg, .progress-knob, .volume-bar-bg, .volume-knob')) return;
-      // Let the cover img keep its own onclick (it already calls
-      // toggleFullscreenPlayer and adds cursor:pointer).
-      if (e.target.id === 'player-cover') return;
       ui.toggleFullscreenPlayer();
     });
-    // Mark track-info as clickable so it shows the pointer cursor
-    // on desktop (separate from the banner-wide mobile tap target).
+    // Show pointer cursor on the clickable areas (desktop).
     const trackInfo = footer.querySelector('.track-info');
-    if (trackInfo) {
-      trackInfo.style.cursor = 'pointer';
-    }
+    if (trackInfo) trackInfo.style.cursor = 'pointer';
   }
 
   if (playBtn) {
