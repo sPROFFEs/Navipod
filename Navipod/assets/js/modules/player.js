@@ -629,17 +629,19 @@ function _setArtistLabel(el, artist) {
   el.textContent = name;
   el.classList.remove('artist-link-inline');
 
-  // On mobile the whole mini-player banner is a tap target to open
-  // the fullscreen player (delegated handler in setupPlayer). Skip
-  // the artist-navigation onclick so it doesn't steal the tap and
-  // stopPropagation before the footer handler runs.
-  const isMobile = window.matchMedia('(max-width: 768px)').matches;
-  if (!artist || artist === 'Unknown' || isMobile) {
-    el.style.cursor = isMobile ? 'pointer' : 'default';
+  // The mini-player (#player-artist) on mobile is part of the
+  // banner-wide tap target to open the fullscreen player. Skip the
+  // artist-navigation onclick there so it doesn't steal the tap and
+  // stopPropagation before the footer handler runs. The fullscreen
+  // player's artist (#fs-artist) is always clickable.
+  const isMiniPlayerMobile = el.id === 'player-artist' &&
+    window.matchMedia('(max-width: 768px)').matches;
+  if (!artist || artist === 'Unknown' || isMiniPlayerMobile) {
+    el.style.cursor = isMiniPlayerMobile ? 'pointer' : 'default';
     el.onclick = null;
     return;
   }
-  // Desktop: clicking the artist name navigates to the artist view.
+  // Clicking the artist name navigates to the artist view.
   el.style.cursor = 'pointer';
   el.classList.add('artist-link-inline');
   el.onclick = (e) => {
