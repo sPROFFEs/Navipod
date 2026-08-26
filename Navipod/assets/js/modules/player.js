@@ -36,6 +36,74 @@ const PLAYBACK_PROGRESS_SAVE_INTERVAL_MS = 10000;
 const PLAYBACK_REMOTE_SAVE_DEBOUNCE_MS = 1500;
 const TRACKING_SCHEMA_VERSION = 1;
 
+const VOLUME_LOCAL_KEY = 'navipod.playback.volume';
+const VOLUME_REMOTE_SAVE_DEBOUNCE_MS = 800;
+const DEFAULT_VOLUME = 0.7;
+let _volumeSaveTimer = null;
+
+function applyVolume(value) {
+  const v = Math.max(0, Math.min(1, Number(value) || 0));
+  state.audio.volume = v;
+  const pct = `${v * 100}%`;
+  const volumeFill = document.querySelector('.volume-bar-fill');
+  const volumeKnob = document.querySelector('.volume-knob');
+  if (volumeFill) volumeFill.style.width = pct;
+  if (volumeKnob) {
+    volumeKnob.style.left = pct;
+    volumeKnob.style.transform = 'translate(-50%, -50%)';
+  }
+}
+
+function saveVolumeLocal(value) {
+  try {
+    localStorage.setItem(VOLUME_LOCAL_KEY, String(value));
+  } catch (e) {
+    /* localStorage may be unavailable (private mode) — non-fatal */
+  }
+}
+
+function loadVolumeLocal() {
+  try {
+    const raw = localStorage.getItem(VOLUME_LOCAL_KEY);
+    if (raw != null) return Number(raw);
+  } catch (e) {
+    /* non-fatal */
+  }
+  return null;
+}
+
+function scheduleVolumeRemoteSave(value) {
+  if (_volumeSaveTimer) clearTimeout(_volumeSaveTimer);
+  _volumeSaveTimer = window.setTimeout(() => {
+    _volumeSaveTimer = null;
+    api.savePlaybackVolume(value);
+  }, VOLUME_REMOTE_SAVE_DEBOUNCE_MS);
+}
+
+// Called whenever the user changes volume (drag, mute, keyboard nudge).
+export function persistVolume(value) {
+  saveVolumeLocal(value);
+  scheduleVolumeRemoteSave(value);
+}
+
+// Restore saved volume from localStorage (instant) then reconcile with the
+// server value (authoritative, cross-device). Called once during init.
+export async function restoreVolume() {
+  const local = loadVolumeLocal();
+  if (local != null && Number.isFinite(local)) {
+    applyVolume(local);
+  }
+  try {
+    const data = await api.fetchPlaybackVolume();
+    if (data && data.volume != null && Number.isFinite(data.volume)) {
+      applyVolume(data.volume);
+      saveVolumeLocal(data.volume);
+    }
+  } catch (e) {
+    console.warn('[PLAYBACK] Volume restore failed:', e);
+  }
+}
+
 function makeClientEventId(prefix = 'evt') {
   const randomPart =
     typeof crypto !== 'undefined' && crypto?.randomUUID
@@ -1258,6 +1326,10 @@ export function setupPlayer() {
   applyPlaybackModes();
   ensureMediaSessionHandlers();
 
+  // Wire ui.js volume changes (mute toggle, keyboard nudge) into the
+  // persistence path without creating a circular import.
+  window.navipodOnVolumeChange = persistVolume;
+
   // ── Mini-player tap-to-expand ──────────────────────────────────
   // Desktop: clicking the track title/artist (not just the cover
   // image) opens the fullscreen player. Mobile: tapping anywhere on
@@ -1557,7 +1629,9 @@ export function setupPlayer() {
 
   if (volumeBar) {
     ui.setupDraggable(volumeBar, (pct) => {
-      state.audio.volume = Math.max(0, Math.min(1, pct));
+      const v = Math.max(0, Math.min(1, pct));
+      state.audio.volume = v;
+      persistVolume(v);
     });
   }
 
@@ -1577,14 +1651,16 @@ export function setupPlayer() {
     });
   }
 
-  state.audio.volume = 0.7;
+  state.audio.volume = DEFAULT_VOLUME;
 
-  // Initialize volume bar visual position
+  // Initialize volume bar visual position to the default; restoreVolume()
+  // (called from main.js after setupPlayer) will override this with the
+  // user's persisted value once the server/localStorage lookup resolves.
   const volumeFill = document.querySelector('.volume-bar-fill');
   const volumeKnob = document.querySelector('.volume-knob');
-  if (volumeFill) volumeFill.style.width = '70%';
+  if (volumeFill) volumeFill.style.width = `${DEFAULT_VOLUME * 100}%`;
   if (volumeKnob) {
-    volumeKnob.style.left = '70%';
+    volumeKnob.style.left = `${DEFAULT_VOLUME * 100}%`;
     volumeKnob.style.transform = 'translate(-50%, -50%)';
   }
 

@@ -34,6 +34,7 @@ class PlaybackQueueStateRequest(BaseModel):
     current_time: float | int = 0
     duration: float | int = 0
     was_playing: bool = False
+    volume: float | None = None
     persist_enabled: bool = True
 
 
@@ -103,6 +104,7 @@ def _serialize_state(row: database.PlaybackQueueState | None):
             "current_time": 0,
             "duration": 0,
             "was_playing": False,
+            "volume": None,
             "persist_enabled": True,
             "updated_at": None,
         }
@@ -120,6 +122,7 @@ def _serialize_state(row: database.PlaybackQueueState | None):
         "current_time": row.current_time or 0,
         "duration": row.duration or 0,
         "was_playing": bool(row.was_playing),
+        "volume": row.volume if row.volume is not None else None,
         "persist_enabled": True,
         "updated_at": _isoformat(row.updated_at),
     }
@@ -164,6 +167,10 @@ async def save_playback_queue_state(
     row.current_time = max(0, int(float(payload.current_time or 0)))
     row.duration = max(0, int(float(payload.duration or 0)))
     row.was_playing = bool(payload.was_playing)
+    if payload.volume is not None:
+        row.volume = max(0.0, min(1.0, float(payload.volume)))
+    else:
+        row.volume = None
 
     if not existing:
         db.add(row)
@@ -183,3 +190,33 @@ async def clear_playback_queue_state(request: Request, db: Session = Depends(get
         db.delete(row)
         db.commit()
     return JSONResponse({"status": "cleared"})
+
+
+class VolumeRequest(BaseModel):
+    volume: float
+
+
+@router.get("/api/playback/volume")
+async def get_playback_volume(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    row = db.query(database.PlaybackQueueState).filter(database.PlaybackQueueState.user_id == user.id).first()
+    return JSONResponse({"volume": row.volume if row and row.volume is not None else None})
+
+
+@router.put("/api/playback/volume")
+async def save_playback_volume(payload: VolumeRequest, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_safe(db, request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    existing = db.query(database.PlaybackQueueState).filter(database.PlaybackQueueState.user_id == user.id).first()
+    row = existing or database.PlaybackQueueState(user_id=user.id)
+    row.volume = max(0.0, min(1.0, float(payload.volume)))
+    if not existing:
+        db.add(row)
+    db.commit()
+    db.refresh(row)
+    return JSONResponse({"status": "saved", "volume": row.volume})

@@ -108,7 +108,7 @@ def test_new_party_room_schema_accepts_loading_status():
         ops_core._migration_024_party_rooms(conn)
         conn.execute(text("INSERT INTO party_rooms(owner_id, name, playback_status) VALUES (1, 'New room', 'loading')"))
 
-    assert ops_core.MIGRATIONS[-1][0] == "026_track_loudness_columns"
+    assert ops_core.MIGRATIONS[-1][0] == "027_playback_queue_volume"
     engine.dispose()
 
 

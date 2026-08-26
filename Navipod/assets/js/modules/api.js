@@ -384,6 +384,30 @@ export async function clearPlaybackQueueState() {
   }
 }
 
+export async function fetchPlaybackVolume() {
+  try {
+    const res = await fetch(`${state.API}/playback/volume`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.warn('[PLAYBACK] Volume fetch failed:', e);
+  }
+  return null;
+}
+
+export async function savePlaybackVolume(volume) {
+  try {
+    const res = await fetch(`${state.API}/playback/volume`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ volume })
+    });
+    return res.ok;
+  } catch (e) {
+    console.warn('[PLAYBACK] Volume save failed:', e);
+    return false;
+  }
+}
+
 export async function fetchMixes() {
   try {
     const res = await fetch(`${state.API}/mixes`);

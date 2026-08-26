@@ -339,6 +339,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   player.setupPlayer();
   player.setPartyController(party.controller);
 
+  // Restore persisted volume (server is authoritative, cross-device).
+  // Runs async — applies the localStorage value instantly then reconciles
+  // with the server so the bar never flashes the wrong level for long.
+  player.restoreVolume();
+
   // Lyrics panel — injected after player so the audio element exists
   // and the panel's timeupdate listener can bind cleanly.
   lyrics.initLyrics();

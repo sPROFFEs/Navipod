@@ -133,6 +133,12 @@ export function closeModal() {
 
 let savedVolume = 0.7;
 
+function _persistVolumeIfWired() {
+  if (typeof window.navipodOnVolumeChange === 'function') {
+    window.navipodOnVolumeChange(state.audio.volume);
+  }
+}
+
 export function toggleMute() {
   const btn = document.getElementById('btn-volume-icon');
   if (state.audio.volume > 0) {
@@ -152,6 +158,7 @@ export function toggleMute() {
   if (volumeKnob) volumeKnob.style.left = `${pct}%`;
 
   lucide.createIcons();
+  _persistVolumeIfWired();
 }
 
 // === VOLUME NUDGE (keyboard shortcuts) ===
@@ -164,6 +171,7 @@ export function nudgeVolume(delta) {
   const pct = state.audio.volume * 100;
   if (volumeFill) volumeFill.style.width = `${pct}%`;
   if (volumeKnob) volumeKnob.style.left = `${pct}%`;
+  _persistVolumeIfWired();
 }
 
 // === SLEEP TIMER ===

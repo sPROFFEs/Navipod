@@ -395,6 +395,7 @@ class PlaybackQueueState(Base):
     current_time = Column(Integer, default=0)
     duration = Column(Integer, default=0)
     was_playing = Column(Boolean, default=False)
+    volume = Column(Float, nullable=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     user = relationship("User", back_populates="playback_queue_state")

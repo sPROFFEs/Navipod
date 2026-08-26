@@ -1353,6 +1353,12 @@ def _migration_026_track_loudness_columns(conn):
         conn.execute(text("ALTER TABLE tracks ADD COLUMN loudness_measured_at DATETIME"))
 
 
+def _migration_027_playback_queue_volume(conn):
+    cols = {r[1] for r in conn.execute(text("PRAGMA table_info(playback_queue_states)")).fetchall()}
+    if "volume" not in cols:
+        conn.execute(text("ALTER TABLE playback_queue_states ADD COLUMN volume REAL"))
+
+
 def _migration_020_federation_outbound_peers(conn):
     conn.execute(
         text("""
@@ -1400,6 +1406,7 @@ MIGRATIONS = [
     ("024_party_rooms", _migration_024_party_rooms),
     ("025_party_room_loading_status", _migration_025_party_room_loading_status),
     ("026_track_loudness_columns", _migration_026_track_loudness_columns),
+    ("027_playback_queue_volume", _migration_027_playback_queue_volume),
 ]
 
 
