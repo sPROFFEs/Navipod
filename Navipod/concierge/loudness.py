@@ -140,17 +140,27 @@ def _parse_loudnorm_json(stderr: str) -> LoudnessResult | None:
     return LoudnessResult(gain_db=round(gain_db, 2), peak=round(peak_linear, 4))
 
 
-def backfill_loudness(batch_size: int = 100) -> int:
+def backfill_loudness(batch_size: int = 100, progress_callback=None) -> int:
     """Measure loudness for all tracks that haven't been measured yet.
 
     Called from main.py startup (in a thread) and from the admin
     loudness-scan job. Returns the number of tracks measured.
+
+    If ``progress_callback`` is given it is called as
+    ``callback(measured, total, current_title)`` after each track so the
+    caller can update a job-progress bar. The callback is best-effort —
+    it must not raise.
     """
     import database
 
     db = database.SessionLocal()
     updated = 0
     try:
+        total = (
+            db.query(database.Track)
+            .filter(database.Track.loudness_measured_at.is_(None))
+            .count()
+        )
         while True:
             tracks = (
                 db.query(database.Track)
@@ -173,6 +183,11 @@ def backfill_loudness(batch_size: int = 100) -> int:
                 # infinitely — the admin can force a re-scan.
                 track.loudness_measured_at = datetime.now(timezone.utc)
                 updated += 1
+                if progress_callback:
+                    try:
+                        progress_callback(updated, total, track.title or track.filepath)
+                    except Exception:
+                        pass  # progress reporting must never break the scan
             db.commit()
         return updated
     except Exception:

@@ -1105,7 +1105,22 @@ def _run_loudness_scan_job(job_id: int):
             {database.Track.loudness_measured_at: None}, synchronize_session=False
         )
         db.commit()
-        measured = loudness.backfill_loudness()
+        import operations_service as _ops
+
+        def _progress(measured, total, current_title):
+            if not total:
+                return
+            pct = int(10 + (measured / total) * 90)
+            _ops.update_admin_job_progress(
+                job_id,
+                status="running",
+                message=f"Measuring {measured}/{total} tracks",
+                phase="scan",
+                progress=min(pct, 99),
+                extra={"measured": measured, "total": total},
+            )
+
+        measured = loudness.backfill_loudness(progress_callback=_progress)
         operations_service.update_admin_job_progress(
             job_id,
             status="completed",
@@ -1127,6 +1142,7 @@ def _run_loudness_scan_job(job_id: int):
             finished=True,
         )
     finally:
+        operations_service.release_lock(db)
         db.close()
 
 
@@ -1312,8 +1328,26 @@ async def admin_loudness_scan_job(
     background_tasks: BackgroundTasks, admin: database.User = Depends(get_current_admin)
 ):
     """Re-measure loudness for all tracks (admin-triggered full re-scan)."""
-    job_id = operations_service.create_admin_job(
-        "loudness_scan", admin.username, "Loudness scan queued", {"phase": "queued", "progress": 0}
-    )
-    background_tasks.add_task(_run_loudness_scan_job, job_id)
-    return JSONResponse({"job_id": job_id})
+    db = database.SessionLocal()
+    try:
+        existing = db.query(database.AdminJob).filter(
+            database.AdminJob.job_type == "loudness_scan",
+            database.AdminJob.status.in_(["queued", "running"]),
+        ).first()
+        if existing:
+            return JSONResponse(
+                {"error": "A loudness scan is already running (job #%d)." % existing.id},
+                status_code=409,
+            )
+        job_id = operations_service.create_admin_job(
+            "loudness_scan", admin.username, "Loudness scan queued", {"phase": "queued", "progress": 0}
+        )
+        if not operations_service.acquire_lock(db, job_id):
+            operations_service.update_admin_job_progress(
+                job_id, status="failed", message="Another admin operation is running", finished=True
+            )
+            return JSONResponse({"error": "Another admin operation is already running"}, status_code=409)
+        background_tasks.add_task(_run_loudness_scan_job, job_id)
+        return JSONResponse({"job_id": job_id})
+    finally:
+        db.close()

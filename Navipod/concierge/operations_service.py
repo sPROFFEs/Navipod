@@ -7,10 +7,12 @@ from backup_service import (
 )
 from build_info_service import get_build_info, get_timezone_options
 from job_service import (
+    acquire_lock,
     create_admin_job,
     get_active_operation_lock,
     get_admin_job,
     get_recent_admin_jobs,
+    release_lock,
     update_admin_job_progress,
 )
 from ops_core import apply_schema_migrations, get_schema_status
@@ -26,6 +28,7 @@ from update_service import (
 )
 
 __all__ = [
+    "acquire_lock",
     "apply_schema_migrations",
     "autobackup_scheduler",
     "create_admin_job",
@@ -45,6 +48,7 @@ __all__ = [
     "queue_check_update",
     "queue_restore",
     "queue_silent_update_refresh_if_stale",
+    "release_lock",
     "run_apply_update_job_from_updater",
     "update_admin_job_progress",
     "update_autobackup_settings",

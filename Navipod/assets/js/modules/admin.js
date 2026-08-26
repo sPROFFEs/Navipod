@@ -320,7 +320,9 @@ function renderLibraryAudit(container, data) {
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
-async function pollLibraryJob(jobId, container, onComplete, attempt = 0) {
+async function pollLibraryJob(jobId, container, onComplete, attempt = 0, opts = {}) {
+  const maxAttempts = opts.maxAttempts || 180;
+  const renderStatus = opts.renderStatus || renderDuplicateScanStatus;
   const res = await fetch(`/admin/api/system/jobs/${jobId}`);
   const job = await res.json();
   if (!res.ok) throw new Error(job.error || `HTTP ${res.status}`);
@@ -329,14 +331,14 @@ async function pollLibraryJob(jobId, container, onComplete, attempt = 0) {
     return;
   }
   if (job.status === 'failed') throw new Error(job.message || 'Library job failed');
-  renderDuplicateScanStatus(container, job);
-  if (attempt >= 180) throw new Error('Library operation timed out');
+  renderStatus(container, job);
+  if (attempt >= maxAttempts) throw new Error('Library operation timed out');
   window.setTimeout(
     () =>
-      pollLibraryJob(jobId, container, onComplete, attempt + 1).catch((error) => {
+      pollLibraryJob(jobId, container, onComplete, attempt + 1, opts).catch((error) => {
         container.innerHTML = `<div class="admin-feedback error">Error: ${ui.escHtml(error.message)}</div>`;
       }),
-    1500
+    opts.intervalMs || 1500
   );
 }
 
@@ -364,10 +366,52 @@ export function adminRescanMetadata() {
   });
 }
 
+function renderLoudnessScanStatus(container, job) {
+  const details = job?.details || {};
+  const progress = Number.isFinite(Number(details.progress)) ? Number(details.progress) : 0;
+  const message = job?.message || 'Scanning loudness...';
+  const measured = Number(details.measured) || 0;
+  const total = Number(details.total) || 0;
+  const elapsedMeta = job?.started_at
+    ? `${Math.round((Date.now() - new Date(job.started_at).getTime()) / 1000)}s elapsed`
+    : '';
+  const trackMeta = total ? `${measured}/${total} tracks` : '';
+  const phase = details.phase ? `${ui.escHtml(details.phase)}` : '';
+
+  container.innerHTML = `
+        <div class="admin-feedback">
+            <strong>${ui.escHtml(message)}</strong>
+            <div class="admin-progress-mini" aria-label="Loudness scan progress">
+                <span style="width:${Math.max(0, Math.min(100, progress))}%"></span>
+            </div>
+            <div class="admin-feedback-meta">${progress}% ${phase} ${trackMeta ? '· ' + trackMeta : ''} ${elapsedMeta ? '· ' + elapsedMeta : ''}</div>
+        </div>`;
+}
+
 export function adminLoudnessScan() {
-  return startLibraryJob('/admin/api/library/loudness-scan/jobs', (container, result) => {
-    container.innerHTML = `<div class="admin-feedback success"><strong>Loudness scan complete.</strong><div class="admin-feedback-meta">Measured ${result.measured || 0} tracks.</div></div>`;
-  });
+  const container = document.getElementById('library-results');
+  if (!container) return;
+  container.innerHTML = '<div class="admin-feedback">Starting loudness scan...</div>';
+  fetch('/admin/api/library/loudness-scan/jobs', { method: 'POST' })
+    .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+    .then(({ ok, data }) => {
+      if (!ok || !data.job_id) throw new Error(data.error || `HTTP ${data.error || 'failed'}`);
+      // Loudness scans can run for hours — poll indefinitely (max 8h).
+      pollLibraryJob(
+        data.job_id,
+        container,
+        (result) => {
+          container.innerHTML = `<div class="admin-feedback success"><strong>Loudness scan complete.</strong><div class="admin-feedback-meta">Measured ${result.measured || 0} tracks.</div></div>`;
+        },
+        0,
+        { maxAttempts: 19200, intervalMs: 3000, renderStatus: renderLoudnessScanStatus }
+      ).catch((error) => {
+        container.innerHTML = `<div class="admin-feedback error">Error: ${ui.escHtml(error.message)}</div>`;
+      });
+    })
+    .catch((error) => {
+      container.innerHTML = `<div class="admin-feedback error">Error: ${ui.escHtml(error.message)}</div>`;
+    });
 }
 
 export function showDeleteTrackModal(id, title) {

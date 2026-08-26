@@ -4,6 +4,7 @@ import logging
 import os
 import socket
 from contextvars import ContextVar
+from datetime import datetime, timezone
 from urllib.parse import urljoin, urlparse
 
 import auth
@@ -158,6 +159,23 @@ async def startup_event():
         stuck = mark_stuck_download_jobs_failed(db)
         if stuck:
             logger.info("Marked %s stuck download job(s) as failed on startup", stuck)
+
+        # Mark admin jobs that were mid-flight when the previous process
+        # exited as failed — BackgroundTasks workers died with the process.
+        stuck_admin = db.query(database.AdminJob).filter(
+            database.AdminJob.status.in_(["queued", "running"])
+        ).all()
+        for job in stuck_admin:
+            job.status = "failed"
+            job.message = (job.message or "") + " (interrupted by restart)"
+            job.finished_at = datetime.now(timezone.utc)
+        if stuck_admin:
+            db.commit()
+            logger.info("Marked %s stuck admin job(s) as failed on startup", len(stuck_admin))
+        # Clear any stale operation locks left over from the previous process.
+        db.query(database.AdminOperationLock).delete(synchronize_session=False)
+        db.commit()
+
         paused_rooms = party_service.pause_all_rooms(db)
         if paused_rooms:
             logger.info("Paused %s party room(s) after restart", paused_rooms)

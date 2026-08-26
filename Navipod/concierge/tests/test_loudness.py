@@ -115,3 +115,116 @@ class TestLoudnessResult:
         r = loudness.LoudnessResult(gain_db=-3.5, peak=0.89)
         assert r.gain_db == -3.5
         assert r.peak == 0.89
+
+
+class TestBackfillProgress:
+    def test_progress_callback_called_per_track(self):
+        """backfill_loudness must call the callback once per measured track."""
+        calls = []
+
+        class FakeTrack:
+            def __init__(self, title, filepath):
+                self.title = title
+                self.filepath = filepath
+                self.gain_db = None
+                self.peak = None
+                self.loudness_measured_at = None
+
+        all_calls = [0]
+
+        class FakeQuery:
+            def filter(self, *_):
+                return self
+
+            def count(self):
+                return 1
+
+            def limit(self, *_):
+                return self
+
+            def all(self):
+                all_calls[0] += 1
+                if all_calls[0] == 1:
+                    return [FakeTrack("Song A", "/fake/a.mp3")]
+                return []
+
+        class FakeDb:
+            def query(self, _):
+                return FakeQuery()
+
+            def commit(self):
+                pass
+
+            def rollback(self):
+                pass
+
+            def close(self):
+                pass
+
+        def fake_measure(path):
+            return loudness.LoudnessResult(gain_db=2.0, peak=0.9)
+
+        with patch("loudness.measure_loudness", side_effect=fake_measure):
+            with patch("database.SessionLocal", return_value=FakeDb()):
+                result = loudness.backfill_loudness(progress_callback=lambda m, t, title: calls.append((m, t, title)))
+
+        assert result == 1
+        assert len(calls) == 1
+        assert calls[0] == (1, 1, "Song A")
+
+    def test_progress_callback_failure_does_not_break_scan(self):
+        """If the callback raises, the scan must continue, not crash."""
+        calls = []
+
+        class FakeTrack:
+            def __init__(self, title, filepath):
+                self.title = title
+                self.filepath = filepath
+                self.gain_db = None
+                self.peak = None
+                self.loudness_measured_at = None
+
+        all_calls = [0]
+
+        class FakeQuery:
+            def filter(self, *_):
+                return self
+
+            def count(self):
+                return 2
+
+            def limit(self, *_):
+                return self
+
+            def all(self):
+                all_calls[0] += 1
+                if all_calls[0] == 1:
+                    return [FakeTrack("Song A", "/fake/a.mp3"), FakeTrack("Song B", "/fake/b.mp3")]
+                return []
+
+        class FakeDb:
+            def query(self, _):
+                return FakeQuery()
+
+            def commit(self):
+                pass
+
+            def rollback(self):
+                pass
+
+            def close(self):
+                pass
+
+        def fake_measure(path):
+            return loudness.LoudnessResult(gain_db=2.0, peak=0.9)
+
+        def bad_callback(m, t, title):
+            calls.append(m)
+            raise RuntimeError("callback crashed")
+
+        with patch("loudness.measure_loudness", side_effect=fake_measure):
+            with patch("database.SessionLocal", return_value=FakeDb()):
+                result = loudness.backfill_loudness(progress_callback=bad_callback)
+
+        assert result == 2  # both tracks measured despite callback raising
+        assert len(calls) == 2
