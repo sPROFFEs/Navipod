@@ -3399,6 +3399,37 @@ body {
     justify-content: flex-end;
     gap: 10px;
 }
+
+/* Search box inside the Add-to-Playlist modal — mirrors the flyout's
+ * .atp-search styling so both surfaces look consistent. */
+.modal-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 12px;
+    padding: 8px 12px;
+    background: var(--surface-3, #333);
+    border-radius: var(--radius-sm, 4px);
+    flex-shrink: 0;
+}
+.modal-search i, .modal-search svg {
+    width: 16px;
+    height: 16px;
+    color: var(--text-sub, #b3b3b3);
+    flex-shrink: 0;
+}
+.modal-search input {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    outline: none;
+    color: var(--text-main, #fff);
+    font-size: 0.88rem;
+    font-family: inherit;
+}
+.modal-search input::placeholder {
+    color: var(--text-sub, #b3b3b3);
+}
 .modal-btn-cancel {
     background: transparent !important;
     border: 1px solid rgba(255, 255, 255, 0.14) !important;

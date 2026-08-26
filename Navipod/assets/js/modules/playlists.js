@@ -538,8 +538,9 @@ function _renderAddToPlaylistModal(trackId, editablePlaylists) {
     // visually and avoid the dup-add backend error entirely.
     const clickAttr = isMember ? '' : `onclick="addToPlaylist(${p.id}, ${trackId})"`;
     const stateClass = isMember ? 'modal-playlist-item--member' : '';
+    const safeName = ui.escHtml(p.name).replace(/"/g, '&quot;');
     return `
-        <div class="modal-playlist-item ${stateClass}" ${clickAttr}>
+        <div class="modal-playlist-item ${stateClass}" ${clickAttr} data-name="${safeName}">
             <div class="modal-playlist-thumb">
                 <img src="${thumb}" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'" alt="">
             </div>
@@ -562,7 +563,11 @@ function _renderAddToPlaylistModal(trackId, editablePlaylists) {
                 <h2><i data-lucide="list-music"></i> Add to Playlist</h2>
                 <button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button>
             </div>
-            <div class="modal-list">${playlistItems}</div>
+            <div class="modal-search">
+                <i data-lucide="search"></i>
+                <input type="text" id="modal-playlist-search" placeholder="Find a playlist" autocomplete="off">
+            </div>
+            <div class="modal-list" id="modal-playlist-list">${playlistItems}</div>
             <div class="modal-actions">
                 <button class="modal-btn-primary" onclick="showCreatePlaylistModal(${trackId})">
                     <i data-lucide="plus"></i> New Playlist
@@ -572,6 +577,37 @@ function _renderAddToPlaylistModal(trackId, editablePlaylists) {
     </div>`;
   document.getElementById('modal-container').innerHTML = html;
   lucide.createIcons();
+  _wireModalPlaylistSearch();
+}
+
+/** Live search filter for the Add-to-Playlist modal. Mirrors the
+ * flyout's _wireAtpSearch but operates on .modal-playlist-item rows
+ * inside #modal-playlist-list. */
+function _wireModalPlaylistSearch() {
+  const input = document.getElementById('modal-playlist-search');
+  if (!input) return;
+  input.focus();
+  input.addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase().trim();
+    const items = document.querySelectorAll('#modal-playlist-list .modal-playlist-item');
+    let visible = 0;
+    items.forEach((el) => {
+      const name = el.dataset.name || '';
+      const match = !q || name.toLowerCase().includes(q);
+      el.style.display = match ? '' : 'none';
+      if (match) visible++;
+    });
+    let empty = document.getElementById('modal-playlist-no-results');
+    if (visible === 0 && !empty) {
+      empty = document.createElement('p');
+      empty.id = 'modal-playlist-no-results';
+      empty.className = 'modal-empty';
+      empty.textContent = 'No playlists found.';
+      document.getElementById('modal-playlist-list')?.appendChild(empty);
+    } else if (visible > 0 && empty) {
+      empty.remove();
+    }
+  });
 }
 
 function _renderAddToPlaylistFlyout(trackId, editablePlaylists, anchorRect) {
@@ -923,7 +959,11 @@ export async function addToPlaylist(playlistId, trackId) {
         return { ...p, track_count: newCount };
       });
       state.setUserPlaylists(next);
+      // Close whichever surface is open: the full modal (mobile) or
+      // the floating flyout (desktop right-click). Both can't be open
+      // at once, so calling both is safe and idempotent.
       ui.closeModal();
+      closeAddToPlaylistFlyout();
       // Spotify-style "Added to {playlist}" toast with Undo.
       const pl = state.userPlaylists.find((p) => p.id === playlistId);
       const plName = pl ? pl.name : 'playlist';
