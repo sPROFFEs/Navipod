@@ -311,17 +311,37 @@ async def stream_track_authorized(track_id: int, request: Request, db: Session):
 
 @router.get("/api/track/{track_id}/gain")
 async def get_track_gain(track_id: int, request: Request, db: Session = Depends(get_db)):
-    """Return ReplayGain track values for client-side loudness
-    normalization. Reads ReplayGain tags via mutagen — present on most
-    well-tagged libraries (foobar2000 / Picard / rsgain). Returns sane
-    defaults (0 dB / 1.0 peak) when the tags are absent so the
-    frontend can apply gain unconditionally."""
+    """Return loudness-normalisation gain for client-side application.
+
+    Resolution order:
+      1. Cached ffmpeg loudnorm measurement (gain_db / peak columns).
+         This is the volume-normaliser feature — measured once per
+         track, applied on every play. Covers tracks that lack
+         ReplayGain tags (most yt-dlp / spotdl downloads).
+      2. ReplayGain tags via mutagen (foobar2000 / Picard / rsgain
+         tagged libraries). Present on most well-curated libraries.
+      3. Sane defaults (0 dB / 1.0 peak) so the frontend can apply
+         gain unconditionally.
+    """
     if not get_current_user_safe(db, request):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
     track = db.query(database.Track).filter(database.Track.id == track_id).first()
-    file_path = _resolve_allowed_media_path(track.filepath if track else None)
-    if not track or not file_path:
+    if not track:
         return JSONResponse({"error": "Not found"}, status_code=404)
+
+    # --- 1. Cached loudnorm measurement (volume normaliser) ---------------
+    if track.loudness_measured_at is not None:
+        return JSONResponse({
+            "gain_db": float(track.gain_db) if track.gain_db is not None else 0.0,
+            "peak": float(track.peak) if track.peak is not None else 1.0,
+            "source": "loudnorm",
+        })
+
+    # --- 2. ReplayGain tags via mutagen -----------------------------------
+    file_path = _resolve_allowed_media_path(track.filepath)
+    if not file_path:
+        # No file on disk — return defaults.
+        return JSONResponse({"gain_db": 0.0, "peak": 1.0})
 
     gain_db = 0.0
     peak = 1.0
@@ -368,7 +388,7 @@ async def get_track_gain(track_id: int, request: Request, db: Session = Depends(
     except Exception as e:
         logger.debug("ReplayGain lookup failed for track %s: %s", track_id, e)
 
-    return JSONResponse({"gain_db": gain_db, "peak": peak})
+    return JSONResponse({"gain_db": gain_db, "peak": peak, "source": "tag"})
 
 
 @router.get("/api/random-track")

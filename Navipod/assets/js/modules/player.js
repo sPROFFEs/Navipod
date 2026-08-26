@@ -16,6 +16,10 @@ let _activeListenSession = null;
 let _sessionPersistInterval = null;
 let _remoteQueueSaveTimer = null;
 let _trackTransitionInFlight = false;
+// Stall recovery: tracks how many times we've reloaded the stream
+// for the current track. Reset to 0 on successful 'playing' event.
+let _stallRecoveryAttempts = 0;
+const MAX_STALL_RETRIES = 2;
 // Repeat-one: when active, the FIRST end-of-track restarts the current song;
 // the SECOND end advances to the next track and turns repeat off. This gives
 // "play this song once more, then continue" instead of infinite loop.
@@ -1119,13 +1123,16 @@ function _prefetchTrack(track) {
   const streamUrl = `/api/stream/${track.db_id}`;
   const signal = _prefetchController?.signal;
 
-  // Issue the fetch with a Range header matching what the <audio> element
-  // will request (first chunk). This warms the browser HTTP cache so the
-  // subsequent audio.src assignment resolves from cache. We read the body
-  // to completion to ensure the entry is committed to the cache.
+  // Warm the browser HTTP cache for the stream URL WITHOUT a Range
+  // header. Previously we sent `Range: bytes=0-262143`, which caused
+  // Chrome to cache a partial 206 response. When the <audio> element
+  // later requested the same URL, some browsers served the partial
+  // cache entry as if it were the complete file — the track played
+  // the first ~256 KB and then cut out. A full GET lets the browser
+  // cache the complete resource, and the audio element can satisfy
+  // Range requests from that cached entry without truncation.
   fetch(streamUrl, {
     method: 'GET',
-    headers: { Range: 'bytes=0-262143' },
     signal,
     cache: 'force-cache'
   })
@@ -1424,7 +1431,13 @@ export function setupPlayer() {
       // Engine errors must never break playback.
     }
 
-    if (state.audio.duration && state.audio.currentTime >= state.audio.duration - 0.5) {
+    // Fallback advance: if the 'ended' event doesn't fire (or fires
+    // late), advance when currentTime is within 0.15s of duration.
+    // Previously this was 0.5s which audibly cut the last note of
+    // tracks with clean endings. 0.15s is below the perceptual
+    // threshold while still catching the rare case where 'ended'
+    // doesn't fire on time.
+    if (state.audio.duration && state.audio.currentTime >= state.audio.duration - 0.15) {
       // Repeat-one: one-shot re-play handled in 'ended'. Don't advance here.
       if (state.repeatMode === 'one') return;
       if (!state.audio._endHandled) {
@@ -1449,8 +1462,79 @@ export function setupPlayer() {
     sendTrackingEvent('seek', _activeListenSession, { played_seconds: currentTime });
   });
 
+  // --- Stall / waiting recovery ---------------------------------------------
+  // When the network blips or the browser's HTTP cache misses a Range
+  // request mid-playback, the <audio> element fires 'waiting' or
+  // 'stalled' and silently stops. Without recovery the user hears
+  // silence and has to manually skip. We detect the stall, wait a
+  // short grace period (in case the browser is just rebuffering), and
+  // if playback hasn't resumed, reload the current src from the
+  // current position to force a fresh request.
+  let _stallRecoveryTimer = null;
+  const STALL_GRACE_MS = 3000;
+
+  function _clearStallRecovery() {
+    if (_stallRecoveryTimer) {
+      clearTimeout(_stallRecoveryTimer);
+      _stallRecoveryTimer = null;
+    }
+  }
+
+  function _armStallRecovery() {
+    _clearStallRecovery();
+    _stallRecoveryTimer = setTimeout(() => {
+      _stallRecoveryTimer = null;
+      // Only recover if we're actually stalled (not playing) and the
+      // user hasn't paused or switched tracks.
+      if (!state.audio.paused && state.currentTrack?.db_id && state.audio.readyState < 4) {
+        const resumeAt = Number(state.audio.currentTime) || 0;
+        console.warn('[PLAYER] Stall recovery: reloading stream after network stall');
+        _stallRecoveryAttempts = (_stallRecoveryAttempts || 0) + 1;
+        // Force a fresh fetch by reloading the src. The browser will
+        // re-request the stream from the server, bypassing any stale
+        // cache entry. We restore the position in loadedmetadata.
+        if (_stallRecoveryAttempts <= MAX_STALL_RETRIES) {
+          const src = state.audio.src;
+          state.audio.src = src;
+          state.audio.load();
+          const onMeta = () => {
+            state.audio.removeEventListener('loadedmetadata', onMeta);
+            try {
+              state.audio.currentTime = resumeAt;
+            } catch (_) {}
+            state.audio.play().catch(() => {});
+          };
+          state.audio.addEventListener('loadedmetadata', onMeta, { once: true });
+        } else {
+          console.warn('[PLAYER] Stall recovery: max retries reached, giving up');
+          ui.showToast('Stream stalled — try skipping to the next track', 'error');
+        }
+      }
+    }, STALL_GRACE_MS);
+  }
+
+  state.audio.addEventListener('waiting', () => {
+    if (_trackTransitionInFlight) return;
+    _armStallRecovery();
+  });
+
+  state.audio.addEventListener('stalled', () => {
+    if (_trackTransitionInFlight) return;
+    _armStallRecovery();
+  });
+
+  state.audio.addEventListener('playing', () => {
+    _clearStallRecovery();
+    _stallRecoveryAttempts = 0;
+  });
+
+  state.audio.addEventListener('canplay', () => {
+    _clearStallRecovery();
+  });
+
   state.audio.addEventListener('error', () => {
     _trackTransitionInFlight = false;
+    _clearStallRecovery();
     finalizeListenSession('error');
     stopPlaybackSessionPersistence();
     persistPlaybackSession();

@@ -54,6 +54,7 @@ def build_library_audit(db: Session, *, roots: tuple[str, ...], result_limit: in
     incomplete_count = sum(
         1 for track in tracks if not track.artist or not track.album or not track.genre or track.year is None
     )
+    loudness_pending = sum(1 for track in tracks if track.loudness_measured_at is None)
     return {
         "track_count": len(tracks),
         "total_bytes": total_bytes,
@@ -63,5 +64,7 @@ def build_library_audit(db: Session, *, roots: tuple[str, ...], result_limit: in
         "missing_metadata_count": incomplete_count,
         "missing_metadata": missing_metadata,
         "metadata_pending_count": sum(1 for track in tracks if track.metadata_scanned_at is None),
+        "loudness_pending_count": loudness_pending,
+        "loudness_measured_count": len(tracks) - loudness_pending,
         "results_truncated": missing_file_count > len(missing_files) or incomplete_count > len(missing_metadata),
     }

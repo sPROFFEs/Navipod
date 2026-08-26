@@ -235,6 +235,14 @@ class DownloadManager:
             self.db.commit()
             self.db.refresh(track)
             manager.invalidate_pool_status_cache()
+
+            # Loudness measurement (best-effort — non-blocking for download)
+            try:
+                import loudness
+                loudness.measure_track_for_import(self.db, track.id)
+            except Exception as e:
+                logger.debug("loudness measurement failed for #%s: %s", track.id, e)
+
             return track
         except Exception:
             self.db.rollback()

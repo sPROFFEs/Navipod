@@ -108,5 +108,21 @@ def test_new_party_room_schema_accepts_loading_status():
         ops_core._migration_024_party_rooms(conn)
         conn.execute(text("INSERT INTO party_rooms(owner_id, name, playback_status) VALUES (1, 'New room', 'loading')"))
 
-    assert ops_core.MIGRATIONS[-1][0] == "025_party_room_loading_status"
+    assert ops_core.MIGRATIONS[-1][0] == "026_track_loudness_columns"
+    engine.dispose()
+
+
+def test_track_loudness_columns_migration():
+    """Migration 026 adds gain_db, peak, loudness_measured_at to tracks."""
+    engine = create_engine("sqlite://")
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE tracks (id INTEGER PRIMARY KEY, title TEXT)"))
+        ops_core._migration_026_track_loudness_columns(conn)
+        cols = {r[1] for r in conn.execute(text("PRAGMA table_info(tracks)")).fetchall()}
+    assert "gain_db" in cols
+    assert "peak" in cols
+    assert "loudness_measured_at" in cols
+    # Idempotent: running twice should not error.
+    with engine.begin() as conn:
+        ops_core._migration_026_track_loudness_columns(conn)
     engine.dispose()

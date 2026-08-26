@@ -170,6 +170,7 @@ async def startup_event():
     asyncio.create_task(operations_service.autobackup_scheduler())
     asyncio.create_task(wrapped_daily_scheduler())
     asyncio.create_task(library_metadata_backfill())
+    asyncio.create_task(loudness_backfill())
     asyncio.create_task(party_service.party_clock_scheduler())
     # Append per-tick RAM stats to /workspace/ram_audit.log (= repo root
     # on the host via the bind mount) so memory growth can be inspected
@@ -206,6 +207,23 @@ async def library_metadata_backfill():
             logger.info("Indexed local metadata for %s existing track(s)", indexed)
     except Exception as exc:
         logger.warning("Library metadata backfill failed: %s", exc)
+
+
+async def loudness_backfill():
+    """Measure loudness for existing tracks that haven't been measured yet.
+
+    Runs in a background thread at startup. Each track is measured once;
+    new tracks are measured on import/download so this only backfills the
+    pre-existing library. Non-blocking — if it fails, playback falls
+    back to ReplayGain tags or 0 dB default.
+    """
+    try:
+        import loudness
+        measured = await asyncio.to_thread(loudness.backfill_loudness)
+        if measured:
+            logger.info("Measured loudness for %s existing track(s)", measured)
+    except Exception as exc:
+        logger.warning("Loudness backfill failed: %s", exc)
 
 
 async def cache_cleanup_scheduler():

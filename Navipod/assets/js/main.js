@@ -297,6 +297,7 @@ if (window.USER_DATA?.is_admin) {
     window.adminFindDuplicates = admin.adminFindDuplicates;
     window.adminAuditLibrary = admin.adminAuditLibrary;
     window.adminRescanMetadata = admin.adminRescanMetadata;
+    window.adminLoudnessScan = admin.adminLoudnessScan;
     window.showDeleteTrackModal = admin.showDeleteTrackModal;
     window.adminDeleteTrack = admin.adminDeleteTrack;
 

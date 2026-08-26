@@ -645,10 +645,11 @@
             <div class="user-settings-panel-body">
                 <label class="playback-pref">
                     <div class="playback-pref-info">
-                        <strong>ReplayGain normalization</strong>
+                        <strong>Volume normalization</strong>
                         <span class="playback-pref-help">
-                            Smooths volume differences between tracks using ReplayGain tags
-                            in your library. Tracks without tags are unaffected.
+                            Smooths volume differences between tracks. Uses measured loudness
+                            (auto-scanned) or ReplayGain tags when available. Tracks without
+                            either are unaffected.
                         </span>
                     </div>
                     <input type="checkbox" id="pref-replaygain" onchange="markPlaybackPrefsDirty()">

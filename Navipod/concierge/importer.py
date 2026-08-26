@@ -281,6 +281,13 @@ def import_one(db, path: Path, *, dry_run: bool, stats: Stats) -> int | None:
             except Exception as e:
                 logger.warning("could not cache embedded cover for #%s: %s", track.id, e)
 
+        # Loudness measurement (best-effort, non-blocking for import)
+        try:
+            import loudness
+            loudness.measure_track_for_import(db, track.id)
+        except Exception as e:
+            logger.debug("loudness measurement failed for #%s: %s", track.id, e)
+
         stats.imported += 1
         stats.new_track_ids.append(track.id)
         logger.info("OK    %s  →  #%s  %s — %s", path.name, track.id, md.artist, md.title)

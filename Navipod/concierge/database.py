@@ -5,7 +5,7 @@ from pathlib import Path
 
 from navipod_config import settings
 from secrets_store import decrypt_secret, encrypt_secret
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, create_engine, event
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, event
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from sqlalchemy.pool import NullPool
 from sqlalchemy.sql import func
@@ -246,6 +246,14 @@ class Track(Base):
     source_provider = Column(String)
     created_at = Column(DateTime, default=func.now())
     metadata_scanned_at = Column(DateTime, nullable=True)
+    # Loudness normalisation: measured once via ffmpeg loudnorm and
+    # cached so playback can apply gain client-side without re-analysis.
+    # gain_db = how many dB to adjust toward -14 LUFS target.
+    # peak = true peak (0..1) for clip protection.
+    # loudness_measured_at = when the measurement was taken (null = not yet).
+    gain_db = Column(Float, nullable=True)
+    peak = Column(Float, nullable=True)
+    loudness_measured_at = Column(DateTime, nullable=True)
 
     playlist_items = relationship("PlaylistItem", back_populates="track", cascade="all, delete-orphan")
 

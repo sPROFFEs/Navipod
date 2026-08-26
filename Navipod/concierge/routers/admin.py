@@ -10,6 +10,7 @@ import admin_statistics_service
 import auth
 import database
 import library_maintenance
+import loudness
 import manager
 import media_metadata
 import operations_service
@@ -1092,6 +1093,43 @@ def _run_metadata_rescan_job(job_id: int):
         db.close()
 
 
+def _run_loudness_scan_job(job_id: int):
+    db = database.SessionLocal()
+    try:
+        operations_service.update_admin_job_progress(
+            job_id, status="running", message="Scanning loudness for unmeasured tracks", phase="scan", progress=10
+        )
+        # Reset all tracks so they get re-measured (admin triggered this
+        # manually, so they want a full re-scan).
+        db.query(database.Track).update(
+            {database.Track.loudness_measured_at: None}, synchronize_session=False
+        )
+        db.commit()
+        measured = loudness.backfill_loudness()
+        operations_service.update_admin_job_progress(
+            job_id,
+            status="completed",
+            message=f"Loudness scan completed for {measured} track(s)",
+            phase="completed",
+            progress=100,
+            extra={"result": {"measured": measured}},
+            finished=True,
+        )
+    except Exception as exc:
+        db.rollback()
+        operations_service.update_admin_job_progress(
+            job_id,
+            status="failed",
+            message=f"Loudness scan failed: {exc}",
+            phase="failed",
+            progress=100,
+            extra={"error": str(exc)},
+            finished=True,
+        )
+    finally:
+        db.close()
+
+
 def _query_tracks_with_fts(db, raw_query: str, limit: int):
     normalized = " ".join(token for token in raw_query.strip().split() if token)
     if not normalized:
@@ -1266,4 +1304,16 @@ async def admin_metadata_rescan_job(
         "metadata_rescan", admin.username, "Metadata rescan queued", {"phase": "queued", "progress": 0}
     )
     background_tasks.add_task(_run_metadata_rescan_job, job_id)
+    return JSONResponse({"job_id": job_id})
+
+
+@router.post("/api/library/loudness-scan/jobs")
+async def admin_loudness_scan_job(
+    background_tasks: BackgroundTasks, admin: database.User = Depends(get_current_admin)
+):
+    """Re-measure loudness for all tracks (admin-triggered full re-scan)."""
+    job_id = operations_service.create_admin_job(
+        "loudness_scan", admin.username, "Loudness scan queued", {"phase": "queued", "progress": 0}
+    )
+    background_tasks.add_task(_run_loudness_scan_job, job_id)
     return JSONResponse({"job_id": job_id})

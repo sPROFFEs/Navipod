@@ -1343,6 +1343,16 @@ def _migration_025_party_room_loading_status(conn):
     conn.execute(text("CREATE INDEX ix_party_queue_track_id ON party_room_queue_items(track_id)"))
 
 
+def _migration_026_track_loudness_columns(conn):
+    track_cols = {r[1] for r in conn.execute(text("PRAGMA table_info(tracks)")).fetchall()}
+    if "gain_db" not in track_cols:
+        conn.execute(text("ALTER TABLE tracks ADD COLUMN gain_db REAL"))
+    if "peak" not in track_cols:
+        conn.execute(text("ALTER TABLE tracks ADD COLUMN peak REAL"))
+    if "loudness_measured_at" not in track_cols:
+        conn.execute(text("ALTER TABLE tracks ADD COLUMN loudness_measured_at DATETIME"))
+
+
 def _migration_020_federation_outbound_peers(conn):
     conn.execute(
         text("""
@@ -1389,6 +1399,7 @@ MIGRATIONS = [
     ("023_user_session_version", _migration_023_user_session_version),
     ("024_party_rooms", _migration_024_party_rooms),
     ("025_party_room_loading_status", _migration_025_party_room_loading_status),
+    ("026_track_loudness_columns", _migration_026_track_loudness_columns),
 ]
 
 

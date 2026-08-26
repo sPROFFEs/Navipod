@@ -295,6 +295,7 @@ function renderLibraryAudit(container, data) {
     <div class="admin-feedback ${data.missing_file_count ? 'error' : 'success'}">
       <strong>${data.track_count} tracks · ${(Number(data.total_bytes || 0) / 1073741824).toFixed(2)} GB indexed</strong>
       <div class="admin-feedback-meta">${data.missing_file_count} missing files · ${data.missing_metadata_count} incomplete metadata · ${data.metadata_pending_count} pending scans</div>
+      <div class="admin-feedback-meta">Loudness: ${data.loudness_measured_count || 0} measured · ${data.loudness_pending_count || 0} pending</div>
       <div class="admin-feedback-meta">Sources: ${sources}</div>
     </div>
     ${
@@ -360,6 +361,12 @@ export function adminAuditLibrary() {
 export function adminRescanMetadata() {
   return startLibraryJob('/admin/api/library/metadata-rescan/jobs', (container, result) => {
     container.innerHTML = `<div class="admin-feedback success"><strong>Metadata rescan complete.</strong><div class="admin-feedback-meta">Queued ${result.queued || 0}; scanned ${result.updated || 0} tracks.</div></div>`;
+  });
+}
+
+export function adminLoudnessScan() {
+  return startLibraryJob('/admin/api/library/loudness-scan/jobs', (container, result) => {
+    container.innerHTML = `<div class="admin-feedback success"><strong>Loudness scan complete.</strong><div class="admin-feedback-meta">Measured ${result.measured || 0} tracks.</div></div>`;
   });
 }
 
