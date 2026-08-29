@@ -1,6 +1,15 @@
 {% extends "base.html" %}
 {% block title %}{{ _("monitor.title") }}{% endblock %}
 {% block content %}
+{% set downloader = downloader | default({
+    'available': false,
+    'mode': 'automatic',
+    'versions': {},
+    'extensions': {},
+    'active_jobs': 0,
+    'failed_jobs': 0,
+    'error': 'Downloader status is temporarily unavailable while Concierge finishes updating.'
+}, true) %}
 <div class="admin-container system-monitor">
     <section class="monitor-header">
         <div>

@@ -573,12 +573,22 @@ def _run_check_update_job(job_id: int, triggered_by: str | None):
             db.close()
 
 
+def _build_compose_update_args(rebuild_required: bool, services: list[str]) -> list[str]:
+    # Application source is bind-mounted, so rebuilding can produce the same
+    # image and Compose may otherwise leave the old Python process running
+    # against newly replaced templates and modules.
+    compose_args = ["up", "-d", "--force-recreate"]
+    if rebuild_required:
+        compose_args.append("--build")
+    return [*compose_args, "--remove-orphans", *services]
+
+
 def _run_compose_update(job_id: int, changed_files: list[str]):
     services, deferred_services = _select_services_for_update(changed_files)
     normalized_changed_files = ops.normalize_changed_files(changed_files)
     rebuild_targets = ops.matched_rebuild_targets(changed_files)
     rebuild_required = ops.should_rebuild_for_changed_files(changed_files)
-    compose_args = ["up", "-d"]
+    compose_args = _build_compose_update_args(rebuild_required, services)
     compose_phase = "build" if rebuild_required else "recreate"
     compose_progress = 80 if rebuild_required else 85
     compose_message = (
@@ -586,9 +596,6 @@ def _run_compose_update(job_id: int, changed_files: list[str]):
         if rebuild_required
         else f"Recreating services without image rebuild: {' '.join(services)}"
     )
-    if rebuild_required:
-        compose_args.append("--build")
-    compose_args.extend(["--remove-orphans", *services])
     update_admin_job_progress(
         job_id,
         message=compose_message,

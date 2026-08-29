@@ -40,6 +40,25 @@ def test_regular_frontend_change_does_not_recreate_worker():
     assert deferred == ["updater"]
 
 
+def test_compose_update_forces_runtime_recreation_for_bind_mounted_source():
+    assert update_service._build_compose_update_args(False, ["concierge"]) == [
+        "up",
+        "-d",
+        "--force-recreate",
+        "--remove-orphans",
+        "concierge",
+    ]
+    assert update_service._build_compose_update_args(True, ["concierge", "downloader"]) == [
+        "up",
+        "-d",
+        "--force-recreate",
+        "--build",
+        "--remove-orphans",
+        "concierge",
+        "downloader",
+    ]
+
+
 def test_unavailable_worker_does_not_fail_legacy_compatible_update_health(monkeypatch):
     class Response:
         status_code = 200

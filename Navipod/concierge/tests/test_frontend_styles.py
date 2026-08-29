@@ -1,6 +1,8 @@
 import re
 from pathlib import Path
 
+from jinja2 import Environment, FileSystemLoader
+
 
 def test_library_facet_buttons_reset_native_background():
     css_path = Path(__file__).resolve().parents[2] / "assets" / "css" / "ui_components.css"
@@ -70,3 +72,38 @@ def test_admin_downloader_runtime_controls_have_explicit_status_styles():
     assert 'value="legacy"' in template
     assert ".monitor-runtime-status.available" in css
     assert ".monitor-runtime-status.unavailable" in css
+
+
+def test_system_monitor_renders_during_old_handler_new_template_update_window():
+    templates_root = Path(__file__).resolve().parents[1] / "templates"
+    environment = Environment(loader=FileSystemLoader(templates_root))
+    environment.globals.update(static_v="test", _=lambda value: value)
+    ram = type("Ram", (), {"percent": 2, "used": 1024**3, "total": 2 * 1024**3})()
+    request = type("Request", (), {"query_params": {"msg": "Update applied successfully"}})()
+
+    rendered = environment.get_template("system_monitor.html").render(
+        request=request,
+        stats={
+            "cpu_usage": 1,
+            "ram": ram,
+            "disk_total": 3,
+            "disk_used": 1,
+            "disk_free": 2,
+            "disk_percent": 33,
+        },
+        pool={"used": 1, "limit": 2, "percent": 50},
+        build={},
+        schema={},
+        backups={"current": None, "previous": None, "autobackup_enabled": False},
+        updates={"current": {}},
+        timezone_options=[],
+        wrapped={},
+        wrapped_users=[],
+        admin_jobs=[],
+        active_lock=None,
+        username="admin",
+        is_admin=True,
+    )
+
+    assert "Update applied successfully" in rendered
+    assert "Downloader status is temporarily unavailable while Concierge finishes updating." in rendered
