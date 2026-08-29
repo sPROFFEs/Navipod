@@ -2,352 +2,181 @@
   <img src="Navipod/assets/icon.png" alt="Navipod" width="180">
 </p>
 
-<h1 align="center">Navipod</h1>
+# Navipod
 
-<p align="center">
-  Personal music platform with isolated Navidrome user containers, a FastAPI control plane,
-  multi-source remote search, and a shared download pool.
-</p>
+**Your self-hosted music universe.**  
+One place for your library, discovery, shared listening and personal Navidrome instances.
 
-<p align="center">
-  <strong>Docker-based</strong> · <strong>Multi-user</strong> · <strong>Spotify / YouTube / Last.fm / MusicBrainz</strong> · <strong>Subsonic-compatible</strong>
-</p>
+![Quality](https://github.com/sPROFFEs/Navipod/actions/workflows/quality.yml/badge.svg)![Version](https://img.shields.io/badge/version-1.1.0-1ed760)![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)![License](https://img.shields.io/badge/license-personal%20use%20only-555555)
 
-## Usage Notice
+[**Get started**](#quick-start) · Documentation · Deployment · [Android APK](https://github.com/sPROFFEs/Navipod/releases)
 
-This project is provided strictly for personal, private, non-commercial use. You are not allowed to sell it, sublicense it, offer it as a hosted service, bundle it into a paid product, redistribute copies, or charge third parties for access or operation.
+<img width="3400" height="2048" alt="image" src="https://github.com/user-attachments/assets/6a96a9a3-881b-4881-af96-324baa46afc1" />
 
-If you need rights beyond personal use, you must obtain explicit prior written permission from the copyright holder. See [LICENSE](LICENSE) for the binding terms.
+Navipod is a personal, self-hosted music platform built around isolated **Navidrome instances per user**, a central **FastAPI concierge**, and a shared music pool. It brings your local library together with discovery from **YouTube, Spotify, Last.fm and MusicBrainz**, while keeping the server under your control.
 
-This repository has two levels:
-- repository root: documentation and helper files
-- `Navipod/`: the actual application, Docker Compose stack, backend, templates, and assets
+> \[!IMPORTANT\]  
+> Navipod is licensed for **private, personal, non-commercial use only**. It is not an open-source license. See [LICENSE](LICENSE) for the binding terms.
+
+## Why Navipod?
+
+<div class="joplin-table-wrapper"><table style="min-width: 50px"><tbody><tr><td colspan="1" rowspan="1"><h3 data-id="nglscjldgfgs" id="nglscjldgfgs">🎧 Search beyond your library</h3><p data-id="uwgwmprvgphw">Search local music and remote providers from one interface, preview results, download tracks and enrich metadata without jumping between services.</p></td><td colspan="1" rowspan="1"><h3 data-id="csqfuhvbbphn" id="csqfuhvbbphn">👤 Isolated multi-user streaming</h3><p data-id="mznrunftvyag">Each user gets an isolated Navidrome container while Navipod handles orchestration, shared storage and the surrounding experience.</p></td></tr><tr><td colspan="1" rowspan="1"><h3 data-id="qnyylvhddoah" id="qnyylvhddoah">🎉 Party Rooms</h3><p data-id="wrzmsxaiwdwy">Create synchronized listening rooms with a shared queue, host controls, playlist seeding and optional guest additions from the local library.</p></td><td colspan="1" rowspan="1"><h3 data-id="pnhkgcsyxxjv" id="pnhkgcsyxxjv">🧠 Personal mixes</h3><p data-id="uobqoavdeegy">Repeat, Deep Cuts, Favorites and Rediscovery mixes sit alongside recommendations and smart playlists that react to your library.</p></td></tr><tr><td colspan="1" rowspan="1"><h3 data-id="jmqytkxyvxio" id="jmqytkxyvxio">📱 Web, Android &amp; Subsonic</h3><p data-id="mecveitxkuhc">Use the web app, the native Android wrapper, or connect compatible Subsonic clients such as Amperfy, Tempo and Symfonium.</p></td><td colspan="1" rowspan="1"><h3 data-id="uqervmhthzaz" id="uqervmhthzaz">🛠️ Built-in operations</h3><p data-id="bqfthbdtrofh">Admin tools cover users, library health, metadata rescans, rotating backups, monitoring and in-app updates.</p></td></tr></tbody></table></div>
+
+## See it in action
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img
+        src="https://github.com/user-attachments/assets/ed3afb15-256a-46a1-a2b9-04fe12ceeb9a"
+        alt="Navipod Public playlists"
+        width="100%"
+      />
+      <br />
+      <strong>Public</strong>
+      <br />
+      <sub>Share playlists with other users on the server.</sub>
+    </td>
+    <td width="50%" align="center">
+      <img
+        src="https://github.com/user-attachments/assets/a959fca3-2fda-4284-9e5d-dbff12346550"
+        alt="Navipod Search"
+        width="100%"
+      />
+      <br />
+      <strong>Search</strong>
+      <br />
+      <sub>Local and remote discovery in one place.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img
+        src="https://github.com/user-attachments/assets/a8cd6892-bafe-4e4d-8323-8a914fc6a0fb"
+        alt="Navipod Party Room"
+        width="100%"
+      />
+      <br />
+      <strong>Party</strong>
+      <br />
+      <sub>Synchronized playback and a shared queue.</sub>
+    </td>
+    <td width="50%" align="center">
+      <img
+        src="https://github.com/user-attachments/assets/a868bc54-0ba3-4781-bcfb-db9e1f8c335b"
+        alt="Navipod Mobile"
+        width="220"
+      />
+      <br />
+      <strong>Mobile</strong>
+      <br />
+      <sub>Android wrapper with system media controls.</sub>
+    </td>
+  </tr>
+</table>
+
 
 ## Highlights
 
-- Isolated per-user Navidrome containers managed by a central concierge service
-- Unified search across local tracks, YouTube, Spotify, Last.fm, and MusicBrainz
-- Shared download pool with deduplication and metadata enrichment
-- Searchable, paginated artist / album / genre library with album-artist grouping
-- Editable smart playlists with rule previews and automatic refresh after library or favorite changes
-- Live party rooms with synchronized playback, shared queues, playlist seeding, and host controls
-- Local-library personal mixes (Repeat / Deep Cuts / Favorites / Rediscovery) plus remote recommendations
-- Admin panel: user management, library health audits, metadata rescans, rotating backups, in-app updates
-- Subsonic-compatible endpoints for mobile clients (Amperfy, Tempo, Symfonium…)
-- Native Android APK that wraps the web app with system media-session integration
+- **Multi-user by design** — isolated Navidrome containers managed by the concierge service.
+- **Unified discovery** — local tracks plus YouTube, Spotify, Last.fm and MusicBrainz.
+- **Shared download pool** — deduplication, metadata enrichment and reusable downloads.
+- **Library views** — searchable and paginated artists, albums and genres.
+- **Smart playlists** — editable rules, previews and automatic refreshes.
+- **Party Rooms** — synchronized playback, room queues and host/guest controls.
+- **Subsonic compatibility** — connect established mobile clients to each user's Navidrome instance.
+- **Self-hosting operations** — updates, backups, monitoring and library maintenance from the admin UI.
 
-## Architecture
+## How it works
 
-Main services in `Navipod/docker-compose.yaml`:
-- `concierge` — FastAPI backend and orchestration layer
-- `downloader` — isolated acquisition worker with current yt-dlp, spotDL, and SpotiFLAC engines
-- `nginx` — reverse proxy on port `80`
-- `tunnel` — optional Cloudflare Tunnel connector
+```mermaid
+flowchart LR
+    C[Browser / Android / Subsonic client] --> N[nginx]
+    N --> F[FastAPI Concierge]
+    F --> U1[Navidrome · User A]
+    F --> U2[Navidrome · User B]
+    F --> UX[Navidrome · User N]
+    F --> P[(Shared music pool)]
+    F --> D[(Navipod data / DB / backups)]
+    F --> R[Spotify / YouTube / Last.fm / MusicBrainz]
+```
 
-Persistent data lives in `/opt/saas-data` (database, cache, per-user music, shared pool, backups).
-
-## Requirements
-
-- Linux host with Docker Engine and the `docker compose` plugin
-- Ports `80` and `8000` available
-- 2+ CPU cores, 4 GB RAM, SSD-backed storage recommended
-- A real domain name + Cloudflare account if you want tunnel-based remote access
+The standard Docker stack contains the **concierge**, **nginx**, and an optional **Cloudflare Tunnel** connector. Persistent data is stored under `/opt/saas-data` by default. See Architecture for the full picture.
 
 ## Quick Start
 
-Three deployment modes. The default in this repo is **cloudflared**; switch
-to another by copying a template over the live files. Full guide in
-[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+### Requirements
 
-| Mode | Use when | What to copy |
-| ---- | -------- | ------------ |
-| **cloudflared** *(default)* | Easiest. Cloudflare Tunnel does TLS at the edge. No public IP, no certs. | nothing — already in place |
-| **internal**     | LAN / VPN testing. Plain HTTP, no DNS. | `Navipod/deployment-templates/internal/{docker-compose.yaml, .env.example}` |
-| **domain**       | Own public domain + Let's Encrypt. | `Navipod/deployment-templates/domain/{docker-compose.yaml, nginx.conf, .env.example}` |
+- Linux host
+- Docker Engine + `docker compose`
+- 2+ CPU cores and 4 GB RAM recommended
+- SSD-backed storage recommended
+- A domain + Cloudflare account only if using the default tunnel deployment
 
-The in-app updater calls `docker compose up -d` against the standard
-filenames in `Navipod/`, so once you've copied a template in, every
-tool in the project keeps working without changes.
-
-### Cloudflared (default)
+### Default deployment: Cloudflare Tunnel
 
 ```bash
 git clone https://github.com/sPROFFEs/Navipod
 cd Navipod/Navipod
 cp .env.example .env
-nano .env             # set SECRET_KEY, TUNNEL_TOKEN, DOMAIN
+nano .env   # set SECRET_KEY, TUNNEL_TOKEN and DOMAIN
 chmod +x setup.sh && ./setup.sh
 ```
 
-The setup script checks Docker, creates `/opt/saas-data`, builds the stack, optionally creates the first admin user, and optionally imports an existing music library.
-
-Then open your tunnel URL and log in.
-
-### Internal HTTP (LAN / VPN)
-
-```bash
-cd Navipod/Navipod
-cp deployment-templates/internal/docker-compose.yaml docker-compose.yaml
-cp deployment-templates/internal/.env.example .env
-nano .env             # set SECRET_KEY; COOKIE_SECURE must stay false
-docker compose up -d
-```
-
-Visit `http://<host-ip>/` from inside your network. **Never expose this mode to the public internet** — there's no TLS.
-
-### Own domain + Let's Encrypt
-
-```bash
-cd Navipod/Navipod
-cp deployment-templates/domain/docker-compose.yaml docker-compose.yaml
-cp deployment-templates/domain/nginx.conf nginx.conf
-cp deployment-templates/domain/.env.example .env
-nano .env             # set SECRET_KEY, DOMAIN, ACME_EMAIL
-```
-
-Initial cert acquisition is one manual step before the auto-renewal loop takes over — full instructions in [`Navipod/deployment-templates/domain/README.md`](Navipod/deployment-templates/domain/README.md) and [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#3-own-domain--lets-encrypt).
-
-If you skipped admin creation, run this from the directory containing `docker-compose.yaml`:
-
-```bash
-read -r -p "Admin username: " NAVIPOD_ADMIN_USERNAME
-read -r -s -p "Admin password: " NAVIPOD_ADMIN_PASSWORD; printf '\n'
-export NAVIPOD_ADMIN_USERNAME NAVIPOD_ADMIN_PASSWORD
-docker compose exec -T \
-  -e NAVIPOD_ADMIN_USERNAME -e NAVIPOD_ADMIN_PASSWORD \
-  concierge python create_admin.py
-unset NAVIPOD_ADMIN_USERNAME NAVIPOD_ADMIN_PASSWORD
-```
-
-The password is read without terminal echo, passed through the process environment rather than a command argument, and validated against Navipod's password policy.
-
-## First-Time Configuration
-
-In `Settings > Engine`:
-
-- **YouTube cookies** — upload a Netscape-format `cookies.txt` to bypass age restrictions and reduce CAPTCHAs.
-- **Spotify API** — create an app at [developer.spotify.com](https://developer.spotify.com/dashboard) and paste Client ID + Secret. Used for Spotify search, metadata enrichment, and download fallback.
-- **Last.fm API** — create an app at [last.fm/api](https://www.last.fm/api/account/create) and paste the API key.
-- **MusicBrainz** — no key required.
-- **Metadata priority** — recommended: `spotify > lastfm > musicbrainz`.
-
-Provider credentials are encrypted at rest using `SECRET_KEY`. Don't rotate `SECRET_KEY` after users have saved credentials, or those credentials won't decrypt.
-
-## Bulk Music Import
-
-To import an existing collection from a host folder into the shared pool, run from the repo root:
-
-```bash
-./import_music.sh /path/to/your/music [--enrich]
-```
-
-What it does:
-- Recursively scans for audio files (`mp3`, `m4a`, `flac`, `wav`, `ogg`, `opus`, `aac`, `wma`)
-- Moves them into `/opt/saas-data/pool/{Artist}/{Album}/` (the source folder is emptied)
-- Reads tags via `mutagen` and registers each track in the DB
-- Saves embedded cover art to the cover cache
-- With `--enrich`, downloads missing covers via Spotify/Last.fm/MusicBrainz using the API keys already configured in `Settings > Engine`
-- Detects duplicates by hash + fingerprint and skips them
-
-Tracks land in the **shared pool** and become available to every user via search / library views. The script does not create playlists or assign tracks to any user.
-
-Other flags: `--dry-run`, `--workers N`, `--verbose`. Run `./import_music.sh --help` for details.
-
-## Android App
-
-Each GitHub [release](https://github.com/sPROFFEs/Navipod/releases) ships two extra artifacts alongside the source code:
-
-- `navipod-android.apk` — installable on any Android 5.0+ device
-- `navipod-android-source.zip` — full Android Studio project sources for the wrapper
-
-Install:
-1. Download the APK to your phone. Enable "Install unknown apps" for your file manager or browser when Android prompts.
-2. Open the APK → tap **Install**.
-3. On first launch, enter your server URL (e.g. `https://navipod.yourdomain.com`) → tap **Connect**.
-4. Log in with the same credentials as the web app.
-
-Features:
-- Native system media notification (album art, title/artist, play / pause / next / previous)
-- Background playback that survives screen-off and app switching
-- To change the server URL later, tap the gear icon on the login screen
-
-## Mobile Subsonic Clients
-
-Each user's Navidrome instance is also exposed at:
-
-```
-https://your-domain/<username>
-```
-
-Use the same Navipod credentials. Compatible with Amperfy, Tempo, Symfonium, and any Subsonic client. Enable legacy authentication in the client if it asks.
-
-## Day-to-Day Use
-
-The app shell lives at `/portal`:
-
-- **Home** — recommendations, personal mixes, Wrapped
-- **Party** — create or join a synchronized listening room from the Home tabs
-- **Search** — local + remote provider chips with preview/download
-- **Library / Favorites / Radios**
-- **Settings** — providers, cookies, metadata priority; admins also see Users / Operations / Updates / Backups / Monitor
-
-### Party rooms
-
-Party rooms let several Navipod users listen to one shared queue at the same
-time. Open the **Party** tab from Home to see every available room, its host,
-listener count, capacity, current track, and playback status.
-
-#### Create a room
-
-1. Open **Home → Party** and select **Create room**.
-2. Enter a room name and choose a capacity from 2 to 15 listeners.
-3. Optionally select one of your playlists to copy its songs into the initial
-   queue.
-4. Choose whether guests may search the local library and add songs.
-5. Select **Create and open room**.
-
-Each user may own one room. The room remains available until its owner deletes
-it, so the owner must delete an existing room before creating another. Rooms
-are currently discoverable by every signed-in regular user; private rooms,
-passwords, and invitation links are not yet supported.
-
-#### Join and listen
-
-Select any room from the Home shelf or Party list. Navipod temporarily switches
-the player from your personal queue to the room's track and server-owned clock.
-Play, pause, seeking, track changes, background media controls, and reconnects
-are synchronized for everyone. If the browser blocks automatic playback, use
-the on-screen **Tap to start listening** banner.
-
-Use **Leave** to disconnect from the room. Navipod restores the personal track,
-queue, shuffle/repeat settings, and playback position that were active before
-joining.
-
-| Action | Host | Guest |
-| --- | --- | --- |
-| Play, pause, seek, previous, next | Yes | Follows the host |
-| Add local-library songs | Yes | Only when enabled by the host |
-| Remove songs | Yes | No |
-| Delete the room | Yes | No |
-
-#### Persistence and limits
-
-- Rooms and their queues survive application restarts, but playback resumes in
-  a paused state after a restart.
-- Music stops when the last listener disconnects; the empty room remains open.
-- A short disconnect grace period prevents a page refresh or brief network drop
-  from stopping the room.
-- Multiple browser tabs from the same account count as one listener.
-- A room queue can contain at most 500 songs.
-- Party search only includes tracks already stored in the shared Navipod
-  library; it does not trigger remote searches or downloads.
-- Party endpoints require an authenticated regular user. Service accounts and
-  anonymous requests are rejected.
-
-Downloads progress as `pending → downloading → importing → completed`. Duplicates are reused via source/hash/fingerprint. Old finished jobs are pruned automatically.
-
-### Isolated downloader
-
-New provider downloads run in the `downloader` container by default. The
-worker can write only to `/opt/saas-data/download-staging`; it does not receive
-the Navipod database, Docker socket, application signing key, user libraries,
-or final media pool. Concierge keeps ownership of quotas, jobs, deduplication,
-metadata import, playlists, and browser-facing APIs.
-
-SpotiFLAC extensions are fetched from an immutable repository commit during
-the image build and verified with pinned SHA-256 digests. Runtime extension
-auto-updates are disabled. The worker currently pins yt-dlp `2026.8.19`,
-spotDL `4.5.2`, and SpotiFLAC `3.5.0`; the legacy Concierge versions remain
-unchanged as a compatibility fallback.
-
-Admins can choose the policy under **Admin → System Monitor → Downloader
-runtime**:
-
-- **Automatic** (default): isolated worker first, then the legacy downloader if the worker or provider stack fails.
-- **Isolated worker only**: surface worker failures without silently changing engines.
-- **Legacy Concierge only**: bypass the worker for newly started jobs.
-
-Federated peer downloads remain inside Concierge because that path requires
-the existing peer database and credentials. A mode change affects new jobs;
-already-running jobs finish with the engine that started them.
-
-## Updating
-
-**From the UI:** `Admin > System Monitor > Check for Updates → Apply Update`. The in-app updater creates a backup, runs schema migrations, rebuilds containers only when needed, and runs health checks.
-
-**From the CLI:**
-```bash
-git pull && cd Navipod && docker compose up -d --build
-```
-
-## Backup and Restore
-
-The System Monitor manages two rotating slots (`current`, `previous`) — use them from the UI before risky changes.
-
-For host-level backups, archive at least:
-- `/opt/saas-data/`
-- `Navipod/.env`
-
-```bash
-sudo tar -czf navipod-backup.tar.gz /opt/saas-data /path/to/repo/Navipod/.env
-```
-
-Restore by extracting back into place before restarting the containers.
-
-## Environment Variables
-
-Main variables in `.env.example`:
-
-| Variable | Required | Description |
-|---|---|---|
-| `SECRET_KEY` | Yes | Auth token signing + provider secret encryption. Don't rotate after first use. |
-| `DOMAIN` | Yes | Public host name, or `localhost` for local use. |
-| `ALLOWED_HOSTS` | Yes | Comma-separated FastAPI trusted hosts. |
-| `COOKIE_SECURE` | Yes | `true` for HTTPS / Cloudflare Tunnel, `false` only for local HTTP testing. |
-| `REMEMBER_SESSION_DAYS` | No | Persistent-session lifetime when a user explicitly selects “Remember me” (default: 30, capped at 365). Passwords are never stored. |
-| `HOST_DATA_ROOT` | No | Default: `/opt/saas-data`. |
-| `CONCURRENT_DOWNLOADS` | No | Max concurrent downloads per user. |
-| `IDLE_THRESHOLD_MINUTES` | No | Web inactivity threshold before a user container is reaped. |
-| `TUNNEL_TOKEN` | No | Cloudflare Tunnel token. Leave empty to disable. |
-| `BACKUP_ROOT` | No | Container-internal backup path. Default: `/saas-data/backups`. |
-| `APP_SOURCE_ROOT` | No | Repo path inside the concierge container. Default: `/workspace`. |
-
-## Troubleshooting
-
-**Downloads fail** — verify `cookies.txt` is valid, Spotify credentials are correct, and the host has outbound internet. Check `docker compose logs -f downloader concierge`. An admin can temporarily select **Legacy Concierge only** in System Monitor to distinguish a worker/provider regression from an application problem.
-
-**Age-restricted YouTube fails** — export a fresh Netscape `cookies.txt` from a logged-in browser session and re-upload it.
-
-**Covers missing** — configure Spotify and/or Last.fm in `Settings > Engine`.
-
-**Permission errors writing `/opt/saas-data`** —
-```bash
-sudo chown -R 1000:1000 /opt/saas-data
-sudo find /opt/saas-data -type d -exec chmod 750 {} +
-sudo find /opt/saas-data -type f -exec chmod 640 {} +
-```
-
-**Backend can't control Docker** — verify `/var/run/docker.sock` is mounted into the `concierge` container.
-
-**Update toast not appearing** — confirm you're logged in as admin and the backend can reach the configured GitHub repository.
-
-## Security
-
-- Change `SECRET_KEY` before production use.
-- “Remember me” stores only a signed, HttpOnly session cookie—not the password. Logout and password changes revoke it server-side.
-- Don't commit `.env`, `cookies.txt`, or database files.
-- The backend mounts the Docker socket — treat the host as privileged infrastructure.
-
-## Repository Layout
+`setup.sh` checks Docker, prepares `/opt/saas-data`, builds the stack and can create the first admin user and import an existing library.
+
+For LAN/VPN and direct-domain deployments, use the dedicated guide instead of adapting the default stack by hand.
+
+## Deployment modes
+
+| Mode | Best for | TLS | Public IP required |
+| --- | --- | --- | --- |
+| **Cloudflared** _(default)_ | Easiest remote access | Cloudflare edge | No  |
+| **Internal** | LAN / VPN / development | None — HTTP only | No  |
+| **Domain** | Full control with your own public endpoint | Let's Encrypt | Yes |
+
+→ Choose and configure a deployment mode
+
+## Documentation
+
+| Guide | What it covers |
+| --- | --- |
+| Installation | First install, requirements and first login |
+| Deployment | Cloudflared, internal HTTP and own-domain TLS |
+| Configuration | `.env`, providers, cookies and metadata |
+| User Guide | Home, search, library, mixes and everyday use |
+| Party Rooms | Rooms, permissions, sync and limits |
+| Importing Music | Bulk import into the shared pool |
+| Android | APK installation and mobile behavior |
+| Subsonic | Connecting third-party Subsonic clients |
+| Administration | Users, health, updates and operations |
+| Backup & Restore | UI and host-level backup strategy |
+| Troubleshooting | Common deployment and runtime problems |
+| Architecture | Services, data flow and storage |
+| Security | Deployment and credential security notes |
+
+## Tech stack
+
+**Backend:** Python · FastAPI  
+**Music server:** Navidrome  
+**Runtime:** Docker · Docker Compose · nginx  
+**Discovery:** Spotify · YouTube · Last.fm · MusicBrainz  
+**Remote access:** Cloudflare Tunnel or direct TLS deployment  
+**Clients:** Web · Android · Subsonic-compatible apps
+
+## Repository layout
 
 ```text
 Navipod/
 ├── README.md
 ├── LICENSE
-├── resize_disk.sh
+├── docs/
+├── .github/
+│   └── assets/
 └── Navipod/
     ├── assets/
     ├── concierge/
+    ├── deployment-templates/
     ├── docker-compose.yaml
     ├── nginx.conf
     ├── setup.sh
@@ -356,4 +185,6 @@ Navipod/
 
 ## License
 
-Custom proprietary personal-use-only license. Personal private use is allowed; commercial use, redistribution, sublicensing, and hosted-service offerings are not. See [LICENSE](LICENSE) for the binding terms.
+Navipod uses a custom **Personal Use Only** license. Private, personal, non-commercial use and modification are allowed. Commercial use, redistribution, sublicensing and offering Navipod as a hosted service are prohibited without prior written permission.
+
+Read the complete [LICENSE](LICENSE) before deploying or modifying the project.
