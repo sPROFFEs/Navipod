@@ -139,21 +139,25 @@ For LAN/VPN and direct-domain deployments, use the dedicated guide instead of ad
 
 ## Documentation
 
-| Guide | What it covers |
-| --- | --- |
-| Installation | First install, requirements and first login |
-| Deployment | Cloudflared, internal HTTP and own-domain TLS |
-| Configuration | `.env`, providers, cookies and metadata |
-| User Guide | Home, search, library, mixes and everyday use |
-| Party Rooms | Rooms, permissions, sync and limits |
-| Importing Music | Bulk import into the shared pool |
-| Android | APK installation and mobile behavior |
-| Subsonic | Connecting third-party Subsonic clients |
-| Administration | Users, health, updates and operations |
-| Backup & Restore | UI and host-level backup strategy |
-| Troubleshooting | Common deployment and runtime problems |
-| Architecture | Services, data flow and storage |
-| Security | Deployment and credential security notes |
+Everything beyond the quick start lives in the documentation.
+
+| Guide                                      | Description                                                               |
+| ------------------------------------------ | ------------------------------------------------------------------------- |
+| [Installation](docs/INSTALLATION.md)       | Install Navipod and prepare the host environment.                         |
+| [Deployment](docs/DEPLOYMENT.md)           | Deploy with Cloudflare Tunnel, LAN access, or your own domain.            |
+| [Configuration](docs/CONFIGURATION.md)     | Configure Navipod, providers, environment variables, and runtime options. |
+| [User Guide](docs/USER-GUIDE.md)           | Learn the main workflows and everyday features.                           |
+| [Party Rooms](docs/PARTY-ROOMS.md)         | Create shared rooms with synchronized playback and queues.                |
+| [Importing Music](docs/IMPORTING-MUSIC.md) | Import and organize an existing music library.                            |
+| [Android](docs/ANDROID.md)                 | Set up and use the Navipod Android application.                           |
+| [Subsonic](docs/SUBSONIC.md)               | Connect compatible Subsonic clients to Navipod.                           |
+| [Administration](docs/ADMINISTRATION.md)   | Manage users, libraries, updates, and maintenance tasks.                  |
+| [Backup & Restore](docs/BACKUP-RESTORE.md) | Back up Navipod data and restore an installation.                         |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Diagnose common installation, playback, and connectivity issues.          |
+| [Architecture](docs/ARCHITECTURE.md)       | Understand Navipod's services, containers, storage, and data flow.        |
+| [Security](docs/SECURITY.md)               | Security considerations and recommended deployment practices.             |
+
+> Looking for the full documentation index? See **[docs/README.md](docs/README.md)**.
 
 ## Tech stack
 
