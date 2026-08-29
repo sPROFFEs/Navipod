@@ -1,33 +1,27 @@
-# Navipod deployment guide
+# Deployment
 
-Three supported deployment modes:
+Navipod supports three deployment modes. The default repository files are configured for Cloudflare Tunnel.
 
-| Mode               | Public access | TLS                      | Use when                                          |
-| ------------------ | ------------- | ------------------------ | ------------------------------------------------- |
-| **cloudflared** *(default)* | Yes           | Cloudflare edge          | Easiest, no firewall changes, no public IP        |
-| **internal**       | No            | None (HTTP)              | LAN / VPN testing, dev, fully private homelab     |
-| **domain**         | Yes           | Let's Encrypt (your TLS) | Own domain + public IP + you want full control    |
+| Mode | Public access | TLS | Use when |
+|---|---:|---|---|
+| **cloudflared** *(default)* | Yes | Cloudflare edge | You want the simplest remote deployment without exposing a public IP |
+| **internal** | No | None / HTTP | LAN, VPN, development or a trusted private homelab |
+| **domain** | Yes | Let's Encrypt | You own the public endpoint and want direct TLS termination |
 
-## How modes are switched
+## How deployment modes are switched
 
-The in-app updater and the rest of the project tooling all call
-`docker compose up -d` against the **standard filenames** in
-`Navipod/`:
+Project tooling and the in-app updater expect the standard live filenames inside `Navipod/`:
 
-- `Navipod/docker-compose.yaml`
-- `Navipod/nginx.conf`
-- `Navipod/.env`
-
-To keep the updater working without surprises, each deployment mode is
-a **standalone replacement** of those files, not a docker-compose
-overlay. You copy the template in, the live files match, the updater
-keeps doing the same thing.
-
-Templates live at:
-
+```text
+Navipod/docker-compose.yaml
+Navipod/nginx.conf
+Navipod/.env
 ```
+
+The alternative deployment modes therefore replace those files instead of using Compose overlays. Templates live in:
+
+```text
 Navipod/deployment-templates/
-├── README.md
 ├── internal/
 │   ├── README.md
 │   ├── docker-compose.yaml
@@ -39,183 +33,170 @@ Navipod/deployment-templates/
     └── .env.example
 ```
 
-The cloudflared mode is what ships at the standard filenames, so there's
-no `cloudflared/` template — that's already what you have on a fresh
-clone.
+The Cloudflare mode is already present at the standard filenames in a fresh clone.
 
 ---
 
-## 1. Cloudflared (default)
+## 1. Cloudflare Tunnel — default
 
 ```bash
 git clone https://github.com/sPROFFEs/Navipod
 cd Navipod/Navipod
 cp .env.example .env
-nano .env             # set SECRET_KEY, TUNNEL_TOKEN, DOMAIN
+nano .env   # set SECRET_KEY, TUNNEL_TOKEN and DOMAIN
 chmod +x setup.sh && ./setup.sh
 ```
 
-`setup.sh` checks Docker, creates `/opt/saas-data`, builds the stack,
-optionally creates the first admin user, and optionally imports an
-existing music library.
+Cloudflare terminates TLS at the edge. Keep:
 
-The first build also creates the isolated `downloader` image. It includes
-Chromium for SpotiFLAC's signed-session verification, so it is larger and may
-take longer than a normal Concierge rebuild. Provider state survives image
-replacement in the `navipod_downloader_state` volume. Temporary audio is the
-only host data mounted into that container, at
-`/opt/saas-data/download-staging`.
+```dotenv
+COOKIE_SECURE=true
+```
 
-Then open your tunnel URL and log in.
+A Cloudflare Tunnel deployment does not require a public IP or inbound port forwarding.
 
-Login sessions are browser-session cookies by default. Selecting **Remember
-me on this device** creates a revocable HttpOnly cookie for
-`REMEMBER_SESSION_DAYS` (30 by default); Navipod never stores the password in
-the browser. Keep `COOKIE_SECURE=true` for every HTTPS deployment.
+### Sessions
+
+Browser sessions are session cookies by default. Selecting **Remember me** creates a revocable HttpOnly cookie for `REMEMBER_SESSION_DAYS` (30 days by default). Passwords are not stored in the browser.
 
 ---
 
-## 2. Internal HTTP (LAN / VPN)
+## 2. Internal HTTP — LAN / VPN
+
+Use this only on a trusted LAN or behind a VPN such as WireGuard or Tailscale.
 
 ```bash
 cd Navipod/Navipod
 cp deployment-templates/internal/docker-compose.yaml docker-compose.yaml
 cp deployment-templates/internal/.env.example .env
-nano .env             # set SECRET_KEY; COOKIE_SECURE must stay false
+nano .env
+
 docker compose up -d
 ```
 
-Visit `http://<host-ip>/` from inside your network.
+The critical setting is:
 
-**Critical**: `.env` must have `COOKIE_SECURE=false`. On plain HTTP a
-`Secure` cookie is silently rejected by the browser, which causes the
-login form to loop indefinitely.
+```dotenv
+COOKIE_SECURE=false
+```
 
-**Security**: never expose this mode to the public internet. Anyone on
-the network path can sniff session cookies. Keep it behind a VPN
-(Tailscale, WireGuard) or on a LAN you trust.
+Then open:
 
-Full per-template guide: [`deployment-templates/internal/README.md`](../Navipod/deployment-templates/internal/README.md).
+```text
+http://<host-ip>/
+```
+
+> [!WARNING]
+> Never expose the internal HTTP mode directly to the public internet. There is no TLS, so traffic and session cookies can be observed by anyone on the network path.
+
+If login loops back to the login page, verify `COOKIE_SECURE=false` and restart the concierge service.
 
 ---
 
 ## 3. Own domain + Let's Encrypt
 
-Real public domain, real TLS, auto-renewal via certbot.
-
-### Pre-requisites
+Use this mode when you have:
 
 1. A registered domain.
-2. DNS **A record** pointing `$DOMAIN` at the host's public IP.
-3. **Ports 80 and 443 open** in your router/firewall, forwarded to the
-   host. Port 80 is mandatory for the HTTP-01 ACME challenge.
-4. Nothing else on the host bound to ports 80/443.
+2. A DNS A record pointing the Navipod hostname to the host's public IP.
+3. Ports **80** and **443** forwarded to the host.
+4. No conflicting service already bound to those ports.
 
-### Switch the files in
+### Copy the domain template
 
 ```bash
 cd Navipod/Navipod
 cp deployment-templates/domain/docker-compose.yaml docker-compose.yaml
 cp deployment-templates/domain/nginx.conf nginx.conf
 cp deployment-templates/domain/.env.example .env
-nano .env             # set SECRET_KEY, DOMAIN, ACME_EMAIL, ALLOWED_HOSTS
+nano .env
 ```
 
-### First time — initial cert acquisition
+Set the required values, including:
 
-The compose runs a renewal loop, but the **first** cert needs a one-shot
-issuance. Two options, full instructions in the template's
-[`README.md`](../Navipod/deployment-templates/domain/README.md):
+```dotenv
+SECRET_KEY=...
+DOMAIN=navipod.example.com
+ACME_EMAIL=you@example.com
+ALLOWED_HOSTS=...
+COOKIE_SECURE=true
+```
 
-#### Option A — Standalone (simplest)
+### Initial certificate acquisition
+
+The renewal service handles later renewals, but the first certificate must be issued once.
+
+A straightforward standalone flow is:
 
 ```bash
 docker compose down 2>/dev/null || true
 
 docker run --rm \
-    -p 80:80 \
-    -v navipod_certbot_etc:/etc/letsencrypt \
-    -v navipod_certbot_www:/var/www/certbot \
-    certbot/certbot certonly --standalone \
-        --non-interactive --agree-tos \
-        --email "<your-email>" \
-        -d "<your-domain>"
+  -p 80:80 \
+  -v navipod_certbot_etc:/etc/letsencrypt \
+  -v navipod_certbot_www:/var/www/certbot \
+  certbot/certbot certonly --standalone \
+    --non-interactive --agree-tos \
+    --email "<your-email>" \
+    -d "<your-domain>"
 
 docker compose up -d
 ```
 
-#### Option B — Webroot (nginx already up)
+The template also documents a webroot option when nginx is already running.
 
-See the per-template README for the full sequence.
+### Certificate renewal
 
-### Automatic renewal
-
-The `certbot` service renews every 12h. Nginx does NOT auto-reload
-when the cert is renewed — set up a host cron:
+The Certbot service checks for renewal every 12 hours. Nginx still needs to reload to start serving a renewed certificate. A host cron entry can do that once a day:
 
 ```cron
-0 4 * * *  cd /path/to/Navipod && /usr/bin/docker compose exec nginx nginx -s reload
+0 4 * * * cd /path/to/Navipod && /usr/bin/docker compose exec nginx nginx -s reload
 ```
 
-Lets Encrypt certs renew at day 60 of 90, so a daily reload is plenty
-of margin.
-
-After your second successful auto-renewal, you can enable HSTS in
-`nginx.conf` by uncommenting the `Strict-Transport-Security` line.
+After you have confirmed successful renewals, you can consider enabling HSTS in the domain nginx configuration.
 
 ---
 
 ## Migrating between modes
 
-Your `/opt/saas-data` lives outside any compose file (it's a host bind
-mount), so user data, library, playlists, federation peers, and DBs all
-survive a mode switch. Steps:
+User data is stored outside the Compose file under `/opt/saas-data`, so switching deployment mode does not inherently delete your library, users, playlists or database.
 
-1. `docker compose down`
-2. Copy the new template files (and `.env.example`) over the live ones.
-3. Edit `.env`.
-4. `docker compose up -d`
+Recommended sequence:
 
-User accounts, settings, federation tokens — all preserved.
+```bash
+docker compose down
+# copy the new template files over the live files
+# edit .env for the new mode
+docker compose up -d
+```
 
-To go back to **cloudflared**: `git checkout docker-compose.yaml nginx.conf`
-restores the shipping defaults; edit `.env` to set `TUNNEL_TOKEN` and
-`COOKIE_SECURE=true`.
+To return to the shipping Cloudflare files, restore the tracked `docker-compose.yaml` and `nginx.conf`, then configure `TUNNEL_TOKEN` and `COOKIE_SECURE=true` again.
 
----
+## Deployment troubleshooting
 
-## Troubleshooting
+### Internal mode login loop
 
-**Downloader shows unavailable after an upgrade**
-  → Run `docker compose up -d --build downloader`, then check
-    `docker compose logs --tail=200 downloader`. Navipod defaults to automatic
-    mode, so downloads continue through the legacy Concierge engine while the
-    worker is unavailable. Use **Admin → System Monitor → Downloader runtime**
-    to inspect versions or force either engine.
+`COOKIE_SECURE` is probably still `true`. Set it to `false` for plain HTTP and restart the stack.
 
-**SpotiFLAC asks for verification or falls through to spotDL**
-  → The current extension providers use a signed browser session. Confirm the
-    container can reach `api.zarz.moe`, Chromium starts successfully, and the
-    `navipod_downloader_state` volume is persistent. No Tidal, Qobuz, Deezer,
-    or Amazon account/API key is required by the pinned extensions.
+### Certbot rate limit while testing
 
-**Login redirects in a loop in `internal` mode**
-  → `COOKIE_SECURE` is still `true`. Set to `false` in `.env`, restart
-    concierge.
+Use Let's Encrypt staging while debugging issuance so repeated tests do not consume the production attempt quota.
 
-**The in-app updater overwrote my custom mode after a `git pull`**
-  → It shouldn't — the updater calls `docker compose up -d` against
-    your live `docker-compose.yaml`, which is whichever template you
-    last copied in. If `git pull` introduced merge conflicts on
-    `docker-compose.yaml`/`nginx.conf`, resolve them keeping your
-    version, or re-copy the template.
+### Certificate renewed but browser still sees the old certificate
 
-**Certbot rate-limit hit while debugging**
-  → Use `--server https://acme-staging-v02.api.letsencrypt.org/directory`
-    on the certbot commands. Staging certs are untrusted by browsers
-    but exercise the full flow without burning the 5-attempts-per-week
-    production quota.
+Reload nginx:
 
-**The cert renews but the site keeps serving the old one**
-  → nginx hasn't reloaded. Run `docker compose exec nginx nginx -s reload`
-    or set up the host cron above.
+```bash
+docker compose exec nginx nginx -s reload
+```
+
+### Custom deployment files after updates
+
+The updater operates against the live standard filenames. If `git pull` creates conflicts in `docker-compose.yaml` or `nginx.conf`, resolve them while keeping the intended deployment mode, or copy the chosen template over the live files again.
+
+## Related guides
+
+- [Installation](INSTALLATION.md)
+- [Configuration](CONFIGURATION.md)
+- [Security](SECURITY.md)
+- [Troubleshooting](TROUBLESHOOTING.md)
