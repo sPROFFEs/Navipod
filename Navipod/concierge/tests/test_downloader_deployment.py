@@ -18,10 +18,19 @@ def test_all_compose_variants_include_isolated_downloader():
         assert "ports" not in service
         assert service["security_opt"] == ["no-new-privileges:true"]
         assert service["cap_drop"] == ["ALL"]
+        assert service["shm_size"] == "1gb"
         assert any("download-staging:/downloads" in volume for volume in service["volumes"])
         concierge = payload["services"]["concierge"]
         assert "downloader" in concierge["depends_on"]
         assert concierge["environment"]
+
+
+def test_worker_image_installs_spotiflac_browser_runtime():
+    dockerfile = (PROJECT_ROOT / "downloader-worker" / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "chromium" in dockerfile
+    assert "xvfb" in dockerfile
+    assert "command -v Xvfb" in dockerfile
 
 
 def test_updater_rebuilds_worker_for_worker_changes_and_keeps_updater_alive():

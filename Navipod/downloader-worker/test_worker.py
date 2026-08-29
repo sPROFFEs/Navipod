@@ -38,25 +38,20 @@ def test_spotiflac_uses_pinned_extension_provider_names(tmp_path, monkeypatch):
         url="https://open.spotify.com/track/abc",
     )
     state = worker.JobState(request)
-    captured = {}
+    captured = []
 
     def fake_run_command(_state, command, timeout=2400):
-        captured["command"] = command
+        captured.append(command)
         return False, "expected test failure"
 
     monkeypatch.setattr(worker, "_run_command", fake_run_command)
 
     assert worker._run_spotiflac(state, tmp_path) is False
-    assert captured["command"][captured["command"].index("--service") + 1 :] == [
-        "ext:tidal-web",
-        "ext:qobuz-web",
-        "ext:deezer",
-        "ext:amazon",
-        "--max-concurrent",
-        "1",
-        "--no-lyrics",
-        "--no-enrich",
+    assert [command[command.index("--service") + 1] for command in captured] == [
+        "ext:tidal-web", "ext:qobuz-web", "ext:deezer", "ext:amazon"
     ]
+    assert all(command[command.index("--timeout") + 1] == "90" for command in captured)
+    assert len(state.fallback_reasons) == 4
 
 
 def test_worker_logs_redact_user_credentials():

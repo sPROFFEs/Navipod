@@ -340,26 +340,33 @@ def _write_cookie_file(folder: Path, request: DownloadRequest) -> Path | None:
 
 def _run_spotiflac(state: JobState, folder: Path) -> bool:
     _raise_if_cancelled(state)
-    state.update(progress=8, message="Trying SpotiFLAC lossless providers")
-    command = [
-        "spotiflac",
-        state.request.url,
-        str(folder),
-        "--service",
-        "ext:tidal-web",
-        "ext:qobuz-web",
-        "ext:deezer",
-        "ext:amazon",
-        "--max-concurrent",
-        "1",
-        "--no-lyrics",
-        "--no-enrich",
-    ]
-    ok, output = _run_command(state, command)
-    if ok and _audio_files(folder):
-        state.update(engine="spotiflac")
-        return True
-    state.append_fallback(output if not ok else "SpotiFLAC produced no audio files")
+    # SpotiFLAC's extension bridge creates signed-session asyncio primitives
+    # per process. After one provider times out, reusing that process for the
+    # next provider can bind those primitives to a closed event loop. Keep the
+    # providers isolated so one unhealthy service cannot poison every fallback.
+    providers = ("ext:tidal-web", "ext:qobuz-web", "ext:deezer", "ext:amazon")
+    for provider in providers:
+        _raise_if_cancelled(state)
+        state.update(progress=8, message=f"Trying SpotiFLAC provider {provider.removeprefix('ext:')}")
+        command = [
+            "spotiflac",
+            state.request.url,
+            str(folder),
+            "--service",
+            provider,
+            "--max-concurrent",
+            "1",
+            "--timeout",
+            "90",
+            "--no-lyrics",
+            "--no-enrich",
+        ]
+        ok, output = _run_command(state, command)
+        if ok and _audio_files(folder):
+            state.update(engine="spotiflac")
+            return True
+        reason = output if not ok else "SpotiFLAC produced no audio files"
+        state.append_fallback(f"{provider}: {reason}")
     return False
 
 

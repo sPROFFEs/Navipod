@@ -6,9 +6,10 @@ WORKDIR /app
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        ca-certificates chromium curl ffmpeg gosu nodejs unzip && \
+        ca-certificates chromium curl ffmpeg gosu nodejs unzip xvfb && \
     curl -fsSL https://deno.land/install.sh | sh -s -- -y && \
     mv /root/.deno/bin/deno /usr/local/bin/deno && \
+    command -v Xvfb && \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

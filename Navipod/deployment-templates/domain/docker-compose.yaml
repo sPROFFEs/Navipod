@@ -59,6 +59,7 @@ services:
     pids_limit: 256
     mem_limit: 2g
     cpus: 2.0
+    shm_size: 1gb
     tmpfs:
       - /tmp:size=512m,mode=1777
     networks:
