@@ -59,6 +59,13 @@ chmod +x setup.sh && ./setup.sh
 optionally creates the first admin user, and optionally imports an
 existing music library.
 
+The first build also creates the isolated `downloader` image. It includes
+Chromium for SpotiFLAC's signed-session verification, so it is larger and may
+take longer than a normal Concierge rebuild. Provider state survives image
+replacement in the `navipod_downloader_state` volume. Temporary audio is the
+only host data mounted into that container, at
+`/opt/saas-data/download-staging`.
+
 Then open your tunnel URL and log in.
 
 Login sessions are browser-session cookies by default. Selecting **Remember
@@ -178,6 +185,19 @@ restores the shipping defaults; edit `.env` to set `TUNNEL_TOKEN` and
 ---
 
 ## Troubleshooting
+
+**Downloader shows unavailable after an upgrade**
+  → Run `docker compose up -d --build downloader`, then check
+    `docker compose logs --tail=200 downloader`. Navipod defaults to automatic
+    mode, so downloads continue through the legacy Concierge engine while the
+    worker is unavailable. Use **Admin → System Monitor → Downloader runtime**
+    to inspect versions or force either engine.
+
+**SpotiFLAC asks for verification or falls through to spotDL**
+  → The current extension providers use a signed browser session. Confirm the
+    container can reach `api.zarz.moe`, Chromium starts successfully, and the
+    `navipod_downloader_state` volume is persistent. No Tidal, Qobuz, Deezer,
+    or Amazon account/API key is required by the pinned extensions.
 
 **Login redirects in a loop in `internal` mode**
   → `COOKIE_SECURE` is still `true`. Set to `false` in `.env`, restart

@@ -203,9 +203,23 @@
 #view-container > .empty-state,
 #view-container > .hero-section,
 #view-container > .source-chips,
-#view-container > .saved-radio-list {
+#view-container > .saved-radio-list,
+#view-container > .party-page-head,
+#view-container > .party-room-hero,
+#view-container > .party-owner-notice,
+#view-container > .party-autoplay-banner,
+#view-container > .party-room-list,
+#view-container > .party-layout {
     margin-left: 16px;
     margin-right: 16px;
+}
+
+/* Party banners are full-width on desktop. Inside the zero-padding mobile
+ * shell they need an intrinsic width or their 100% width plus the restored
+ * gutters overflows the viewport. */
+#view-container > .party-owner-notice,
+#view-container > .party-autoplay-banner {
+    width: auto;
 }
 
 

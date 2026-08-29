@@ -106,7 +106,11 @@ export function showToast(msg, type = 'info', action = null) {
     btn.innerText = action.label;
     btn.onclick = () => {
       _dismissToast(toast);
-      try { action.callback(); } catch (e) { console.error('[toast] action error:', e); }
+      try {
+        action.callback();
+      } catch (e) {
+        console.error('[toast] action error:', e);
+      }
     };
     toast.appendChild(btn);
   }
@@ -118,7 +122,10 @@ export function showToast(msg, type = 'info', action = null) {
 
 function _dismissToast(toast) {
   if (!toast || !toast.parentNode) return;
-  if (_toastTimer) { clearTimeout(_toastTimer); _toastTimer = null; }
+  if (_toastTimer) {
+    clearTimeout(_toastTimer);
+    _toastTimer = null;
+  }
   toast.classList.remove('toast-msg--show');
   setTimeout(() => toast.remove(), 300);
 }

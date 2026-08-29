@@ -61,9 +61,12 @@ def measure_loudness(file_path: str | Path) -> LoudnessResult | None:
 
     cmd = [
         ffmpeg,
-        "-i", str(path),
-        "-af", "loudnorm=I=-14:TP=-1:LRA=11:print_format=json",
-        "-f", "null",
+        "-i",
+        str(path),
+        "-af",
+        "loudnorm=I=-14:TP=-1:LRA=11:print_format=json",
+        "-f",
+        "null",
         "-",  # discard output — we only want stderr metadata
     ]
 
@@ -156,17 +159,10 @@ def backfill_loudness(batch_size: int = 100, progress_callback=None) -> int:
     db = database.SessionLocal()
     updated = 0
     try:
-        total = (
-            db.query(database.Track)
-            .filter(database.Track.loudness_measured_at.is_(None))
-            .count()
-        )
+        total = db.query(database.Track).filter(database.Track.loudness_measured_at.is_(None)).count()
         while True:
             tracks = (
-                db.query(database.Track)
-                .filter(database.Track.loudness_measured_at.is_(None))
-                .limit(batch_size)
-                .all()
+                db.query(database.Track).filter(database.Track.loudness_measured_at.is_(None)).limit(batch_size).all()
             )
             if not tracks:
                 break

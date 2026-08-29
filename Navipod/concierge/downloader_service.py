@@ -10,6 +10,7 @@ import time
 from datetime import datetime, timezone
 
 import database
+import downloader_worker_client
 import httpx
 import manager
 import media_metadata
@@ -239,6 +240,7 @@ class DownloadManager:
             # Loudness measurement (best-effort — non-blocking for download)
             try:
                 import loudness
+
                 loudness.measure_track_for_import(self.db, track.id)
             except Exception as e:
                 logger.debug("loudness measurement failed for #%s: %s", track.id, e)
@@ -430,21 +432,7 @@ class DownloadManager:
             try:
                 self._runtime_cookie_path = self._resolve_cookie_file(temp_dir)
                 # 2. DESCARGAR EN TEMP
-                success = False
-                # Federation tracks (fed:{instance_id}:{remote_id}) are
-                # already on a peer in our trust circle — fetch the
-                # actual file directly via the federation stream
-                # endpoint instead of falling through to YouTube
-                # search, which would download a different recording.
-                if job.input_url.startswith("fed:"):
-                    self._log(job_id, "Downloading from federated peer...", 5)
-                    success = self._handle_federation_direct(job.input_url, temp_dir, job_id)
-                elif "spotify.com" in job.input_url:
-                    self._log(job_id, "Resolving Spotify track...", 5)
-                    success = self._handle_spotify_robust(job.input_url, temp_dir, job_id)
-                else:
-                    self._log(job_id, "Downloading source audio...", 5)
-                    success = self._handle_ytdlp_robust(job.input_url, temp_dir, job_id)
+                success = self._download_source(job, temp_dir, job_id)
 
                 if not success:
                     raise Exception(self._last_download_reason or "Source download failed before import.")
@@ -652,6 +640,41 @@ class DownloadManager:
                 self.db.commit()
             finally:
                 self._runtime_cookie_path = None
+
+    def _download_source(self, job, temp_dir: str, job_id: int) -> bool:
+        # Federation downloads stay in Concierge because they require peer
+        # database records and federation credentials. All public provider
+        # downloads prefer the isolated worker.
+        if job.input_url.startswith("fed:"):
+            self._log(job_id, "Downloading from federated peer...", 5)
+            return self._handle_federation_direct(job.input_url, temp_dir, job_id)
+
+        downloader_mode = downloader_worker_client.get_downloader_mode(self.db)
+        if downloader_mode != "legacy":
+            self._log(job_id, "Sending download to isolated worker...", 5)
+            try:
+                worker_result = downloader_worker_client.download_with_worker(self, job.input_url, temp_dir, job_id)
+                worker_engine = str(worker_result.get("engine") or "unknown")
+                self._set_engine_used(f"worker:{worker_engine}")
+                for reason in worker_result.get("fallback_reasons") or []:
+                    self._append_fallback_reason(str(reason))
+                return True
+            except (
+                downloader_worker_client.WorkerUnavailable,
+                downloader_worker_client.WorkerDownloadFailed,
+            ) as exc:
+                self._append_fallback_reason(f"Isolated worker: {exc}")
+                if downloader_mode == "worker":
+                    self._set_last_reason(str(exc))
+                    return False
+                self._log(job_id, "Worker unavailable. Using legacy downloader...", 8)
+
+        if "spotify.com" in job.input_url:
+            self._log(job_id, "Resolving Spotify track with legacy downloader...", 10)
+            return self._handle_spotify_robust(job.input_url, temp_dir, job_id)
+
+        self._log(job_id, "Downloading with legacy source engine...", 10)
+        return self._handle_ytdlp_robust(job.input_url, temp_dir, job_id)
 
     # ── FEDERATION DIRECT ─────────────────────────────────────────────────
     # Fetch a track that lives on a peer Navipod via the existing

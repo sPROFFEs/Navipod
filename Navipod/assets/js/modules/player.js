@@ -706,8 +706,7 @@ function _setArtistLabel(el, artist) {
   // artist-navigation onclick there so it doesn't steal the tap and
   // stopPropagation before the footer handler runs. The fullscreen
   // player's artist (#fs-artist) is always clickable.
-  const isMiniPlayerMobile = el.id === 'player-artist' &&
-    window.matchMedia('(max-width: 768px)').matches;
+  const isMiniPlayerMobile = el.id === 'player-artist' && window.matchMedia('(max-width: 768px)').matches;
   if (!artist || artist === 'Unknown' || isMiniPlayerMobile) {
     el.style.cursor = isMiniPlayerMobile ? 'pointer' : 'default';
     el.onclick = null;
@@ -1338,7 +1337,12 @@ export function setupPlayer() {
   if (footer) {
     footer.addEventListener('click', (e) => {
       // Let buttons and their icons do their own thing.
-      if (e.target.closest('button, .icon-btn-sm, #play-pause-btn, .control-btn, .progress-bar-bg, .progress-knob, .volume-bar-bg, .volume-knob')) return;
+      if (
+        e.target.closest(
+          'button, .icon-btn-sm, #play-pause-btn, .control-btn, .progress-bar-bg, .progress-knob, .volume-bar-bg, .volume-knob'
+        )
+      )
+        return;
       ui.toggleFullscreenPlayer();
     });
     // Show pointer cursor on the clickable areas (desktop).

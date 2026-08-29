@@ -331,11 +331,13 @@ async def get_track_gain(track_id: int, request: Request, db: Session = Depends(
 
     # --- 1. Cached loudnorm measurement (volume normaliser) ---------------
     if track.loudness_measured_at is not None:
-        return JSONResponse({
-            "gain_db": float(track.gain_db) if track.gain_db is not None else 0.0,
-            "peak": float(track.peak) if track.peak is not None else 1.0,
-            "source": "loudnorm",
-        })
+        return JSONResponse(
+            {
+                "gain_db": float(track.gain_db) if track.gain_db is not None else 0.0,
+                "peak": float(track.peak) if track.peak is not None else 1.0,
+                "source": "loudnorm",
+            }
+        )
 
     # --- 2. ReplayGain tags via mutagen -----------------------------------
     file_path = _resolve_allowed_media_path(track.filepath)

@@ -17,6 +17,7 @@ from job_service import (
 )
 from ops_core import apply_schema_migrations, get_schema_status
 from update_service import (
+    UPDATER_RUNTIME_GENERATION,
     get_internal_updater_token,
     get_update_monitor_path,
     get_update_monitor_token,
@@ -25,6 +26,7 @@ from update_service import (
     queue_check_update,
     queue_silent_update_refresh_if_stale,
     run_apply_update_job_from_updater,
+    updater_runtime_handoff_scheduler,
 )
 
 __all__ = [
@@ -52,4 +54,6 @@ __all__ = [
     "run_apply_update_job_from_updater",
     "update_admin_job_progress",
     "update_autobackup_settings",
+    "updater_runtime_handoff_scheduler",
+    "UPDATER_RUNTIME_GENERATION",
 ]

@@ -32,13 +32,19 @@ fi
 # 2. FIX VOLUME PERMISSIONS
 if [ "$(id -u)" = "0" ]; then
     echo "[ENTRYPOINT] Ensuring /saas-data is owned by appuser (UID 1000)..."
-    mkdir -p /saas-data/cache /saas-data/users
+    mkdir -p /saas-data/cache /saas-data/users /saas-data/download-staging/jobs
     
     # Repair ownership without making credentials and databases group-writable.
     echo "[ENTRYPOINT] Fixing ownership on /saas-data..."
     chown -R appuser:appuser /saas-data
     find /saas-data -type d -exec chmod 750 {} +
     find /saas-data -type f -exec chmod 640 {} +
+
+    # The isolated downloader shares only this staging subtree. Keep it
+    # group-accessible to GID 2000 without widening permissions elsewhere.
+    chown -R appuser:downloaders /saas-data/download-staging
+    find /saas-data/download-staging -type d -exec chmod 2770 {} +
+    find /saas-data/download-staging -type f -exec chmod 660 {} +
 fi
 
 # 3. DROP PRIVILEGES AND RUN COMMAND
@@ -53,4 +59,3 @@ else
     echo "[ENTRYPOINT] Already running as non-root. Warning: Permissions might be broken."
     exec "$@"
 fi
-

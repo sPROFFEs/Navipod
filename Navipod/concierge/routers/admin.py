@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import shutil
@@ -9,6 +10,7 @@ from pathlib import Path
 import admin_statistics_service
 import auth
 import database
+import downloader_worker_client
 import library_maintenance
 import loudness
 import manager
@@ -487,6 +489,8 @@ async def system_monitor(request: Request, db: Session = Depends(get_db)):
     active_lock = operations_service.get_active_operation_lock(db)
     timezone_options = operations_service.get_timezone_options()
     wrapped_state = wrapped_service.get_wrapped_settings(db)
+    downloader_state = await asyncio.to_thread(downloader_worker_client.get_worker_status)
+    downloader_state["mode"] = downloader_worker_client.get_downloader_mode(db)
     wrapped_users = (
         db.query(database.User.username)
         .filter(database.User.is_active == True)
@@ -507,12 +511,38 @@ async def system_monitor(request: Request, db: Session = Depends(get_db)):
             "timezone_options": timezone_options,
             "wrapped": wrapped_state,
             "wrapped_users": [row[0] for row in wrapped_users],
+            "downloader": downloader_state,
             "admin_jobs": recent_jobs,
             "active_lock": active_lock,
             "username": admin.username,
             "is_admin": True,
         },
     )
+
+
+@router.get("/api/downloader/status")
+def api_downloader_status(db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
+    payload = downloader_worker_client.get_worker_status()
+    payload["mode"] = downloader_worker_client.get_downloader_mode(db)
+    return JSONResponse(payload, headers={"Cache-Control": "private, no-store"})
+
+
+@router.post("/system/downloader/mode")
+def update_downloader_mode(
+    downloader_mode: str = Form(...),
+    db: Session = Depends(get_db),
+    admin: database.User = Depends(get_current_admin),
+):
+    try:
+        mode = downloader_worker_client.set_downloader_mode(db, downloader_mode)
+    except ValueError:
+        return RedirectResponse("/admin/system?error=Invalid downloader mode", status_code=303)
+    labels = {
+        "automatic": "Automatic (isolated worker with legacy fallback)",
+        "worker": "Isolated worker only",
+        "legacy": "Legacy Concierge downloader",
+    }
+    return RedirectResponse(f"/admin/system?msg=Downloader mode set to {labels[mode]}", status_code=303)
 
 
 @router.get("/api/system-stats")
@@ -1101,9 +1131,7 @@ def _run_loudness_scan_job(job_id: int):
         )
         # Reset all tracks so they get re-measured (admin triggered this
         # manually, so they want a full re-scan).
-        db.query(database.Track).update(
-            {database.Track.loudness_measured_at: None}, synchronize_session=False
-        )
+        db.query(database.Track).update({database.Track.loudness_measured_at: None}, synchronize_session=False)
         db.commit()
         import operations_service as _ops
 
@@ -1324,16 +1352,18 @@ async def admin_metadata_rescan_job(
 
 
 @router.post("/api/library/loudness-scan/jobs")
-async def admin_loudness_scan_job(
-    background_tasks: BackgroundTasks, admin: database.User = Depends(get_current_admin)
-):
+async def admin_loudness_scan_job(background_tasks: BackgroundTasks, admin: database.User = Depends(get_current_admin)):
     """Re-measure loudness for all tracks (admin-triggered full re-scan)."""
     db = database.SessionLocal()
     try:
-        existing = db.query(database.AdminJob).filter(
-            database.AdminJob.job_type == "loudness_scan",
-            database.AdminJob.status.in_(["queued", "running"]),
-        ).first()
+        existing = (
+            db.query(database.AdminJob)
+            .filter(
+                database.AdminJob.job_type == "loudness_scan",
+                database.AdminJob.status.in_(["queued", "running"]),
+            )
+            .first()
+        )
         if existing:
             return JSONResponse(
                 {"error": "A loudness scan is already running (job #%d)." % existing.id},

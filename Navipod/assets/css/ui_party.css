@@ -267,13 +267,49 @@
 
 @media (max-width: 600px) {
     .party-page-head,
-    .party-room-hero { align-items: stretch; flex-direction: column; }
+    .party-room-hero {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 16px;
+        margin-top: 0;
+        margin-bottom: 20px;
+    }
+    .party-page-head h1,
+    .party-room-title h1 {
+        margin-bottom: 6px;
+        font-size: clamp(2rem, 11vw, 2.75rem);
+        overflow-wrap: anywhere;
+    }
     .party-create-btn,
-    .party-leave-btn { width: 100%; }
+    .party-leave-btn {
+        width: 100%;
+        min-height: 44px;
+    }
     .party-now-cover { width: 96px; height: 96px; flex-basis: 96px; }
-    .party-card { grid-template-columns: 48px minmax(0, 1fr); }
+    .party-card {
+        grid-template-columns: 48px minmax(0, 1fr);
+        gap: 12px;
+        min-height: 76px;
+        padding: 12px;
+    }
     .party-card-icon { width: 48px; height: 48px; }
     .party-status { display: none; }
-    .party-queue-row { grid-template-columns: 24px 42px minmax(0, 1fr) 30px; padding-inline: 2px; }
+    .party-layout,
+    .party-main-column,
+    .party-side-column { gap: 16px; }
+    .party-now-playing,
+    .party-add-panel,
+    .party-locked-panel { padding: 18px; }
+    .party-owner-controls { gap: 12px; }
+    .party-owner-controls button,
+    .party-row-remove { min-width: 44px; min-height: 44px; }
+    .party-queue-row {
+        grid-template-columns: 22px 42px minmax(0, 1fr) 44px;
+        gap: 8px;
+        padding: 6px 0;
+    }
     .party-queue-row img { width: 42px; height: 42px; }
+    .party-search input { min-height: 44px; }
+    .party-search-row { min-height: 56px; }
+    .party-delete-btn { min-height: 44px; }
 }

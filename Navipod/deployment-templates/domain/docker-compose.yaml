@@ -28,11 +28,49 @@ networks:
         - subnet: 172.20.0.0/16
 
 services:
+  downloader:
+    build: ./downloader-worker
+    container_name: navipod_downloader
+    user: root
+    restart: unless-stopped
+    volumes:
+      - ${HOST_DATA_ROOT:-/opt/saas-data}/download-staging:/downloads
+      - downloader-state:/home/downloader/.spotiflac
+    environment:
+      - CONCURRENT_DOWNLOADS=${CONCURRENT_DOWNLOADS:-3}
+      - JOB_TIMEOUT_SECONDS=${DOWNLOADER_WORKER_EXECUTION_TIMEOUT_SECONDS:-2400}
+      - TS_MAX_CONCURRENT_BROWSERS=1
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    pids_limit: 256
+    mem_limit: 2g
+    cpus: 2.0
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+    networks:
+      - navidrome-net
+
   concierge:
     build: ./concierge
     container_name: concierge
     user: root
     restart: unless-stopped
+    depends_on:
+      - downloader
     ports:
       - "8000:8000"
     volumes:
@@ -60,6 +98,9 @@ services:
       - RUNTIME_ENV_FILE=${RUNTIME_ENV_FILE:-/run/navipod/.env}
       - NAVIDROME_IMAGE=${NAVIDROME_IMAGE:-deluan/navidrome:latest}
       - CONCURRENT_DOWNLOADS=${CONCURRENT_DOWNLOADS:-3}
+      - DOWNLOADER_WORKER_URL=${DOWNLOADER_WORKER_URL:-http://downloader:8081}
+      - DOWNLOADER_WORKER_TOKEN_FILE=/saas-data/download-staging/.worker-token
+      - DOWNLOADER_STAGING_ROOT=/saas-data/download-staging
       - COOKIE_SECURE=${COOKIE_SECURE:-true}
       - BACKUP_ROOT=${BACKUP_ROOT:-/saas-data/backups}
       - BACKUP_SCHEDULER_POLL_SECONDS=${BACKUP_SCHEDULER_POLL_SECONDS:-60}
@@ -173,3 +214,5 @@ volumes:
     name: navipod_certbot_etc
   certbot-www:
     name: navipod_certbot_www
+  downloader-state:
+    name: navipod_downloader_state

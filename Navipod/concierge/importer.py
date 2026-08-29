@@ -284,6 +284,7 @@ def import_one(db, path: Path, *, dry_run: bool, stats: Stats) -> int | None:
         # Loudness measurement (best-effort, non-blocking for import)
         try:
             import loudness
+
             loudness.measure_track_for_import(db, track.id)
         except Exception as e:
             logger.debug("loudness measurement failed for #%s: %s", track.id, e)

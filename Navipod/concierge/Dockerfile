@@ -16,6 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # --- SECURITY: Create non-root user ---
 RUN adduser --disabled-password --gecos '' appuser
+RUN groupadd --gid 2000 downloaders && usermod -aG downloaders appuser
 
 # Handle internal app permissions
 RUN chown -R appuser:appuser /app

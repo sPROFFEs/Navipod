@@ -40,6 +40,7 @@ This repository has two levels:
 
 Main services in `Navipod/docker-compose.yaml`:
 - `concierge` — FastAPI backend and orchestration layer
+- `downloader` — isolated acquisition worker with current yt-dlp, spotDL, and SpotiFLAC engines
 - `nginx` — reverse proxy on port `80`
 - `tunnel` — optional Cloudflare Tunnel connector
 
@@ -245,6 +246,31 @@ joining.
 
 Downloads progress as `pending → downloading → importing → completed`. Duplicates are reused via source/hash/fingerprint. Old finished jobs are pruned automatically.
 
+### Isolated downloader
+
+New provider downloads run in the `downloader` container by default. The
+worker can write only to `/opt/saas-data/download-staging`; it does not receive
+the Navipod database, Docker socket, application signing key, user libraries,
+or final media pool. Concierge keeps ownership of quotas, jobs, deduplication,
+metadata import, playlists, and browser-facing APIs.
+
+SpotiFLAC extensions are fetched from an immutable repository commit during
+the image build and verified with pinned SHA-256 digests. Runtime extension
+auto-updates are disabled. The worker currently pins yt-dlp `2026.8.19`,
+spotDL `4.5.2`, and SpotiFLAC `3.5.0`; the legacy Concierge versions remain
+unchanged as a compatibility fallback.
+
+Admins can choose the policy under **Admin → System Monitor → Downloader
+runtime**:
+
+- **Automatic** (default): isolated worker first, then the legacy downloader if the worker or provider stack fails.
+- **Isolated worker only**: surface worker failures without silently changing engines.
+- **Legacy Concierge only**: bypass the worker for newly started jobs.
+
+Federated peer downloads remain inside Concierge because that path requires
+the existing peer database and credentials. A mode change affects new jobs;
+already-running jobs finish with the engine that started them.
+
 ## Updating
 
 **From the UI:** `Admin > System Monitor > Check for Updates → Apply Update`. The in-app updater creates a backup, runs schema migrations, rebuilds containers only when needed, and runs health checks.
@@ -288,7 +314,7 @@ Main variables in `.env.example`:
 
 ## Troubleshooting
 
-**Downloads fail** — verify `cookies.txt` is valid, Spotify credentials are correct, and the host has outbound internet. Check `docker compose logs -f concierge`.
+**Downloads fail** — verify `cookies.txt` is valid, Spotify credentials are correct, and the host has outbound internet. Check `docker compose logs -f downloader concierge`. An admin can temporarily select **Legacy Concierge only** in System Monitor to distinguish a worker/provider regression from an application problem.
 
 **Age-restricted YouTube fails** — export a fresh Netscape `cookies.txt` from a logged-in browser session and re-upload it.
 

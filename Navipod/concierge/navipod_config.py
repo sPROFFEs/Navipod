@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     COMPOSE_ENV_FILE: str = "/saas-data/config/navipod.env"
     RUNTIME_ENV_FILE: str = "/run/navipod/.env"
     CONCURRENT_DOWNLOADS: int = 3
+    DOWNLOADER_WORKER_URL: str = "http://downloader:8081"
+    DOWNLOADER_WORKER_TOKEN_FILE: str = "/saas-data/download-staging/.worker-token"
+    DOWNLOADER_STAGING_ROOT: str = "/saas-data/download-staging"
+    DOWNLOADER_WORKER_HEALTH_TIMEOUT_SECONDS: float = 2.0
+    DOWNLOADER_WORKER_JOB_TIMEOUT_SECONDS: int = 2700
+    DOWNLOADER_WORKER_POLL_SECONDS: float = 1.0
     POOL_STATUS_CACHE_TTL_SECONDS: int = 60
     COOKIE_SECURE: bool = True
     TRUST_PROXY_HEADERS: bool = False

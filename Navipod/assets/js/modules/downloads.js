@@ -104,6 +104,12 @@ function formatEngineLabel(engine) {
     'spotdl-basic': 'spotDL (basic)',
     'yt-dlp': 'yt-dlp',
     'yt-dlp-spotify-fallback': 'yt-dlp Spotify fallback',
+    'worker:spotiflac': 'Isolated SpotiFLAC',
+    'worker:spotdl-auth': 'Isolated spotDL (auth)',
+    'worker:spotdl-anonymous': 'Isolated spotDL (anonymous)',
+    'worker:spotdl-basic': 'Isolated spotDL (basic)',
+    'worker:yt-dlp': 'Isolated yt-dlp',
+    'worker:yt-dlp-spotify-fallback': 'Isolated yt-dlp Spotify fallback',
     dedupe: 'Library dedupe'
   };
   return labels[normalized] || (normalized ? normalized : 'Pending');

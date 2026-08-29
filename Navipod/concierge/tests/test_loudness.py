@@ -3,10 +3,8 @@
 import subprocess
 from unittest.mock import patch
 
-import pytest
-
 import loudness
-
+import pytest
 
 # Realistic ffmpeg loudnorm stderr output (from a 440 Hz sine wave).
 # This lets us test the JSON parser without running ffmpeg.
@@ -93,9 +91,16 @@ class TestMeasureLoudness:
         proc = subprocess.run(
             [
                 ffmpeg,
-                "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
-                "-c:a", "libmp3lame", "-q:a", "2",
-                str(test_file), "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=3",
+                "-c:a",
+                "libmp3lame",
+                "-q:a",
+                "2",
+                str(test_file),
+                "-y",
             ],
             capture_output=True,
         )

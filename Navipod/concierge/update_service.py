@@ -28,6 +28,8 @@ from job_service import (
 COMPOSE_UPDATE_TIMEOUT_SECONDS = 1000
 DOCKER_PRUNE_TIMEOUT_SECONDS = 120
 HEALTH_CHECK_TIMEOUT_SECONDS = 180
+UPDATER_RUNTIME_GENERATION = 2
+UPDATER_HANDOFF_DELAY_SECONDS = max(60, int(os.getenv("UPDATER_HANDOFF_DELAY_SECONDS", "600")))
 # How long an admin job can sit at status="running" without progressing
 # before apply-update treats it as a zombie and forcibly reclaims its
 # lock. Real apply-update runs in 2-5 minutes; the default 30 min leaves
@@ -38,6 +40,52 @@ ADMIN_LOCK_ZOMBIE_SECONDS = int(os.getenv("ADMIN_LOCK_ZOMBIE_SECONDS", "1800"))
 
 def get_internal_updater_token():
     return hashlib.sha256(f"navipod-updater:{ops.settings.SECRET_KEY}".encode("utf-8")).hexdigest()
+
+
+def _restart_updater_container() -> None:
+    result = ops._run_compose_command(
+        ["up", "-d", "--build", "--no-deps", "updater"],
+        check=False,
+        timeout_seconds=COMPOSE_UPDATE_TIMEOUT_SECONDS,
+    )
+    if result.returncode != 0:
+        error = (result.stderr or result.stdout or "updater rebuild failed").strip()
+        raise RuntimeError(error)
+
+
+def refresh_stale_updater_runtime() -> bool:
+    """Restart an updater that predates the current bind-mounted source.
+
+    The updater deliberately stays alive while Compose recreates Concierge so
+    its progress page remains available. After the first upgrade that adds a
+    new updater capability, the old Python process still has the prior modules
+    in memory. Concierge performs this delayed one-time handoff after the apply
+    job has had time to finish; subsequent health checks carry the generation.
+    """
+
+    try:
+        response = httpx.get("http://updater:8090/health", timeout=3.0)
+        response.raise_for_status()
+        payload = response.json()
+        generation = int(payload.get("runtime_generation") or 0)
+        source_current = bool(payload.get("source_current"))
+    except Exception:
+        generation = 0
+        source_current = False
+    if generation >= UPDATER_RUNTIME_GENERATION and source_current:
+        return False
+    _restart_updater_container()
+    return True
+
+
+async def updater_runtime_handoff_scheduler() -> None:
+    await asyncio.sleep(UPDATER_HANDOFF_DELAY_SECONDS)
+    try:
+        restarted = await asyncio.to_thread(refresh_stale_updater_runtime)
+        if restarted:
+            print("Restarted stale updater runtime after source upgrade", flush=True)
+    except Exception as exc:
+        print(f"Could not refresh stale updater runtime: {exc}", flush=True)
 
 
 def get_update_monitor_token(job_id: int) -> str:
@@ -69,9 +117,20 @@ def _select_services_for_update(changed_files: list[str]) -> tuple[list[str], li
     selected = ["concierge"]
     deferred = ["updater"]
 
+    worker_changed = any(
+        "downloader-worker/" in variant for path in changed_files for variant in ops._path_variants_for_match(path)
+    )
+    worker_protocol_changed = any(
+        ops._path_matches_required_target(path, "concierge/downloader_worker_client.py") for path in changed_files
+    )
+    compose_changed = any(ops._path_matches_required_target(path, "docker-compose.yaml") for path in changed_files)
+
+    if worker_changed or worker_protocol_changed or compose_changed:
+        selected.append("downloader")
+
     if any(ops._path_matches_required_target(path, "nginx.conf") for path in changed_files):
         selected.append("nginx")
-    if any(ops._path_matches_required_target(path, "docker-compose.yaml") for path in changed_files):
+    if compose_changed:
         if "nginx" not in selected:
             selected.append("nginx")
         if "tunnel" not in selected:
@@ -421,8 +480,21 @@ def _fetch_target_update_ref(target_sha: str | None):
     )
 
 
-def _run_post_update_health_check():
+def _strict_worker_mode_enabled() -> bool:
+    import downloader_worker_client
+
+    db = database.SessionLocal()
+    try:
+        return downloader_worker_client.get_downloader_mode(db) == "worker"
+    finally:
+        db.close()
+
+
+def _run_post_update_health_check(downloader_required: bool | None = None):
     urls = ["http://concierge:8000/login", "http://nginx/login"]
+    downloader_url = "http://downloader:8081/health"
+    if downloader_required is None:
+        downloader_required = _strict_worker_mode_enabled()
     timeout_seconds = HEALTH_CHECK_TIMEOUT_SECONDS
     deadline = ops.utcnow().timestamp() + timeout_seconds
     last_error = "health check did not start"
@@ -432,7 +504,26 @@ def _run_post_update_health_check():
             try:
                 response = httpx.get(url, timeout=5.0, follow_redirects=True)
                 if response.status_code < 500:
-                    return {"ok": True, "url": url, "status_code": response.status_code}
+                    worker_status = {"url": downloader_url, "available": False, "required": downloader_required}
+                    try:
+                        worker_response = httpx.get(downloader_url, timeout=5.0, follow_redirects=True)
+                        worker_status = {
+                            "url": downloader_url,
+                            "available": worker_response.status_code < 500,
+                            "status_code": worker_response.status_code,
+                            "required": downloader_required,
+                        }
+                    except Exception as exc:
+                        worker_status["error"] = str(exc)
+                    if downloader_required and not worker_status["available"]:
+                        last_error = "downloader worker is unavailable while worker-only mode is enabled"
+                        continue
+                    return {
+                        "ok": True,
+                        "url": url,
+                        "status_code": response.status_code,
+                        "downloader": worker_status,
+                    }
                 last_error = f"{url} returned {response.status_code}"
             except Exception as e:
                 last_error = str(e)

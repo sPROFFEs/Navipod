@@ -1,6 +1,8 @@
 import asyncio
+import hashlib
 import html
 import secrets
+from pathlib import Path
 
 import database
 import operations_service
@@ -9,6 +11,29 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 app = FastAPI()
+UPDATER_SOURCE_FILES = (
+    "updater_api.py",
+    "update_service.py",
+    "operations_service.py",
+    "ops_core.py",
+    "requirements.txt",
+)
+
+
+def _source_fingerprint() -> str:
+    digest = hashlib.sha256()
+    source_root = Path(__file__).resolve().parent
+    for filename in UPDATER_SOURCE_FILES:
+        path = source_root / filename
+        digest.update(filename.encode("utf-8"))
+        try:
+            digest.update(path.read_bytes())
+        except OSError:
+            digest.update(b"missing")
+    return digest.hexdigest()
+
+
+RUNTIME_SOURCE_FINGERPRINT = _source_fingerprint()
 
 
 class ApplyUpdatePayload(BaseModel):
@@ -38,7 +63,12 @@ def _load_job(job_id: int):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    disk_fingerprint = _source_fingerprint()
+    return {
+        "status": "ok",
+        "runtime_generation": operations_service.UPDATER_RUNTIME_GENERATION,
+        "source_current": disk_fingerprint == RUNTIME_SOURCE_FINGERPRINT,
+    }
 
 
 @app.get("/jobs/{job_id}", response_class=HTMLResponse)

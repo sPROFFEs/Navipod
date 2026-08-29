@@ -176,6 +176,7 @@ class SystemSettings(Base):
     wrapped_visible_from = Column(String, nullable=True)
     wrapped_visible_until = Column(String, nullable=True)
     wrapped_artist_clip_message = Column(Text, nullable=True)
+    downloader_mode = Column(String, default="automatic", nullable=False)
 
 
 class SchemaMigration(Base):

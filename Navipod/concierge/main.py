@@ -162,9 +162,7 @@ async def startup_event():
 
         # Mark admin jobs that were mid-flight when the previous process
         # exited as failed — BackgroundTasks workers died with the process.
-        stuck_admin = db.query(database.AdminJob).filter(
-            database.AdminJob.status.in_(["queued", "running"])
-        ).all()
+        stuck_admin = db.query(database.AdminJob).filter(database.AdminJob.status.in_(["queued", "running"])).all()
         for job in stuck_admin:
             job.status = "failed"
             job.message = (job.message or "") + " (interrupted by restart)"
@@ -186,6 +184,7 @@ async def startup_event():
     asyncio.create_task(reaper_scheduler())
     asyncio.create_task(cache_cleanup_scheduler())
     asyncio.create_task(operations_service.autobackup_scheduler())
+    asyncio.create_task(operations_service.updater_runtime_handoff_scheduler())
     asyncio.create_task(wrapped_daily_scheduler())
     asyncio.create_task(library_metadata_backfill())
     asyncio.create_task(loudness_backfill())
@@ -237,6 +236,7 @@ async def loudness_backfill():
     """
     try:
         import loudness
+
         measured = await asyncio.to_thread(loudness.backfill_loudness)
         if measured:
             logger.info("Measured loudness for %s existing track(s)", measured)

@@ -56,3 +56,17 @@ def test_admin_user_statistics_have_responsive_styles_and_independent_polling():
     assert "import { initSystemMonitor } from './system_monitor.js';" in views_javascript
     assert "if (url === '/admin/system')" in views_javascript
     assert "initSystemMonitor(container);" in views_javascript
+
+
+def test_admin_downloader_runtime_controls_have_explicit_status_styles():
+    assets_root = Path(__file__).resolve().parents[2] / "assets"
+    css = (assets_root / "css" / "admin_system.css").read_text(encoding="utf-8")
+    template = (Path(__file__).resolve().parents[1] / "templates" / "system_monitor.html").read_text(encoding="utf-8")
+
+    assert 'id="downloader-runtime-panel"' in template
+    assert 'action="/admin/system/downloader/mode"' in template
+    assert 'value="automatic"' in template
+    assert 'value="worker"' in template
+    assert 'value="legacy"' in template
+    assert ".monitor-runtime-status.available" in css
+    assert ".monitor-runtime-status.unavailable" in css

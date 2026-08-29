@@ -42,6 +42,10 @@ REBUILD_REQUIRED_PATHS = {
     "concierge/entrypoint.sh",
     "concierge/requirements.txt",
     "nginx.conf",
+    "downloader-worker/Dockerfile",
+    "downloader-worker/entrypoint.sh",
+    "downloader-worker/requirements.txt",
+    "downloader-worker/worker.py",
 }
 UPDATER_INTERNAL_URL = "http://updater:8090/internal/update/apply"
 
@@ -1378,6 +1382,12 @@ def _migration_020_federation_outbound_peers(conn):
     )
 
 
+def _migration_028_downloader_mode(conn):
+    columns = {row[1] for row in conn.execute(text("PRAGMA table_info(system_settings)")).fetchall()}
+    if "downloader_mode" not in columns:
+        conn.execute(text("ALTER TABLE system_settings ADD COLUMN downloader_mode TEXT NOT NULL DEFAULT 'automatic'"))
+
+
 MIGRATIONS = [
     ("000_base_schema", _migration_000_base_schema),
     ("001_tracks_library_columns", _migration_001_tracks_library_columns),
@@ -1407,6 +1417,7 @@ MIGRATIONS = [
     ("025_party_room_loading_status", _migration_025_party_room_loading_status),
     ("026_track_loudness_columns", _migration_026_track_loudness_columns),
     ("027_playback_queue_volume", _migration_027_playback_queue_volume),
+    ("028_downloader_mode", _migration_028_downloader_mode),
 ]
 
 
@@ -1447,6 +1458,7 @@ def ensure_system_settings_record(db):
             wrapped_visible_from=None,
             wrapped_visible_until=None,
             wrapped_artist_clip_message=None,
+            downloader_mode="automatic",
         )
         db.add(settings_row)
         db.commit()
