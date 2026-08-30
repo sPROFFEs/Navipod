@@ -72,6 +72,7 @@ def test_request_context_middleware_streams_directly_and_applies_headers():
     assert headers["x-frame-options"] == "SAMEORIGIN"
     assert headers["x-content-type-options"] == "nosniff"
     assert "frame-ancestors 'none'" in headers["content-security-policy"]
+    assert "frame-src 'self' https://www.youtube.com" in headers["content-security-policy"]
     assert language_context.get() == "es"
 
 

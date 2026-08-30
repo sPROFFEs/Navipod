@@ -14,7 +14,8 @@ SECURITY_HEADERS = {
         "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://www.youtube.com "
         "https://s.ytimg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com "
         "https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
-        "img-src 'self' data: blob: https:; media-src 'self' blob: https:; frame-src https://www.youtube.com; "
+        "img-src 'self' data: blob: https:; media-src 'self' blob: https:; "
+        "frame-src 'self' https://www.youtube.com; "
         "connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     ),
 }
