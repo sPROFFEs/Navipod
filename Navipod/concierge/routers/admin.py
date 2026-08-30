@@ -632,12 +632,16 @@ async def api_start_auth_browser(
         raise HTTPException(status_code=502, detail="Downloader did not return a browser session")
     ttl = max(60, min(1800, int(os.getenv("AUTH_BROWSER_TTL", "600"))))
     session, token = auth_browser.create(session_id, payload.provider.strip().lower(), int(admin.id), ttl)
+    websocket_path = quote(f"admin/auth-browser/websockify?session_id={session_id}&token={token}", safe="")
     return JSONResponse(
         {
             "status": worker_session.get("status", "starting"),
             "browser_session": session.serialize(),
             "token": token,
-            "novnc_url": f"/admin/auth-browser/vnc.html?path={quote(f'admin/auth-browser/websockify?session_id={session_id}&token={token}', safe='')}",
+            "novnc_url": (
+                f"/admin/auth-browser/vnc.html?path={websocket_path}"
+                f"&session_id={quote(session_id, safe='')}&token={quote(token, safe='')}"
+            ),
         },
         headers={"Cache-Control": "private, no-store"},
     )

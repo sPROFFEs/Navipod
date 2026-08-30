@@ -192,3 +192,9 @@ def test_remote_provider_connection_routes_are_not_exposed():
     assert '@router.post("/api/downloader/providers/{provider}/complete")' not in source
     assert '@router.get("/api/downloader/providers")' in source
     assert '@router.delete("/api/downloader/providers/{provider}")' in source
+
+
+def test_auth_browser_url_authorizes_page_and_websocket_requests():
+    source = (Path(__file__).resolve().parents[1] / "routers" / "admin.py").read_text(encoding="utf-8")
+    assert 'websocket_path = quote(f"admin/auth-browser/websockify?session_id={session_id}&token={token}"' in source
+    assert "f\"&session_id={quote(session_id, safe='')}&token={quote(token, safe='')}\"" in source

@@ -5,6 +5,10 @@ function setStatus(root, message, type = '') {
   status.className = `download-manager-live-status ${type}`.trim();
 }
 
+function getAuthBrowserModal(root) {
+  return root.querySelector('#auth-browser-modal') || document.querySelector('#auth-browser-modal');
+}
+
 async function responseJson(response) {
   let payload = {};
   try {
@@ -68,12 +72,12 @@ async function stopAuthBrowser(root) {
   await responseJson(
     await fetch('/admin/api/downloader/auth-browser', { method: 'DELETE', credentials: 'same-origin' })
   );
-  const modal = root.querySelector('#auth-browser-modal');
+  const modal = getAuthBrowserModal(root);
   if (modal) {
     modal.hidden = true;
     modal.setAttribute('aria-hidden', 'true');
   }
-  const frame = root.querySelector('[data-auth-browser-frame]');
+  const frame = modal?.querySelector('[data-auth-browser-frame]');
   if (frame) frame.src = 'about:blank';
   setStatus(root, 'Verification browser stopped.', 'success');
 }
@@ -91,9 +95,10 @@ async function startAuthBrowser(root, provider) {
     setStatus(root, `${provider} is already connected.`, 'success');
     return;
   }
-  const modal = root.querySelector('#auth-browser-modal');
-  const frame = root.querySelector('[data-auth-browser-frame]');
-  if (!modal || !frame || !payload.novnc_url) throw new Error('Verification browser URL was not returned');
+  const modal = getAuthBrowserModal(root);
+  const frame = modal?.querySelector('[data-auth-browser-frame]');
+  if (!payload.novnc_url) throw new Error('Verification browser URL was not returned');
+  if (!modal || !frame) throw new Error('Verification browser interface is unavailable');
   modal.dataset.provider = provider;
   modal.hidden = false;
   modal.setAttribute('aria-hidden', 'false');
@@ -107,7 +112,7 @@ async function startAuthBrowser(root, provider) {
 }
 
 async function checkAuthBrowser(root) {
-  const modal = root.querySelector('#auth-browser-modal');
+  const modal = getAuthBrowserModal(root);
   const provider = modal?.dataset.provider;
   if (!provider) return;
   setStatus(root, 'Checking provider verification…', 'pending');
@@ -129,6 +134,7 @@ export function initDownloadManager(scope = document) {
   const root = scope.querySelector?.('#download-manager-root');
   if (!root || root.dataset.initialized === 'true') return;
   root.dataset.initialized = 'true';
+  const authBrowserModal = getAuthBrowserModal(root);
 
   root.querySelector('#download-provider-refresh')?.addEventListener('click', () => {
     refreshProviders(root).catch((error) => setStatus(root, error.message, 'error'));
@@ -145,13 +151,13 @@ export function initDownloadManager(scope = document) {
       startAuthBrowser(root, button.dataset.providerVerify).catch((error) => setStatus(root, error.message, 'error'))
     );
   });
-  root
-    .querySelector('[data-auth-browser-close]')
+  authBrowserModal
+    ?.querySelector('[data-auth-browser-close]')
     ?.addEventListener('click', () => stopAuthBrowser(root).catch((error) => setStatus(root, error.message, 'error')));
-  root
-    .querySelector('[data-auth-browser-stop]')
+  authBrowserModal
+    ?.querySelector('[data-auth-browser-stop]')
     ?.addEventListener('click', () => stopAuthBrowser(root).catch((error) => setStatus(root, error.message, 'error')));
-  root
-    .querySelector('[data-auth-browser-check]')
+  authBrowserModal
+    ?.querySelector('[data-auth-browser-check]')
     ?.addEventListener('click', () => checkAuthBrowser(root).catch((error) => setStatus(root, error.message, 'error')));
 }

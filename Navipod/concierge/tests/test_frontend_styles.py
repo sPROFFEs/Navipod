@@ -86,6 +86,8 @@ def test_admin_download_manager_matches_admin_shell_and_explains_host_verificati
     assert "window.open" not in javascript
     assert "addEventListener('message'" not in javascript
     assert "/admin/api/downloader/providers" in javascript
+    assert "document.querySelector('#auth-browser-modal')" in javascript
+    assert "Verification browser interface is unavailable" in javascript
     assert 'id="downloader-runtime-panel"' not in system_template
 
 
