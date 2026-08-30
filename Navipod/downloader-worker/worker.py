@@ -388,6 +388,7 @@ def start_auth_browser(request: BrowserStartRequest) -> dict:
     except RuntimeError as exc:
         if str(exc) == "auth_browser_already_running":
             raise HTTPException(status_code=409, detail="auth_browser_already_running") from exc
+        logger.warning("Authentication browser startup failed for provider %s: %s", request.provider, exc)
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

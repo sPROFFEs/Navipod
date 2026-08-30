@@ -8,9 +8,11 @@ protected by the existing worker bearer token.
 from __future__ import annotations
 
 import os
+import re
 import secrets
 import shutil
 import signal
+import socket
 import subprocess
 import threading
 import time
@@ -42,6 +44,13 @@ class BrowserSession:
         }
 
 
+@dataclass
+class BrowserProcess:
+    name: str
+    process: subprocess.Popen
+    log_path: Path
+
+
 class AuthBrowserManager:
     """Manage one disposable Xvfb/Chromium/VNC/noVNC process tree."""
 
@@ -54,9 +63,14 @@ class AuthBrowserManager:
         self.vnc_port = int(os.getenv("AUTH_BROWSER_VNC_PORT", "5900"))
         self.websocket_port = int(os.getenv("AUTH_BROWSER_WEBSOCKET_PORT", "6080"))
         self.profile_root = Path(os.getenv("AUTH_BROWSER_PROFILE", "/home/downloader/.auth-browser"))
+        self.chromium_no_sandbox = os.getenv("AUTH_BROWSER_CHROMIUM_NO_SANDBOX", "true").strip().lower() not in {
+            "0",
+            "false",
+            "no",
+        }
         self._lock = threading.RLock()
         self._session: BrowserSession | None = None
-        self._processes: list[subprocess.Popen] = []
+        self._processes: list[BrowserProcess] = []
         self._timer: threading.Timer | None = None
 
     def _validate_url(self, url: str) -> str:
@@ -80,22 +94,73 @@ class AuthBrowserManager:
                 return candidate
         raise RuntimeError("noVNC assets are unavailable in the downloader image")
 
-    def _spawn(self, command: list[str], *, env: dict[str, str] | None = None) -> subprocess.Popen:
+    def _chromium_command(self, chromium: str, browser_profile: Path, url: str) -> list[str]:
+        command = [
+            chromium,
+            f"--display={self.display}",
+            f"--user-data-dir={browser_profile}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-sync",
+            "--disable-extensions",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+        ]
+        # Docker remains the outer sandbox: this container has no new
+        # privileges and drops all capabilities. Chromium's namespace/SUID
+        # sandbox cannot initialize reliably under that policy.
+        if self.chromium_no_sandbox:
+            command.append("--no-sandbox")
+        command.append(url)
+        return command
+
+    def _spawn(self, name: str, command: list[str], *, env: dict[str, str] | None = None) -> BrowserProcess:
+        log_path = Path("/tmp") / f"navipod-auth-browser-{secrets.token_hex(6)}-{name}.log"
+        log_stream = log_path.open("w", encoding="utf-8")
         process = subprocess.Popen(
             command,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=log_stream,
             env=env,
             start_new_session=True,
         )
-        self._processes.append(process)
-        return process
+        log_stream.close()
+        managed = BrowserProcess(name=name, process=process, log_path=log_path)
+        self._processes.append(managed)
+        return managed
+
+    def _component_error(self, managed: BrowserProcess) -> str:
+        try:
+            detail = managed.log_path.read_text(encoding="utf-8", errors="replace")[-1200:].strip()
+        except OSError:
+            detail = ""
+        detail = re.sub(r"https?://\S+", "[redacted-url]", detail)
+        return f"{managed.name} exited during startup" + (f": {detail}" if detail else "")
+
+    def _wait_ready(self, managed: BrowserProcess, predicate, timeout: float) -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if managed.process.poll() is not None:
+                raise RuntimeError(self._component_error(managed))
+            if predicate():
+                return
+            time.sleep(0.1)
+        raise RuntimeError(f"{managed.name} did not become ready within {timeout:g} seconds")
+
+    @staticmethod
+    def _port_ready(port: int) -> bool:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                return True
+        except OSError:
+            return False
 
     def _terminate_processes(self) -> None:
         processes = list(reversed(self._processes))
         self._processes.clear()
-        for process in processes:
+        for managed in processes:
+            process = managed.process
             if process.poll() is not None:
                 continue
             try:
@@ -103,7 +168,8 @@ class AuthBrowserManager:
             except OSError:
                 process.terminate()
         deadline = time.monotonic() + 5
-        for process in processes:
+        for managed in processes:
+            process = managed.process
             remaining = max(0, deadline - time.monotonic())
             try:
                 process.wait(timeout=remaining)
@@ -113,6 +179,8 @@ class AuthBrowserManager:
                 except OSError:
                     process.kill()
                 process.wait(timeout=2)
+        for managed in processes:
+            managed.log_path.unlink(missing_ok=True)
 
     def _expire(self, session_id: str) -> None:
         with self._lock:
@@ -168,7 +236,9 @@ class AuthBrowserManager:
                 browser_profile.mkdir(parents=True, exist_ok=True)
                 display_env = os.environ.copy()
                 display_env["DISPLAY"] = self.display
-                self._spawn(
+                display_number = self.display.removeprefix(":").split(".", 1)[0]
+                xvfb = self._spawn(
+                    "xvfb",
                     [
                         self._command("Xvfb"),
                         self.display,
@@ -178,24 +248,19 @@ class AuthBrowserManager:
                         "-ac",
                         "-nolisten",
                         "tcp",
-                    ]
-                )
-                time.sleep(0.2)
-                self._spawn(
-                    [
-                        chromium,
-                        f"--display={self.display}",
-                        f"--user-data-dir={browser_profile}",
-                        "--no-first-run",
-                        "--no-default-browser-check",
-                        "--disable-sync",
-                        "--disable-extensions",
-                        "--disable-dev-shm-usage",
-                        url,
                     ],
+                )
+                self._wait_ready(xvfb, lambda: Path(f"/tmp/.X11-unix/X{display_number}").exists(), 5)
+                chromium_command = self._chromium_command(chromium, browser_profile, url)
+                chromium_process = self._spawn(
+                    "chromium",
+                    chromium_command,
                     env=display_env,
                 )
-                self._spawn(
+                chromium_ready_at = time.monotonic() + 0.5
+                self._wait_ready(chromium_process, lambda: time.monotonic() >= chromium_ready_at, 5)
+                vnc = self._spawn(
+                    "x11vnc",
                     [
                         x11vnc,
                         "-display",
@@ -203,24 +268,23 @@ class AuthBrowserManager:
                         "-rfbport",
                         str(self.vnc_port),
                         "-localhost",
+                        "-nopw",
                         "-forever",
                         "-shared",
                     ],
                     env=display_env,
                 )
-                self._spawn(
+                self._wait_ready(vnc, lambda: self._port_ready(self.vnc_port), 5)
+                websocket = self._spawn(
+                    "websockify",
                     [
                         websockify,
                         f"--web={novnc}",
                         str(self.websocket_port),
                         f"127.0.0.1:{self.vnc_port}",
-                    ]
+                    ],
                 )
-                deadline = time.monotonic() + 15
-                while time.monotonic() < deadline:
-                    if any(process.poll() is not None for process in self._processes):
-                        raise RuntimeError("browser component exited during startup")
-                    time.sleep(0.1)
+                self._wait_ready(websocket, lambda: self._port_ready(self.websocket_port), 5)
                 session.status = "ready"
                 self._timer = threading.Timer(self.ttl, self._expire, args=(session.session_id,))
                 self._timer.daemon = True
