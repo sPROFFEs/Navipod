@@ -33,6 +33,12 @@ def test_worker_image_installs_spotiflac_browser_runtime():
     assert "command -v Xvfb" in dockerfile
 
 
+def test_worker_entrypoint_prepares_persistent_auth_browser_volume():
+    entrypoint = (PROJECT_ROOT / "downloader-worker" / "entrypoint.sh").read_text(encoding="utf-8")
+    assert "/home/downloader/.auth-browser" in entrypoint
+    assert "chown -R downloader:downloaders /home/downloader/.auth-browser" in entrypoint
+
+
 def test_updater_rebuilds_worker_for_worker_changes_and_keeps_updater_alive():
     selected, deferred = update_service._select_services_for_update(
         ["Navipod/downloader-worker/worker.py", "Navipod/concierge/downloader_worker_client.py"]
