@@ -16,11 +16,11 @@ The current project documents admin capabilities around:
 
 ## Download Manager
 
-Open `Admin → Download Manager` to inspect the isolated downloader, switch between automatic, worker-only and legacy modes, and connect SpotiFLAC lossless providers.
+Open `Admin → Download Manager` to inspect the isolated downloader, switch between automatic, worker-only and legacy modes, and inspect SpotiFLAC lossless-provider sessions.
 
-Provider connection is admin-only. Clicking **Connect** opens the provider's own Cloudflare verification page in a popup. After verification, the browser returns a one-time grant to Navipod; the isolated worker exchanges it for a signed session and stores that session in its private persistent volume. Navipod does not ask for TIDAL, Qobuz, Deezer or Amazon credentials.
+SpotiFLAC binds verification to the network and browser context that starts the challenge. A remote Navipod admin browser therefore cannot safely create a session for the downloader worker: starting from the server and solving from the administrator's device is rejected as a network change. The Download Manager does not expose a remote **Connect** action until Navipod has a host-side interactive verification bridge. It can still display, refresh and disconnect sessions already present in the worker's private persistent volume. Navipod never asks for TIDAL, Qobuz, Deezer or Amazon credentials.
 
-The default **Automatic** policy tries the isolated worker first and retains the Concierge downloader as a compatibility fallback. A provider is attempted only while its signed session is connected and unexpired. The worker checks connected sessions every 15 minutes and invokes SpotiFLAC's normal signed refresh before expiry, even when no downloads are running. Manual verification is needed again only when a provider expires or revokes a session that it can no longer refresh. Use **Disconnect** to remove its stored session.
+The default **Automatic** policy tries the isolated worker first and retains the Concierge downloader as a compatibility fallback. A provider is attempted only while its signed session is connected and unexpired. The worker checks connected sessions every 15 minutes and invokes SpotiFLAC's normal signed refresh before expiry, even when no downloads are running. Use **Disconnect** to remove a stored session, or select **Legacy** to bypass the isolated worker entirely.
 
 After pulling a version that changes the downloader image, rebuild it as part of the normal update:
 

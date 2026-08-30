@@ -1,14 +1,11 @@
 import asyncio
 import logging
 import os
-import re
-import secrets
 import shutil
 import stat
 import subprocess
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
 
 import admin_statistics_service
 import auth
@@ -37,8 +34,6 @@ logger = logging.getLogger(__name__)
 MAX_DUPLICATE_VALUE_SCAN = 500
 TRACK_DELETE_ROOTS = ("/saas-data/pool", "/saas-data/users")
 DOCKER_PURGE_IMAGE = "alpine:3.20"
-SPOTIFLAC_FLOW_PURPOSE = "spotiflac-provider-connect"
-SPOTIFLAC_CHALLENGE_RE = re.compile(r"^chl_[A-Za-z0-9_-]{8,128}$")
 
 
 def utcnow():
@@ -529,47 +524,6 @@ def api_downloader_status(db: Session = Depends(get_db), admin: database.User = 
     return JSONResponse(payload, headers={"Cache-Control": "private, no-store"})
 
 
-def _provider_flow_token(admin: database.User, provider: str) -> str:
-    return auth.create_access_token(
-        {
-            "sub": admin.username,
-            "admin_id": admin.id,
-            "provider": provider,
-            "purpose": SPOTIFLAC_FLOW_PURPOSE,
-            "nonce": secrets.token_urlsafe(24),
-        },
-        expires_delta=timedelta(minutes=5),
-    )
-
-
-def _validate_provider_flow_token(token: str, admin: database.User, provider: str) -> None:
-    payload = auth.get_token_payload(token)
-    if (
-        not payload
-        or payload.get("purpose") != SPOTIFLAC_FLOW_PURPOSE
-        or payload.get("sub") != admin.username
-        or payload.get("admin_id") != admin.id
-        or payload.get("provider") != provider
-        or not payload.get("nonce")
-    ):
-        raise HTTPException(status_code=403, detail="Provider connection flow is invalid or expired")
-
-
-def _validate_provider_verification_url(verification_url: str) -> None:
-    parsed = urlparse(verification_url)
-    query = parse_qs(parsed.query, keep_blank_values=True)
-    challenge_ids = query.get("id", [])
-    if (
-        parsed.scheme != "https"
-        or parsed.netloc != "api.zarz.moe"
-        or parsed.path != "/v2/challenge"
-        or set(query) != {"id"}
-        or len(challenge_ids) != 1
-        or not SPOTIFLAC_CHALLENGE_RE.fullmatch(challenge_ids[0])
-    ):
-        raise HTTPException(status_code=502, detail="Provider returned an unsafe verification URL")
-
-
 @router.get("/downloads")
 async def download_manager(request: Request, db: Session = Depends(get_db)):
     admin = get_current_admin(request, db)
@@ -602,51 +556,6 @@ async def api_downloader_providers(admin: database.User = Depends(get_current_ad
     except downloader_worker_client.WorkerUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return JSONResponse({"providers": providers}, headers={"Cache-Control": "private, no-store"})
-
-
-@router.post("/api/downloader/providers/{provider}/start")
-async def api_start_downloader_provider(provider: str, admin: database.User = Depends(get_current_admin)):
-    try:
-        provider = downloader_worker_client.validate_spotiflac_provider(provider)
-        result = await asyncio.to_thread(downloader_worker_client.start_spotiflac_provider_auth, provider)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except downloader_worker_client.WorkerUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-    verification_url = str(result.get("verification_url") or "")
-    if result.get("status") == "verification_required":
-        _validate_provider_verification_url(verification_url)
-        result["flow_token"] = _provider_flow_token(admin, provider)
-    return JSONResponse(result, headers={"Cache-Control": "private, no-store"})
-
-
-@router.post("/api/downloader/providers/{provider}/complete")
-async def api_complete_downloader_provider(
-    provider: str,
-    request: Request,
-    admin: database.User = Depends(get_current_admin),
-):
-    try:
-        provider = downloader_worker_client.validate_spotiflac_provider(provider)
-        payload = await request.json()
-        if not isinstance(payload, dict):
-            raise ValueError("Invalid provider connection payload")
-        flow_token = str(payload.get("flow_token") or "")
-        grant = str(payload.get("grant") or "")
-        _validate_provider_flow_token(flow_token, admin, provider)
-        result = await asyncio.to_thread(
-            downloader_worker_client.complete_spotiflac_provider_auth,
-            provider,
-            grant,
-        )
-        return JSONResponse(result, headers={"Cache-Control": "private, no-store"})
-    except HTTPException:
-        raise
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except downloader_worker_client.WorkerUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.delete("/api/downloader/providers/{provider}")

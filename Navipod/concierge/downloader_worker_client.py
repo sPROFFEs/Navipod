@@ -125,21 +125,6 @@ def get_spotiflac_providers() -> list[dict]:
     return providers
 
 
-def start_spotiflac_provider_auth(provider: str) -> dict:
-    provider = validate_spotiflac_provider(provider)
-    with _client(timeout=20.0) as client:
-        return _worker_json(client.post(f"/providers/{provider}/auth/start"))
-
-
-def complete_spotiflac_provider_auth(provider: str, grant: str) -> dict:
-    provider = validate_spotiflac_provider(provider)
-    grant = str(grant or "").strip()
-    if len(grant) < 16 or len(grant) > 4096 or any(char.isspace() for char in grant):
-        raise ValueError("Invalid provider grant")
-    with _client(timeout=20.0) as client:
-        return _worker_json(client.post(f"/providers/{provider}/auth/complete", json={"grant": grant}))
-
-
 def disconnect_spotiflac_provider(provider: str) -> dict:
     provider = validate_spotiflac_provider(provider)
     with _client(timeout=10.0) as client:

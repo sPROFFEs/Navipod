@@ -210,7 +210,7 @@ function _canTrackSpaHistory(view) {
     'admin_downloads',
     'admin_delete_requests',
     'settings_user',
-    'help',
+    'help'
   ].includes(view);
 }
 

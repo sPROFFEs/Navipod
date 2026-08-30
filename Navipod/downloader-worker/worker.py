@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-from contextlib import asynccontextmanager, suppress
 import importlib.metadata
 import json
 import logging
@@ -15,6 +14,7 @@ import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -579,18 +579,14 @@ def _run_spotiflac(state: JobState, folder: Path) -> bool:
     _raise_if_cancelled(state)
     providers = _connected_spotiflac_services()
     if not providers:
-        state.append_fallback(
-            "No connected SpotiFLAC lossless provider session; using non-interactive fallbacks"
-        )
+        state.append_fallback("No connected SpotiFLAC lossless provider session; using non-interactive fallbacks")
         return False
 
     # SpotiFLAC's extension bridge creates signed-session asyncio primitives
     # per process. After one provider times out, reusing that process for the
     # next provider can bind those primitives to a closed event loop. Keep the
     # providers isolated so one unhealthy service cannot poison every fallback.
-    providers_by_service = {
-        definition["service"]: provider for provider, definition in SPOTIFLAC_PROVIDERS.items()
-    }
+    providers_by_service = {definition["service"]: provider for provider, definition in SPOTIFLAC_PROVIDERS.items()}
     for service in providers:
         _raise_if_cancelled(state)
         provider = providers_by_service[service]

@@ -5,7 +5,6 @@ from types import ModuleType, SimpleNamespace
 import database
 import httpx
 import pytest
-from fastapi import HTTPException
 
 # downloader_service imports the production Docker manager at module import time.
 # These unit tests exercise only downloader routing, so keep collection independent
@@ -17,7 +16,6 @@ sys.modules.setdefault("manager", manager_stub)
 
 import downloader_service
 import downloader_worker_client
-from routers import admin as admin_router
 
 
 def _manager(monkeypatch, mode: str):
@@ -177,8 +175,6 @@ def test_admin_downloader_endpoints_require_admin_dependency():
     protected_routes = [
         '@router.get("/api/downloader/status")',
         '@router.get("/api/downloader/providers")',
-        '@router.post("/api/downloader/providers/{provider}/start")',
-        '@router.post("/api/downloader/providers/{provider}/complete")',
         '@router.delete("/api/downloader/providers/{provider}")',
         '@router.post("/system/downloader/mode")',
     ]
@@ -189,44 +185,10 @@ def test_admin_downloader_endpoints_require_admin_dependency():
         assert "Depends(get_current_admin)" in block
 
 
-def test_provider_flow_token_is_bound_to_admin_and_provider():
+def test_remote_provider_connection_routes_are_not_exposed():
     source = (Path(__file__).resolve().parents[1] / "routers" / "admin.py").read_text(encoding="utf-8")
 
-    assert 'SPOTIFLAC_FLOW_PURPOSE = "spotiflac-provider-connect"' in source
-    assert '"admin_id": admin.id' in source
-    assert '"provider": provider' in source
-    assert 'expires_delta=timedelta(minutes=5)' in source
-    assert 'payload.get("admin_id") != admin.id' in source
-    assert 'payload.get("provider") != provider' in source
-    assert 'parsed.path != "/v2/challenge"' in source
-    assert 'set(query) != {"id"}' in source
-    assert "SPOTIFLAC_CHALLENGE_RE.fullmatch(challenge_ids[0])" in source
-    assert 'raise HTTPException(status_code=503, detail=str(exc))' in source
-
-
-def test_provider_flow_token_validation_rejects_wrong_provider():
-    admin = SimpleNamespace(id=7, username="admin")
-    token = admin_router._provider_flow_token(admin, "tidal")
-
-    admin_router._validate_provider_flow_token(token, admin, "tidal")
-    with pytest.raises(HTTPException) as exc_info:
-        admin_router._validate_provider_flow_token(token, admin, "qobuz")
-
-    assert exc_info.value.status_code == 403
-
-
-def test_provider_verification_url_must_be_exact_trusted_challenge():
-    admin_router._validate_provider_verification_url(
-        "https://api.zarz.moe/v2/challenge?id=chl_0123456789abcdef"
-    )
-
-    unsafe_urls = [
-        "http://api.zarz.moe/v2/challenge?id=chl_0123456789abcdef",
-        "https://api.zarz.moe/v2/challenge-redirect?id=chl_0123456789abcdef",
-        "https://example.com/v2/challenge?id=chl_0123456789abcdef",
-        "https://api.zarz.moe/v2/challenge?id=bad&cb=https://example.com",
-    ]
-    for url in unsafe_urls:
-        with pytest.raises(HTTPException) as exc_info:
-            admin_router._validate_provider_verification_url(url)
-        assert exc_info.value.status_code == 502
+    assert '@router.post("/api/downloader/providers/{provider}/start")' not in source
+    assert '@router.post("/api/downloader/providers/{provider}/complete")' not in source
+    assert '@router.get("/api/downloader/providers")' in source
+    assert '@router.delete("/api/downloader/providers/{provider}")' in source

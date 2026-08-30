@@ -60,7 +60,7 @@ def test_admin_user_statistics_have_responsive_styles_and_independent_polling():
     assert "initSystemMonitor(container);" in views_javascript
 
 
-def test_admin_download_manager_has_provider_workflow_and_responsive_styles():
+def test_admin_download_manager_matches_admin_shell_and_explains_host_verification():
     assets_root = Path(__file__).resolve().parents[2] / "assets"
     css = (assets_root / "css" / "admin_downloads.css").read_text(encoding="utf-8")
     javascript = (assets_root / "js" / "modules" / "admin_downloads.js").read_text(encoding="utf-8")
@@ -73,14 +73,19 @@ def test_admin_download_manager_has_provider_workflow_and_responsive_styles():
     assert 'value="automatic"' in template
     assert 'value="worker"' in template
     assert 'value="legacy"' in template
-    assert 'data-provider-connect="{{ provider.provider }}"' in template
+    assert 'class="admin-container admin-shell download-manager"' in template
+    assert "New sessions require verification on the downloader host" in template
+    assert 'data-provider-connect="{{ provider.provider }}"' not in template
+    assert "data-provider-host-verification" in template
     assert ".download-provider-grid" in css
+    assert "var(--surface-0)" in css
+    assert "var(--border-subtle)" in css
+    assert "var(--radius-lg)" in css
     assert "@media (max-width: 680px)" in css
-    assert "event.origin !== PROVIDER_ORIGIN" in javascript
-    assert "event.source !== activeFlow.popup" in javascript
-    assert "flow_token: flow.flowToken" in javascript
-    assert "activeFlow.popup.closed" in javascript
-    assert "flow.completing = true" in javascript
+    assert "data-provider-connect" not in javascript
+    assert "window.open" not in javascript
+    assert "addEventListener('message'" not in javascript
+    assert "/admin/api/downloader/providers" in javascript
     assert 'id="downloader-runtime-panel"' not in system_template
 
 
@@ -116,7 +121,8 @@ def test_admin_download_manager_renders_worker_and_provider_states():
 
     assert "Download Manager" in rendered
     assert "TIDAL" in rendered
-    assert 'data-provider-connect="tidal"' in rendered
+    assert "Host verification required" in rendered
+    assert 'data-provider-connect="tidal"' not in rendered
     assert "Automatic — worker first, legacy fallback" in rendered
 
 

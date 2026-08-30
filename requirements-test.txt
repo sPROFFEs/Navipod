@@ -1,10 +1,8 @@
-fastapi>=0.100.0
-sqlalchemy>=2.0.0
-python-jose[cryptography]>=3.3.0
-passlib>=1.7.4
-bcrypt==4.0.1
-pydantic-settings>=2.0.0
-PyYAML>=6.0.0
+# Keep CI's import surface aligned with the Concierge application.  The test
+# suite imports production modules during collection, so maintaining a partial
+# duplicate here causes missing-module failures whenever those imports grow.
+-r Navipod/concierge/requirements.txt
+
 mutagen>=1.47.0
 pytest>=8.0.0
 ruff==0.15.10

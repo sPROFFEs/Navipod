@@ -1,12 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Download Manager{% endblock %}
 {% block content %}
-<div class="admin-container download-manager" id="download-manager-root">
+<div class="admin-container admin-shell download-manager" id="download-manager-root">
     <section class="admin-shell-header download-manager-header">
         <div>
-            <div class="download-manager-eyebrow">ADMIN · DOWNLOAD INFRASTRUCTURE</div>
             <h1>Download Manager</h1>
-            <p>Control downloader routing and connect lossless providers through a verified SpotiFLAC session.</p>
+            <p>Monitor the isolated downloader, manage provider sessions, and choose the download fallback policy.</p>
         </div>
         <div class="admin-shell-actions">
             <a href="/admin" onclick="loadView('settings_admin'); return false;" class="admin-shell-btn">
@@ -52,15 +51,23 @@
     <div class="download-manager-warning"><i data-lucide="triangle-alert"></i><span>{{ downloader.error }}</span></div>
     {% endif %}
 
-    <section class="download-manager-panel">
-        <div class="download-manager-panel-head">
+    <section class="admin-panel download-manager-panel">
+        <div class="admin-panel-header download-manager-panel-head">
             <div>
                 <h2>Lossless provider sessions</h2>
-                <p>Connection happens in the provider's verification page. Navipod stores the resulting signed session inside the private worker volume and checks every 15 minutes to renew it before expiry.</p>
+                <p>Connected sessions are stored in the private worker volume and checked every 15 minutes for renewal.</p>
             </div>
-            <button type="button" class="download-manager-secondary" id="download-provider-refresh">
+            <button type="button" class="admin-secondary-btn" id="download-provider-refresh">
                 <i data-lucide="refresh-cw"></i><span>Refresh</span>
             </button>
+        </div>
+
+        <div class="download-provider-notice" role="note">
+            <i data-lucide="shield-alert"></i>
+            <div>
+                <strong>New sessions require verification on the downloader host</strong>
+                <span>Provider verification is bound to the network that starts it. A remote admin browser cannot safely create a session for the worker, so browser-based Connect is unavailable. Existing sessions continue to refresh normally.</span>
+            </div>
         </div>
 
         {% if downloader.provider_error %}
@@ -83,10 +90,10 @@
                     <strong data-provider-expiry>{{ provider.expires_at or 'Not connected' }}</strong>
                 </div>
                 <div class="download-provider-actions">
-                    <button type="button" class="download-manager-primary" data-provider-connect="{{ provider.provider }}" {% if provider.connected %}hidden{% endif %}>
-                        <i data-lucide="key-round"></i><span>Connect</span>
-                    </button>
-                    <button type="button" class="download-manager-danger" data-provider-disconnect="{{ provider.provider }}" {% if not provider.connected %}hidden{% endif %}>
+                    <span class="download-provider-unavailable" data-provider-host-verification {% if provider.connected %}hidden{% endif %}>
+                        <i data-lucide="monitor-cog"></i><span>Host verification required</span>
+                    </span>
+                    <button type="button" class="admin-danger-btn" data-provider-disconnect="{{ provider.provider }}" {% if not provider.connected %}hidden{% endif %}>
                         <i data-lucide="unlink"></i><span>Disconnect</span>
                     </button>
                 </div>
@@ -97,8 +104,8 @@
         </div>
     </section>
 
-    <section class="download-manager-panel download-policy-panel">
-        <div class="download-manager-panel-head">
+    <section class="admin-panel download-manager-panel download-policy-panel">
+        <div class="admin-panel-header download-manager-panel-head">
             <div>
                 <h2>Download engine policy</h2>
                 <p>Automatic is recommended: it tries the isolated worker first and preserves the legacy downloader as a compatibility fallback.</p>
@@ -111,13 +118,13 @@
                 <option value="worker" {% if downloader.mode == 'worker' %}selected{% endif %}>Isolated worker only</option>
                 <option value="legacy" {% if downloader.mode == 'legacy' %}selected{% endif %}>Legacy Concierge only</option>
             </select>
-            <button type="submit" class="download-manager-primary"><i data-lucide="save"></i><span>Save policy</span></button>
+            <button type="submit" class="admin-submit"><i data-lucide="save"></i><span>Save policy</span></button>
         </form>
     </section>
 
-    <section class="download-manager-security-note">
+    <section class="download-manager-security-note" role="note">
         <i data-lucide="shield-check"></i>
-        <div><strong>Protected connection flow</strong><span>Provider grants are accepted only from the trusted verification origin, paired to the current admin with a five-minute signed flow token, exchanged once, and never written to application logs.</span></div>
+        <div><strong>Fallback remains available</strong><span>Automatic mode tries the isolated worker first and uses the legacy Concierge downloader when the worker cannot complete a download. Select Legacy to bypass the worker entirely.</span></div>
     </section>
 </div>
 {% endblock %}
