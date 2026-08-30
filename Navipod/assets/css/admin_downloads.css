@@ -253,6 +253,15 @@
     text-align: center;
 }
 
+.auth-browser-modal[hidden] { display: none; }
+.auth-browser-modal { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 2rem; background: rgb(4 7 12 / 78%); }
+.auth-browser-dialog { width: min(95vw, 1500px); height: min(90vh, 1000px); display: flex; flex-direction: column; gap: 1rem; padding: 1.25rem; border: 1px solid var(--border-subtle); border-radius: 16px; background: var(--surface-1); box-shadow: 0 24px 80px rgb(0 0 0 / 45%); }
+.auth-browser-dialog-head, .auth-browser-footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.auth-browser-dialog-head h2 { margin: 0; }
+.auth-browser-help { margin: 0; color: var(--text-muted); }
+.auth-browser-frame { min-height: 0; flex: 1; width: 100%; border: 1px solid var(--border-subtle); border-radius: 10px; background: #111; }
+.auth-browser-footer { color: var(--text-muted); }
+
 .download-policy-form {
     display: grid;
     grid-template-columns: minmax(190px, 1fr) minmax(280px, 2fr) auto;

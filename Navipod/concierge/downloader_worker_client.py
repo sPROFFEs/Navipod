@@ -25,6 +25,10 @@ class WorkerUnavailable(RuntimeError):
     pass
 
 
+class WorkerConflict(RuntimeError):
+    pass
+
+
 class WorkerDownloadFailed(RuntimeError):
     pass
 
@@ -113,6 +117,8 @@ def _worker_json(response: httpx.Response) -> dict:
             detail = str(response.json().get("detail") or "")
         except Exception:
             pass
+        if response.status_code == 409:
+            raise WorkerConflict(detail or "Downloader worker request conflicts with an active session") from exc
         raise WorkerUnavailable(detail or f"Downloader worker request failed: {exc}") from exc
 
 
@@ -129,6 +135,41 @@ def disconnect_spotiflac_provider(provider: str) -> dict:
     provider = validate_spotiflac_provider(provider)
     with _client(timeout=10.0) as client:
         return _worker_json(client.delete(f"/providers/{provider}/auth"))
+
+
+def start_auth_browser(provider: str, url: str) -> dict:
+    """Start the worker-local browser used for interactive verification."""
+    with _client(timeout=20.0) as client:
+        return _worker_json(client.post("/browser/start", json={"provider": provider, "url": url}))
+
+
+def get_auth_browser_status() -> dict:
+    with _client(timeout=10.0) as client:
+        return _worker_json(client.get("/browser/status"))
+
+
+def stop_auth_browser() -> dict:
+    with _client(timeout=10.0) as client:
+        return _worker_json(client.delete("/browser/stop"))
+
+
+def open_auth_browser(session_id: str, url: str) -> dict:
+    with _client(timeout=10.0) as client:
+        return _worker_json(client.post("/browser/open", json={"session_id": session_id, "url": url}))
+
+
+def start_spotiflac_provider_auth(provider: str) -> dict:
+    provider = validate_spotiflac_provider(provider)
+    with _client(timeout=20.0) as client:
+        return _worker_json(client.post(f"/providers/{provider}/auth/start"))
+
+
+def check_spotiflac_provider(provider: str) -> dict:
+    provider = validate_spotiflac_provider(provider)
+    providers = get_spotiflac_providers()
+    return next(
+        (item for item in providers if item.get("provider") == provider), {"provider": provider, "connected": False}
+    )
 
 
 def _safe_worker_source(job_id: str, relative_path: str) -> Path:

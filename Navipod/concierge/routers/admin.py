@@ -6,9 +6,11 @@ import stat
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import admin_statistics_service
 import auth
+import auth_browser
 import database
 import downloader_worker_client
 import library_maintenance
@@ -20,9 +22,10 @@ import path_security
 import psutil
 import track_identity
 import wrapped_service
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from navipod_config import settings
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session, aliased
 
@@ -34,6 +37,11 @@ logger = logging.getLogger(__name__)
 MAX_DUPLICATE_VALUE_SCAN = 500
 TRACK_DELETE_ROOTS = ("/saas-data/pool", "/saas-data/users")
 DOCKER_PURGE_IMAGE = "alpine:3.20"
+
+
+class AuthBrowserStartRequest(BaseModel):
+    provider: str = Field(min_length=1, max_length=64)
+    url: str = Field(min_length=1, max_length=4096)
 
 
 def utcnow():
@@ -568,6 +576,106 @@ async def api_disconnect_downloader_provider(provider: str, admin: database.User
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except downloader_worker_client.WorkerUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/api/downloader/providers/{provider}/auth-browser/start", status_code=202)
+async def api_start_provider_auth_browser(provider: str, admin: database.User = Depends(get_current_admin)):
+    try:
+        auth_result = await asyncio.to_thread(downloader_worker_client.start_spotiflac_provider_auth, provider)
+        if auth_result.get("status") == "connected":
+            return JSONResponse(auth_result, headers={"Cache-Control": "private, no-store"})
+        url = str(auth_result.get("verification_url") or "")
+        if not url:
+            raise HTTPException(status_code=502, detail="Provider did not return a verification URL")
+        return await api_start_auth_browser(
+            AuthBrowserStartRequest(provider=provider, url=url),
+            admin,
+        )
+    except HTTPException:
+        raise
+    except downloader_worker_client.WorkerConflict as exc:
+        raise HTTPException(status_code=409, detail="auth_browser_already_running") from exc
+    except (downloader_worker_client.WorkerUnavailable, ValueError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/api/downloader/providers/{provider}/auth-browser/check")
+async def api_check_provider_auth_browser(provider: str, admin: database.User = Depends(get_current_admin)):
+    try:
+        result = await asyncio.to_thread(downloader_worker_client.check_spotiflac_provider, provider)
+        if result.get("connected"):
+            await asyncio.to_thread(downloader_worker_client.stop_auth_browser)
+            auth_browser.remove_for_admin(int(admin.id))
+        return JSONResponse(result, headers={"Cache-Control": "private, no-store"})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except downloader_worker_client.WorkerUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/api/downloader/auth-browser/start", status_code=202)
+async def api_start_auth_browser(
+    payload: AuthBrowserStartRequest,
+    admin: database.User = Depends(get_current_admin),
+):
+    auth_browser.clear_expired()
+    try:
+        worker_session = await asyncio.to_thread(
+            downloader_worker_client.start_auth_browser, payload.provider, payload.url
+        )
+    except downloader_worker_client.WorkerConflict as exc:
+        raise HTTPException(status_code=409, detail="auth_browser_already_running") from exc
+    except downloader_worker_client.WorkerUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    session_id = str(worker_session.get("session_id") or "")
+    if not session_id:
+        raise HTTPException(status_code=502, detail="Downloader did not return a browser session")
+    ttl = max(60, min(1800, int(os.getenv("AUTH_BROWSER_TTL", "600"))))
+    session, token = auth_browser.create(session_id, payload.provider.strip().lower(), int(admin.id), ttl)
+    return JSONResponse(
+        {
+            "status": worker_session.get("status", "starting"),
+            "browser_session": session.serialize(),
+            "token": token,
+            "novnc_url": f"/admin/auth-browser/vnc.html?path={quote(f'admin/auth-browser/websockify?session_id={session_id}&token={token}', safe='')}",
+        },
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
+@router.get("/api/downloader/auth-browser/status")
+async def api_auth_browser_status(admin: database.User = Depends(get_current_admin)):
+    try:
+        worker_status = await asyncio.to_thread(downloader_worker_client.get_auth_browser_status)
+    except downloader_worker_client.WorkerUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    session_id = str(worker_status.get("session_id") or "")
+    if session_id and not auth_browser.owned_by(session_id, int(admin.id)):
+        worker_status = {"status": "idle", "enabled": worker_status.get("enabled", True)}
+    return JSONResponse(worker_status, headers={"Cache-Control": "private, no-store"})
+
+
+@router.get("/api/downloader/auth-browser/authorize")
+def authorize_auth_browser(
+    session_id: str | None = Query(None, min_length=8, max_length=128),
+    token: str | None = Query(None, min_length=16, max_length=256),
+    header_session_id: str | None = Header(None, alias="X-Auth-Browser-Session"),
+    header_token: str | None = Header(None, alias="X-Auth-Browser-Token"),
+    admin: database.User = Depends(get_current_admin),
+):
+    """nginx auth_request target for the same-origin noVNC proxy."""
+    session_id = session_id or header_session_id or ""
+    token = token or header_token or ""
+    if not auth_browser.validate(session_id, token, int(admin.id)):
+        raise HTTPException(status_code=403, detail="Invalid or expired auth-browser session")
+    return {"status": "authorized"}
+
+
+@router.delete("/api/downloader/auth-browser")
+async def api_stop_auth_browser(admin: database.User = Depends(get_current_admin)):
+    result = await asyncio.to_thread(downloader_worker_client.stop_auth_browser)
+    auth_browser.remove_for_admin(int(admin.id))
+    return JSONResponse(result, headers={"Cache-Control": "private, no-store"})
 
 
 @router.post("/system/downloader/mode")

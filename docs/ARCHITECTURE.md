@@ -46,7 +46,7 @@ FastAPI backend and orchestration layer. It manages the Navipod application expe
 
 Private FastAPI worker that owns the current yt-dlp, spotDL and SpotiFLAC runtimes. Concierge authenticates to it with a token stored in the shared download-staging volume. Download output is staged there and copied into the library only after a job completes successfully.
 
-SpotiFLAC signed sessions live in the worker-only `downloader-state` volume; provider credentials are never collected by Navipod. A worker heartbeat checks existing sessions every 15 minutes and triggers the upstream signed-session refresh when due. Per-provider locks prevent refresh, session changes and active downloads from rotating the same session concurrently. Remote browser provisioning is intentionally unavailable because the upstream challenge binds creation, verification and grant exchange to one network context; a future connection flow requires an interactive browser running beside the worker.
+SpotiFLAC signed sessions live in the worker-only `downloader-state` volume; provider credentials are never collected by Navipod. A worker heartbeat checks existing sessions every 15 minutes and triggers the upstream signed-session refresh when due. Per-provider locks prevent refresh, session changes and active downloads from rotating the same session concurrently. When manual verification is required, Concierge starts a single short-lived Chromium/Xvfb/x11vnc/websockify stack inside the worker; the administrator reaches it only through the authenticated noVNC proxy. VNC ports are never published to the host, and the persistent browser profile is isolated in `auth-browser-state`.
 
 ### `nginx`
 

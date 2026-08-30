@@ -46,6 +46,8 @@ REBUILD_REQUIRED_PATHS = {
     "downloader-worker/entrypoint.sh",
     "downloader-worker/requirements.txt",
     "downloader-worker/worker.py",
+    "downloader-worker/auth_browser.py",
+    "concierge/auth_browser.py",
 }
 UPDATER_INTERNAL_URL = "http://updater:8090/internal/update/apply"
 

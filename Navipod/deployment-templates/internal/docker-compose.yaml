@@ -38,10 +38,13 @@ services:
     volumes:
       - ${HOST_DATA_ROOT:-/opt/saas-data}/download-staging:/downloads
       - downloader-state:/home/downloader/.spotiflac
+      - auth-browser-state:/home/downloader/.auth-browser
     environment:
       - CONCURRENT_DOWNLOADS=${CONCURRENT_DOWNLOADS:-3}
       - JOB_TIMEOUT_SECONDS=${DOWNLOADER_WORKER_EXECUTION_TIMEOUT_SECONDS:-2400}
       - TS_MAX_CONCURRENT_BROWSERS=1
+      - AUTH_BROWSER_ENABLED=${AUTH_BROWSER_ENABLED:-true}
+      - AUTH_BROWSER_TTL=${AUTH_BROWSER_TTL:-600}
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8081/health"]
       interval: 30s
@@ -183,3 +186,5 @@ services:
 volumes:
   downloader-state:
     name: navipod_downloader_state
+  auth-browser-state:
+    name: navipod_auth_browser_state

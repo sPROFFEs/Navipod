@@ -20,6 +20,7 @@ from urllib.parse import urlencode
 
 import httpx
 import yt_dlp
+from auth_browser import manager as auth_browser_manager
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -88,6 +89,20 @@ class ProviderGrantRequest(BaseModel):
         if not value or any(char.isspace() for char in value):
             raise ValueError("grant is malformed")
         return value
+
+
+class BrowserStartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str = Field(min_length=1, max_length=64)
+    url: str = Field(min_length=1, max_length=4096)
+
+
+class BrowserOpenRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str = Field(min_length=8, max_length=128)
+    url: str = Field(min_length=1, max_length=4096)
 
 
 class JobCancelled(RuntimeError):
@@ -315,6 +330,9 @@ async def startup() -> None:
     global spotiflac_refresh_task
     _ensure_token()
     (DOWNLOAD_ROOT / "jobs").mkdir(parents=True, exist_ok=True)
+    # A container restart invalidates any previous remote desktop session, but
+    # keeps the persistent Chromium profile and provider state intact.
+    auth_browser_manager.cleanup_stale()
     if spotiflac_refresh_task is None or spotiflac_refresh_task.done():
         spotiflac_refresh_task = asyncio.create_task(
             _spotiflac_session_refresh_loop(),
@@ -325,6 +343,7 @@ async def startup() -> None:
 @app.on_event("shutdown")
 async def shutdown() -> None:
     global spotiflac_refresh_task
+    auth_browser_manager.stop()
     if spotiflac_refresh_task is None:
         return
     spotiflac_refresh_task.cancel()
@@ -337,6 +356,7 @@ async def shutdown() -> None:
 def health() -> dict:
     return {
         "status": "ok",
+        "browser": auth_browser_manager.status(),
         "versions": {
             "yt-dlp": _package_version("yt-dlp"),
             "spotdl": _package_version("spotdl"),
@@ -358,6 +378,39 @@ def status() -> dict:
 @app.get("/providers", dependencies=[Depends(require_auth)])
 def provider_statuses() -> dict:
     return {"providers": [_spotiflac_provider_status(provider) for provider in SPOTIFLAC_PROVIDERS]}
+
+
+@app.post("/browser/start", dependencies=[Depends(require_auth)], status_code=202)
+def start_auth_browser(request: BrowserStartRequest) -> dict:
+    """Start the private browser used for manual provider verification."""
+    try:
+        return auth_browser_manager.start(request.provider, request.url).serialize()
+    except RuntimeError as exc:
+        if str(exc) == "auth_browser_already_running":
+            raise HTTPException(status_code=409, detail="auth_browser_already_running") from exc
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/browser/status", dependencies=[Depends(require_auth)])
+def auth_browser_status() -> dict:
+    return auth_browser_manager.status()
+
+
+@app.post("/browser/open", dependencies=[Depends(require_auth)])
+def open_auth_browser(request: BrowserOpenRequest) -> dict:
+    try:
+        return auth_browser_manager.open_url(request.session_id, request.url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.delete("/browser/stop", dependencies=[Depends(require_auth)])
+def stop_auth_browser() -> dict:
+    return auth_browser_manager.stop()
 
 
 @app.post("/providers/{provider}/auth/start", dependencies=[Depends(require_auth)])

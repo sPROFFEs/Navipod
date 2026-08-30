@@ -6,7 +6,7 @@ WORKDIR /app
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        ca-certificates chromium curl ffmpeg gosu nodejs unzip xvfb && \
+        ca-certificates chromium curl ffmpeg gosu nodejs novnc unzip websockify x11vnc xvfb && \
     curl -fsSL https://deno.land/install.sh | sh -s -- -y && \
     mv /root/.deno/bin/deno /usr/local/bin/deno && \
     command -v Xvfb && \
@@ -41,6 +41,7 @@ RUN groupadd --gid 2000 downloaders && \
     chown -R downloader:downloaders /home/downloader /app
 
 COPY worker.py /app/worker.py
+COPY auth_browser.py /app/auth_browser.py
 COPY entrypoint.sh /usr/local/bin/downloader-entrypoint
 RUN chmod 0755 /usr/local/bin/downloader-entrypoint
 

@@ -18,7 +18,7 @@ The current project documents admin capabilities around:
 
 Open `Admin → Download Manager` to inspect the isolated downloader, switch between automatic, worker-only and legacy modes, and inspect SpotiFLAC lossless-provider sessions.
 
-SpotiFLAC binds verification to the network and browser context that starts the challenge. A remote Navipod admin browser therefore cannot safely create a session for the downloader worker: starting from the server and solving from the administrator's device is rejected as a network change. The Download Manager does not expose a remote **Connect** action until Navipod has a host-side interactive verification bridge. It can still display, refresh and disconnect sessions already present in the worker's private persistent volume. Navipod never asks for TIDAL, Qobuz, Deezer or Amazon credentials.
+SpotiFLAC binds verification to the network and browser context that starts the challenge. The Download Manager can open a short-lived noVNC browser running inside the downloader worker, so verification and grant exchange use the worker's network. The session is single-admin, expires automatically, and is stopped when the administrator closes it. Navipod never asks for TIDAL, Qobuz, Deezer or Amazon credentials.
 
 The default **Automatic** policy tries the isolated worker first and retains the Concierge downloader as a compatibility fallback. A provider is attempted only while its signed session is connected and unexpired. The worker checks connected sessions every 15 minutes and invokes SpotiFLAC's normal signed refresh before expiry, even when no downloads are running. Use **Disconnect** to remove a stored session, or select **Legacy** to bypass the isolated worker entirely.
 
