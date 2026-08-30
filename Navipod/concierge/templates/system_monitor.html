@@ -1,15 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ _("monitor.title") }}{% endblock %}
 {% block content %}
-{% set downloader = downloader | default({
-    'available': false,
-    'mode': 'automatic',
-    'versions': {},
-    'extensions': {},
-    'active_jobs': 0,
-    'failed_jobs': 0,
-    'error': 'Downloader status is temporarily unavailable while Concierge finishes updating.'
-}, true) %}
 <div class="admin-container system-monitor">
     <section class="monitor-header">
         <div>
@@ -17,6 +8,9 @@
             <p>Operational status, backup control, and update management for the running instance.</p>
         </div>
         <div class="monitor-actions">
+            <a href="/admin/downloads" onclick="loadView('admin_downloads'); return false;" class="monitor-button">
+                <i data-lucide="download-cloud"></i><span>Download Manager</span>
+            </a>
             <form action="/admin/system/purge-storage" method="post" class="monitor-form" data-confirm="{{ _('monitor.purge_confirm') }}" data-title="Purge storage residue">
                 <button type="submit" class="monitor-warning">
                     <i data-lucide="trash-2"></i><span>{{ _("monitor.purge_trash") }}</span>
@@ -72,77 +66,6 @@
             <div class="monitor-card-label">Pool limit is the maximum shared storage available for all users and downloads.</div>
             <div class="monitor-progress"><span id="pool-bar" style="width: {{ pool.percent }}%; background: {% if pool.percent > 90 %}var(--monitor-red){% else %}var(--monitor-blue){% endif %};"></span></div>
         </article>
-    </section>
-
-    <section class="monitor-panel" id="downloader-runtime-panel">
-        <div class="monitor-panel-header">
-            <div>
-                <h2>Downloader runtime</h2>
-                <p>The isolated worker uses the current provider engines. Automatic mode falls back to the proven Concierge implementation when the worker is unavailable.</p>
-            </div>
-            <span class="monitor-runtime-status {% if downloader.available %}available{% else %}unavailable{% endif %}">
-                <i data-lucide="{% if downloader.available %}circle-check{% else %}circle-alert{% endif %}"></i>
-                {% if downloader.available %}Worker online{% else %}Worker unavailable{% endif %}
-            </span>
-        </div>
-        <div class="monitor-panel-body">
-            <div class="monitor-kv-grid">
-                <div class="monitor-kv">
-                    <div class="monitor-kv-label">Active mode</div>
-                    <div class="monitor-kv-value">
-                        {% if downloader.mode == 'legacy' %}Legacy Concierge
-                        {% elif downloader.mode == 'worker' %}Isolated worker only
-                        {% else %}Automatic worker + fallback{% endif %}
-                    </div>
-                </div>
-                <div class="monitor-kv">
-                    <div class="monitor-kv-label">yt-dlp</div>
-                    <div class="monitor-kv-value"><code>{{ downloader.versions.get('yt-dlp', 'Unavailable') }}</code></div>
-                </div>
-                <div class="monitor-kv">
-                    <div class="monitor-kv-label">spotDL</div>
-                    <div class="monitor-kv-value"><code>{{ downloader.versions.get('spotdl', 'Unavailable') }}</code></div>
-                </div>
-                <div class="monitor-kv">
-                    <div class="monitor-kv-label">SpotiFLAC</div>
-                    <div class="monitor-kv-value"><code>{{ downloader.versions.get('SpotiFLAC', 'Unavailable') }}</code></div>
-                </div>
-                <div class="monitor-kv">
-                    <div class="monitor-kv-label">Worker activity</div>
-                    <div class="monitor-kv-value">{{ downloader.active_jobs or 0 }} active · {{ downloader.failed_jobs or 0 }} failed</div>
-                </div>
-            </div>
-
-            {% if downloader.extensions %}
-            <div class="monitor-extension-list" aria-label="Installed SpotiFLAC extensions">
-                {% for extension, version in downloader.extensions.items() %}
-                <span><strong>{{ extension }}</strong> {{ version }}</span>
-                {% endfor %}
-            </div>
-            {% endif %}
-
-            {% if not downloader.available and downloader.error %}
-            <div class="monitor-inline-warning">
-                <i data-lucide="triangle-alert"></i>
-                <span>{{ downloader.error }}</span>
-            </div>
-            {% endif %}
-
-            <form action="/admin/system/downloader/mode" method="post" class="monitor-form-grid">
-                <div class="monitor-field">
-                    <label for="downloader-mode">Download engine policy</label>
-                    <select id="downloader-mode" name="downloader_mode" class="monitor-select">
-                        <option value="automatic" {% if downloader.mode == 'automatic' %}selected{% endif %}>Automatic — worker first, legacy fallback</option>
-                        <option value="worker" {% if downloader.mode == 'worker' %}selected{% endif %}>Isolated worker only</option>
-                        <option value="legacy" {% if downloader.mode == 'legacy' %}selected{% endif %}>Legacy Concierge only</option>
-                    </select>
-                    <div class="monitor-field-help">Changing this affects new jobs only. Active downloads continue with the engine that started them.</div>
-                </div>
-                <div class="monitor-field-action">
-                    <button type="submit" class="monitor-primary"><i data-lucide="save"></i><span>Save downloader mode</span></button>
-                </div>
-            </form>
-        </div>
     </section>
 
     <section class="monitor-panel monitor-user-statistics" id="user-statistics-panel">

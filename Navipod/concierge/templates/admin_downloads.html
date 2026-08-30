@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Download Manager{% endblock %}
+{% block content %}
+<div class="admin-container download-manager" id="download-manager-root">
+    <section class="admin-shell-header download-manager-header">
+        <div>
+            <div class="download-manager-eyebrow">ADMIN · DOWNLOAD INFRASTRUCTURE</div>
+            <h1>Download Manager</h1>
+            <p>Control downloader routing and connect lossless providers through a verified SpotiFLAC session.</p>
+        </div>
+        <div class="admin-shell-actions">
+            <a href="/admin" onclick="loadView('settings_admin'); return false;" class="admin-shell-btn">
+                <i data-lucide="users" width="18" height="18"></i><span>User Admin</span>
+            </a>
+            <a href="/admin/system" onclick="loadView('system_monitor'); return false;" class="admin-shell-btn monitor">
+                <i data-lucide="activity" width="18" height="18"></i><span>System Monitor</span>
+            </a>
+        </div>
+    </section>
+
+    {% if request.query_params.msg %}
+    <div class="admin-toast success"><i data-lucide="check-circle"></i><span>{{ request.query_params.msg }}</span></div>
+    {% endif %}
+    {% if request.query_params.error %}
+    <div class="admin-toast error"><i data-lucide="alert-circle"></i><span>{{ request.query_params.error }}</span></div>
+    {% endif %}
+
+    <div class="download-manager-live-status" id="download-manager-status" role="status" aria-live="polite"></div>
+
+    <section class="download-runtime-grid">
+        <article class="download-runtime-card primary">
+            <div class="download-runtime-icon"><i data-lucide="container"></i></div>
+            <div>
+                <span>Isolated worker</span>
+                <strong>{% if downloader.available %}Online{% else %}Unavailable{% endif %}</strong>
+                <small>{{ downloader.active_jobs or 0 }} active · {{ downloader.failed_jobs or 0 }} failed</small>
+            </div>
+            <span class="download-status-dot {% if downloader.available %}connected{% else %}unavailable{% endif %}"></span>
+        </article>
+        <article class="download-runtime-card">
+            <span>yt-dlp</span><strong>{{ downloader.versions.get('yt-dlp', 'Unavailable') }}</strong>
+        </article>
+        <article class="download-runtime-card">
+            <span>spotDL</span><strong>{{ downloader.versions.get('spotdl', 'Unavailable') }}</strong>
+        </article>
+        <article class="download-runtime-card">
+            <span>SpotiFLAC</span><strong>{{ downloader.versions.get('SpotiFLAC', 'Unavailable') }}</strong>
+        </article>
+    </section>
+
+    {% if not downloader.available and downloader.error %}
+    <div class="download-manager-warning"><i data-lucide="triangle-alert"></i><span>{{ downloader.error }}</span></div>
+    {% endif %}
+
+    <section class="download-manager-panel">
+        <div class="download-manager-panel-head">
+            <div>
+                <h2>Lossless provider sessions</h2>
+                <p>Connection happens in the provider's verification page. Navipod stores the resulting signed session inside the private worker volume and checks every 15 minutes to renew it before expiry.</p>
+            </div>
+            <button type="button" class="download-manager-secondary" id="download-provider-refresh">
+                <i data-lucide="refresh-cw"></i><span>Refresh</span>
+            </button>
+        </div>
+
+        {% if downloader.provider_error %}
+        <div class="download-manager-warning"><i data-lucide="circle-alert"></i><span>{{ downloader.provider_error }}</span></div>
+        {% endif %}
+
+        <div class="download-provider-grid" id="download-provider-grid">
+            {% for provider in providers %}
+            <article class="download-provider-card" data-provider-card="{{ provider.provider }}">
+                <div class="download-provider-topline">
+                    <div class="download-provider-mark"><i data-lucide="radio-tower"></i></div>
+                    <span class="download-provider-state {{ provider.status }}" data-provider-state>{{ provider.status|replace('_', ' ')|title }}</span>
+                </div>
+                <div>
+                    <h3>{{ provider.label }}</h3>
+                    <p>SpotiFLAC service <code>{{ provider.service }}</code></p>
+                </div>
+                <div class="download-provider-meta">
+                    <span>Session expiry</span>
+                    <strong data-provider-expiry>{{ provider.expires_at or 'Not connected' }}</strong>
+                </div>
+                <div class="download-provider-actions">
+                    <button type="button" class="download-manager-primary" data-provider-connect="{{ provider.provider }}" {% if provider.connected %}hidden{% endif %}>
+                        <i data-lucide="key-round"></i><span>Connect</span>
+                    </button>
+                    <button type="button" class="download-manager-danger" data-provider-disconnect="{{ provider.provider }}" {% if not provider.connected %}hidden{% endif %}>
+                        <i data-lucide="unlink"></i><span>Disconnect</span>
+                    </button>
+                </div>
+            </article>
+            {% else %}
+            <div class="download-provider-empty">Provider status is unavailable. Confirm that the isolated worker is online, then refresh.</div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="download-manager-panel download-policy-panel">
+        <div class="download-manager-panel-head">
+            <div>
+                <h2>Download engine policy</h2>
+                <p>Automatic is recommended: it tries the isolated worker first and preserves the legacy downloader as a compatibility fallback.</p>
+            </div>
+        </div>
+        <form action="/admin/system/downloader/mode" method="post" class="download-policy-form">
+            <label for="downloader-mode">Active policy</label>
+            <select id="downloader-mode" name="downloader_mode">
+                <option value="automatic" {% if downloader.mode == 'automatic' %}selected{% endif %}>Automatic — worker first, legacy fallback</option>
+                <option value="worker" {% if downloader.mode == 'worker' %}selected{% endif %}>Isolated worker only</option>
+                <option value="legacy" {% if downloader.mode == 'legacy' %}selected{% endif %}>Legacy Concierge only</option>
+            </select>
+            <button type="submit" class="download-manager-primary"><i data-lucide="save"></i><span>Save policy</span></button>
+        </form>
+    </section>
+
+    <section class="download-manager-security-note">
+        <i data-lucide="shield-check"></i>
+        <div><strong>Protected connection flow</strong><span>Provider grants are accepted only from the trusted verification origin, paired to the current admin with a five-minute signed flow token, exchanged once, and never written to application logs.</span></div>
+    </section>
+</div>
+{% endblock %}

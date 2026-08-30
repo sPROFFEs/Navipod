@@ -60,18 +60,64 @@ def test_admin_user_statistics_have_responsive_styles_and_independent_polling():
     assert "initSystemMonitor(container);" in views_javascript
 
 
-def test_admin_downloader_runtime_controls_have_explicit_status_styles():
+def test_admin_download_manager_has_provider_workflow_and_responsive_styles():
     assets_root = Path(__file__).resolve().parents[2] / "assets"
-    css = (assets_root / "css" / "admin_system.css").read_text(encoding="utf-8")
-    template = (Path(__file__).resolve().parents[1] / "templates" / "system_monitor.html").read_text(encoding="utf-8")
+    css = (assets_root / "css" / "admin_downloads.css").read_text(encoding="utf-8")
+    javascript = (assets_root / "js" / "modules" / "admin_downloads.js").read_text(encoding="utf-8")
+    templates_root = Path(__file__).resolve().parents[1] / "templates"
+    template = (templates_root / "admin_downloads.html").read_text(encoding="utf-8")
+    system_template = (templates_root / "system_monitor.html").read_text(encoding="utf-8")
 
-    assert 'id="downloader-runtime-panel"' in template
+    assert 'id="download-manager-root"' in template
     assert 'action="/admin/system/downloader/mode"' in template
     assert 'value="automatic"' in template
     assert 'value="worker"' in template
     assert 'value="legacy"' in template
-    assert ".monitor-runtime-status.available" in css
-    assert ".monitor-runtime-status.unavailable" in css
+    assert 'data-provider-connect="{{ provider.provider }}"' in template
+    assert ".download-provider-grid" in css
+    assert "@media (max-width: 680px)" in css
+    assert "event.origin !== PROVIDER_ORIGIN" in javascript
+    assert "event.source !== activeFlow.popup" in javascript
+    assert "flow_token: flow.flowToken" in javascript
+    assert "activeFlow.popup.closed" in javascript
+    assert "flow.completing = true" in javascript
+    assert 'id="downloader-runtime-panel"' not in system_template
+
+
+def test_admin_download_manager_renders_worker_and_provider_states():
+    templates_root = Path(__file__).resolve().parents[1] / "templates"
+    environment = Environment(loader=FileSystemLoader(templates_root))
+    environment.globals.update(static_v="test", _=lambda value: value)
+    request = type("Request", (), {"query_params": {}})()
+
+    rendered = environment.get_template("admin_downloads.html").render(
+        request=request,
+        username="admin",
+        is_admin=True,
+        pool={"used": 1, "limit": 2, "percent": 50},
+        downloader={
+            "available": True,
+            "active_jobs": 0,
+            "failed_jobs": 0,
+            "versions": {"yt-dlp": "1", "spotdl": "2", "SpotiFLAC": "3"},
+            "mode": "automatic",
+        },
+        providers=[
+            {
+                "provider": "tidal",
+                "label": "TIDAL",
+                "service": "ext:tidal-web",
+                "status": "disconnected",
+                "connected": False,
+                "expires_at": None,
+            }
+        ],
+    )
+
+    assert "Download Manager" in rendered
+    assert "TIDAL" in rendered
+    assert 'data-provider-connect="tidal"' in rendered
+    assert "Automatic — worker first, legacy fallback" in rendered
 
 
 def test_system_monitor_renders_during_old_handler_new_template_update_window():
@@ -106,4 +152,4 @@ def test_system_monitor_renders_during_old_handler_new_template_update_window():
     )
 
     assert "Update applied successfully" in rendered
-    assert "Downloader status is temporarily unavailable while Concierge finishes updating." in rendered
+    assert "Download Manager" in rendered

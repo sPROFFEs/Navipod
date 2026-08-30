@@ -11,7 +11,23 @@ The current project documents admin capabilities around:
 - metadata rescans;
 - rotating backups;
 - application monitoring;
+- downloader policy and lossless-provider sessions;
 - checking and applying updates.
+
+## Download Manager
+
+Open `Admin → Download Manager` to inspect the isolated downloader, switch between automatic, worker-only and legacy modes, and connect SpotiFLAC lossless providers.
+
+Provider connection is admin-only. Clicking **Connect** opens the provider's own Cloudflare verification page in a popup. After verification, the browser returns a one-time grant to Navipod; the isolated worker exchanges it for a signed session and stores that session in its private persistent volume. Navipod does not ask for TIDAL, Qobuz, Deezer or Amazon credentials.
+
+The default **Automatic** policy tries the isolated worker first and retains the Concierge downloader as a compatibility fallback. A provider is attempted only while its signed session is connected and unexpired. The worker checks connected sessions every 15 minutes and invokes SpotiFLAC's normal signed refresh before expiry, even when no downloads are running. Manual verification is needed again only when a provider expires or revokes a session that it can no longer refresh. Use **Disconnect** to remove its stored session.
+
+After pulling a version that changes the downloader image, rebuild it as part of the normal update:
+
+```bash
+cd Navipod
+docker compose up -d --build downloader concierge
+```
 
 ## Create an admin manually
 
@@ -70,6 +86,12 @@ A useful first diagnostic command is:
 
 ```bash
 docker compose logs -f concierge
+```
+
+For downloader/provider diagnostics:
+
+```bash
+docker compose logs -f downloader
 ```
 
 For a broader service view:

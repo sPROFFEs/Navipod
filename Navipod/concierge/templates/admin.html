@@ -8,6 +8,10 @@
             <p>Manage user accounts, credentials, and library maintenance without leaving the admin surface.</p>
         </div>
         <div class="admin-shell-actions">
+            <a href="/admin/downloads" onclick="loadView('admin_downloads'); return false;" class="admin-shell-btn">
+                <i data-lucide="download-cloud" width="18" height="18"></i>
+                <span>Download Manager</span>
+            </a>
             <a href="/admin/system" onclick="loadView('system_monitor'); return false;" class="admin-shell-btn monitor">
                 <i data-lucide="activity" width="18" height="18"></i>
                 <span>{{ _('admin.monitor_button') }}</span>

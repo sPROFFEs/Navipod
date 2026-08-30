@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import base64
+from contextlib import asynccontextmanager, suppress
 import importlib.metadata
+import json
 import logging
 import os
 import re
@@ -13,6 +16,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from urllib.parse import urlencode
 
 import httpx
 import yt_dlp
@@ -28,9 +32,21 @@ MAX_COOKIE_BYTES = 1024 * 1024
 MAX_LOG_LENGTH = 2000
 TERMINAL_JOB_TTL_SECONDS = max(300, int(os.getenv("TERMINAL_JOB_TTL_SECONDS", "3600")))
 JOB_TIMEOUT_SECONDS = max(60, int(os.getenv("JOB_TIMEOUT_SECONDS", "2400")))
+SPOTIFLAC_SESSION_REFRESH_INTERVAL_SECONDS = min(
+    3600,
+    max(60, int(os.getenv("SPOTIFLAC_SESSION_REFRESH_INTERVAL_SECONDS", "900"))),
+)
 AUDIO_EXTENSIONS = {".mp3", ".m4a", ".flac", ".opus", ".ogg", ".wav", ".aac", ".webm"}
 JOB_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 PERCENT_RE = re.compile(r"(?<!\d)(\d{1,3}(?:\.\d+)?)%")
+SPOTIFLAC_PROVIDERS = {
+    "tidal": {"extension": "tidal-web", "service": "ext:tidal-web", "label": "TIDAL"},
+    "qobuz": {"extension": "qobuz-web", "service": "ext:qobuz-web", "label": "Qobuz"},
+    "deezer": {"extension": "deezer", "service": "ext:deezer", "label": "Deezer"},
+    "amazon": {"extension": "amazon", "service": "ext:amazon", "label": "Amazon Music"},
+}
+SPOTIFLAC_AUTH_LOCKS = {provider: asyncio.Lock() for provider in SPOTIFLAC_PROVIDERS}
+SPOTIFLAC_SESSION_LOCKS = {provider: threading.Lock() for provider in SPOTIFLAC_PROVIDERS}
 
 
 class DownloadRequest(BaseModel):
@@ -57,6 +73,20 @@ class DownloadRequest(BaseModel):
             return value
         if not value.startswith(("https://", "http://")):
             raise ValueError("only HTTP(S) media URLs are accepted")
+        return value
+
+
+class ProviderGrantRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    grant: str = Field(min_length=16, max_length=4096)
+
+    @field_validator("grant")
+    @classmethod
+    def validate_grant(cls, value: str) -> str:
+        value = value.strip()
+        if not value or any(char.isspace() for char in value):
+            raise ValueError("grant is malformed")
         return value
 
 
@@ -118,6 +148,7 @@ app = FastAPI(title="Navipod Downloader Worker", docs_url=None, redoc_url=None, 
 jobs: dict[str, JobState] = {}
 jobs_lock = threading.RLock()
 executor = ThreadPoolExecutor(max_workers=max(1, int(os.getenv("CONCURRENT_DOWNLOADS", "3"))))
+spotiflac_refresh_task: asyncio.Task | None = None
 
 
 def _ensure_token() -> str:
@@ -160,10 +191,146 @@ def _installed_extensions() -> dict[str, str]:
     return result
 
 
+def _spotiflac_provider(provider: str) -> dict[str, str]:
+    definition = SPOTIFLAC_PROVIDERS.get((provider or "").strip().lower())
+    if not definition:
+        raise HTTPException(status_code=404, detail="Unknown SpotiFLAC provider")
+    return definition
+
+
+def _spotiflac_client(provider: str):
+    definition = _spotiflac_provider(provider)
+    manifest_path = Path.home() / ".spotiflac" / "extensions" / definition["extension"] / "manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if str(manifest.get("name") or "") != definition["extension"]:
+            raise ValueError("extension manifest name mismatch")
+        signed_session = manifest.get("signedSession") or {}
+        if signed_session.get("baseUrl") != "https://api.zarz.moe/v2":
+            raise ValueError("extension signed-session endpoint is not trusted")
+        from SpotiFLAC.extensions.runtime_features import signed_session_client
+
+        client = signed_session_client(manifest)
+        if client is None:
+            raise ValueError("extension does not provide signed-session support")
+        return client
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("Could not initialize SpotiFLAC provider %s: %s", provider, exc)
+        raise HTTPException(status_code=503, detail="SpotiFLAC provider runtime is unavailable") from exc
+
+
+def _spotiflac_provider_status(provider: str) -> dict:
+    definition = _spotiflac_provider(provider)
+    try:
+        client = _spotiflac_client(provider)
+    except HTTPException as exc:
+        return {
+            "provider": provider,
+            "label": definition["label"],
+            "service": definition["service"],
+            "status": "unavailable",
+            "connected": False,
+            "error": str(exc.detail),
+        }
+    return {
+        "provider": provider,
+        "label": definition["label"],
+        "service": definition["service"],
+        "status": "connected" if client.authenticated else "disconnected",
+        "connected": bool(client.authenticated),
+        "expires_at": client.expires_at,
+        "refresh_after": client.refresh_after,
+        "capabilities": list(client.capabilities or []),
+    }
+
+
+def _connected_spotiflac_services() -> list[str]:
+    connected = []
+    for provider, definition in SPOTIFLAC_PROVIDERS.items():
+        try:
+            if _spotiflac_provider_status(provider)["connected"]:
+                connected.append(definition["service"])
+        except Exception:
+            logger.debug("Could not inspect SpotiFLAC provider %s", provider, exc_info=True)
+    return connected
+
+
+@asynccontextmanager
+async def _spotiflac_session_guard(provider: str):
+    """Coordinate async session mutation with synchronous SpotiFLAC jobs."""
+    lock = SPOTIFLAC_SESSION_LOCKS[provider]
+    while not lock.acquire(blocking=False):
+        await asyncio.sleep(0.1)
+    try:
+        yield
+    finally:
+        lock.release()
+
+
+async def _refresh_spotiflac_sessions_once() -> dict[str, str]:
+    results = {}
+    for provider in SPOTIFLAC_PROVIDERS:
+        async with SPOTIFLAC_AUTH_LOCKS[provider]:
+            async with _spotiflac_session_guard(provider):
+                try:
+                    client = _spotiflac_client(provider)
+                except HTTPException:
+                    results[provider] = "unavailable"
+                    continue
+                try:
+                    if not client.authenticated:
+                        results[provider] = "disconnected"
+                        continue
+                    previous_session = client.session_id
+                    previous_expiry = client.expires_at
+                    await client.ensure_session()
+                    refreshed = client.session_id != previous_session or client.expires_at != previous_expiry
+                    results[provider] = "refreshed" if refreshed else "current"
+                    if refreshed:
+                        logger.info("Refreshed SpotiFLAC provider session: %s", provider)
+                except Exception as exc:
+                    results[provider] = "refresh_failed"
+                    logger.warning("Could not refresh SpotiFLAC provider session %s: %s", provider, exc)
+                finally:
+                    with suppress(Exception):
+                        await client.aclose()
+    return results
+
+
+async def _spotiflac_session_refresh_loop() -> None:
+    while True:
+        try:
+            await _refresh_spotiflac_sessions_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Unexpected SpotiFLAC session refresh failure")
+        await asyncio.sleep(SPOTIFLAC_SESSION_REFRESH_INTERVAL_SECONDS)
+
+
 @app.on_event("startup")
-def startup() -> None:
+async def startup() -> None:
+    global spotiflac_refresh_task
     _ensure_token()
     (DOWNLOAD_ROOT / "jobs").mkdir(parents=True, exist_ok=True)
+    if spotiflac_refresh_task is None or spotiflac_refresh_task.done():
+        spotiflac_refresh_task = asyncio.create_task(
+            _spotiflac_session_refresh_loop(),
+            name="spotiflac-session-refresh",
+        )
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    global spotiflac_refresh_task
+    if spotiflac_refresh_task is None:
+        return
+    spotiflac_refresh_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await spotiflac_refresh_task
+    spotiflac_refresh_task = None
 
 
 @app.get("/health")
@@ -186,6 +353,76 @@ def status() -> dict:
         active = sum(1 for job in jobs.values() if job.status in {"pending", "running"})
         failed = sum(1 for job in jobs.values() if job.status == "failed")
     return {**health(), "active_jobs": active, "failed_jobs": failed}
+
+
+@app.get("/providers", dependencies=[Depends(require_auth)])
+def provider_statuses() -> dict:
+    return {"providers": [_spotiflac_provider_status(provider) for provider in SPOTIFLAC_PROVIDERS]}
+
+
+@app.post("/providers/{provider}/auth/start", dependencies=[Depends(require_auth)])
+async def start_provider_auth(provider: str) -> dict:
+    provider = (provider or "").strip().lower()
+    definition = _spotiflac_provider(provider)
+    async with SPOTIFLAC_AUTH_LOCKS[provider]:
+        async with _spotiflac_session_guard(provider):
+            client = _spotiflac_client(provider)
+            try:
+                result = await client.bootstrap()
+                if result is True and client.authenticated:
+                    return {"status": "connected", "provider": _spotiflac_provider_status(provider)}
+                challenge_id = (client.pending_challenge_id or "").strip()
+                if not challenge_id:
+                    raise RuntimeError("provider bootstrap returned no challenge")
+                challenge_path = str(client.endpoints.get("challenge") or "/challenge")
+                verification_url = f"{client.base_url}{challenge_path}?{urlencode({'id': challenge_id})}"
+                return {
+                    "status": "verification_required",
+                    "provider": provider,
+                    "label": definition["label"],
+                    "verification_url": verification_url,
+                    "expires_in": 300,
+                }
+            except HTTPException:
+                raise
+            except Exception as exc:
+                logger.warning("SpotiFLAC provider %s bootstrap failed: %s", provider, exc)
+                raise HTTPException(status_code=502, detail="Provider verification could not be started") from exc
+            finally:
+                await client.aclose()
+
+
+@app.post("/providers/{provider}/auth/complete", dependencies=[Depends(require_auth)])
+async def complete_provider_auth(provider: str, request: ProviderGrantRequest) -> dict:
+    provider = (provider or "").strip().lower()
+    _spotiflac_provider(provider)
+    async with SPOTIFLAC_AUTH_LOCKS[provider]:
+        async with _spotiflac_session_guard(provider):
+            client = _spotiflac_client(provider)
+            try:
+                await client.exchange_grant(request.grant)
+                if not client.authenticated:
+                    raise RuntimeError("provider did not return an authenticated session")
+                return {"status": "connected", "provider": _spotiflac_provider_status(provider)}
+            except Exception as exc:
+                logger.warning("SpotiFLAC provider %s grant exchange failed: %s", provider, exc)
+                raise HTTPException(status_code=502, detail="Provider verification could not be completed") from exc
+            finally:
+                await client.aclose()
+
+
+@app.delete("/providers/{provider}/auth", dependencies=[Depends(require_auth)])
+async def disconnect_provider(provider: str) -> dict:
+    provider = (provider or "").strip().lower()
+    _spotiflac_provider(provider)
+    async with SPOTIFLAC_AUTH_LOCKS[provider]:
+        async with _spotiflac_session_guard(provider):
+            client = _spotiflac_client(provider)
+            try:
+                client.clear()
+                return {"status": "disconnected", "provider": _spotiflac_provider_status(provider)}
+            finally:
+                await client.aclose()
 
 
 @app.post("/jobs", dependencies=[Depends(require_auth)], status_code=202)
@@ -340,20 +577,30 @@ def _write_cookie_file(folder: Path, request: DownloadRequest) -> Path | None:
 
 def _run_spotiflac(state: JobState, folder: Path) -> bool:
     _raise_if_cancelled(state)
+    providers = _connected_spotiflac_services()
+    if not providers:
+        state.append_fallback(
+            "No connected SpotiFLAC lossless provider session; using non-interactive fallbacks"
+        )
+        return False
+
     # SpotiFLAC's extension bridge creates signed-session asyncio primitives
     # per process. After one provider times out, reusing that process for the
     # next provider can bind those primitives to a closed event loop. Keep the
     # providers isolated so one unhealthy service cannot poison every fallback.
-    providers = ("ext:tidal-web", "ext:qobuz-web", "ext:deezer", "ext:amazon")
-    for provider in providers:
+    providers_by_service = {
+        definition["service"]: provider for provider, definition in SPOTIFLAC_PROVIDERS.items()
+    }
+    for service in providers:
         _raise_if_cancelled(state)
-        state.update(progress=8, message=f"Trying SpotiFLAC provider {provider.removeprefix('ext:')}")
+        provider = providers_by_service[service]
+        state.update(progress=8, message=f"Trying SpotiFLAC provider {service.removeprefix('ext:')}")
         command = [
             "spotiflac",
             state.request.url,
             str(folder),
             "--service",
-            provider,
+            service,
             "--max-concurrent",
             "1",
             "--timeout",
@@ -361,12 +608,29 @@ def _run_spotiflac(state: JobState, folder: Path) -> bool:
             "--no-lyrics",
             "--no-enrich",
         ]
-        ok, output = _run_command(state, command)
+        with SPOTIFLAC_SESSION_LOCKS[provider]:
+            ok, output = _run_command(state, command)
         if ok and _audio_files(folder):
             state.update(engine="spotiflac")
             return True
         reason = output if not ok else "SpotiFLAC produced no audio files"
-        state.append_fallback(f"{provider}: {reason}")
+        state.append_fallback(f"{service}: {reason}")
+        lowered = reason.lower()
+        if any(
+            marker in lowered
+            for marker in (
+                "provider timed out",
+                "turnstile",
+                "cloudflare bypass",
+                "signed session",
+                "signed-session",
+                "session grant",
+            )
+        ):
+            state.append_fallback(
+                "SpotiFLAC shared signed-session authentication failed; skipped equivalent provider retries"
+            )
+            break
     return False
 
 

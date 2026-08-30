@@ -1,11 +1,14 @@
 import asyncio
 import logging
 import os
+import re
+import secrets
 import shutil
 import stat
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import admin_statistics_service
 import auth
@@ -34,6 +37,8 @@ logger = logging.getLogger(__name__)
 MAX_DUPLICATE_VALUE_SCAN = 500
 TRACK_DELETE_ROOTS = ("/saas-data/pool", "/saas-data/users")
 DOCKER_PURGE_IMAGE = "alpine:3.20"
+SPOTIFLAC_FLOW_PURPOSE = "spotiflac-provider-connect"
+SPOTIFLAC_CHALLENGE_RE = re.compile(r"^chl_[A-Za-z0-9_-]{8,128}$")
 
 
 def utcnow():
@@ -489,8 +494,6 @@ async def system_monitor(request: Request, db: Session = Depends(get_db)):
     active_lock = operations_service.get_active_operation_lock(db)
     timezone_options = operations_service.get_timezone_options()
     wrapped_state = wrapped_service.get_wrapped_settings(db)
-    downloader_state = await asyncio.to_thread(downloader_worker_client.get_worker_status)
-    downloader_state["mode"] = downloader_worker_client.get_downloader_mode(db)
     wrapped_users = (
         db.query(database.User.username)
         .filter(database.User.is_active == True)
@@ -511,7 +514,6 @@ async def system_monitor(request: Request, db: Session = Depends(get_db)):
             "timezone_options": timezone_options,
             "wrapped": wrapped_state,
             "wrapped_users": [row[0] for row in wrapped_users],
-            "downloader": downloader_state,
             "admin_jobs": recent_jobs,
             "active_lock": active_lock,
             "username": admin.username,
@@ -527,6 +529,138 @@ def api_downloader_status(db: Session = Depends(get_db), admin: database.User = 
     return JSONResponse(payload, headers={"Cache-Control": "private, no-store"})
 
 
+def _provider_flow_token(admin: database.User, provider: str) -> str:
+    return auth.create_access_token(
+        {
+            "sub": admin.username,
+            "admin_id": admin.id,
+            "provider": provider,
+            "purpose": SPOTIFLAC_FLOW_PURPOSE,
+            "nonce": secrets.token_urlsafe(24),
+        },
+        expires_delta=timedelta(minutes=5),
+    )
+
+
+def _validate_provider_flow_token(token: str, admin: database.User, provider: str) -> None:
+    payload = auth.get_token_payload(token)
+    if (
+        not payload
+        or payload.get("purpose") != SPOTIFLAC_FLOW_PURPOSE
+        or payload.get("sub") != admin.username
+        or payload.get("admin_id") != admin.id
+        or payload.get("provider") != provider
+        or not payload.get("nonce")
+    ):
+        raise HTTPException(status_code=403, detail="Provider connection flow is invalid or expired")
+
+
+def _validate_provider_verification_url(verification_url: str) -> None:
+    parsed = urlparse(verification_url)
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    challenge_ids = query.get("id", [])
+    if (
+        parsed.scheme != "https"
+        or parsed.netloc != "api.zarz.moe"
+        or parsed.path != "/v2/challenge"
+        or set(query) != {"id"}
+        or len(challenge_ids) != 1
+        or not SPOTIFLAC_CHALLENGE_RE.fullmatch(challenge_ids[0])
+    ):
+        raise HTTPException(status_code=502, detail="Provider returned an unsafe verification URL")
+
+
+@router.get("/downloads")
+async def download_manager(request: Request, db: Session = Depends(get_db)):
+    admin = get_current_admin(request, db)
+    pool_used, pool_limit, pool_pct = manager.get_pool_status(db)
+    downloader = await asyncio.to_thread(downloader_worker_client.get_worker_status)
+    downloader["mode"] = downloader_worker_client.get_downloader_mode(db)
+    try:
+        providers = await asyncio.to_thread(downloader_worker_client.get_spotiflac_providers)
+    except Exception as exc:
+        logger.warning("Could not load SpotiFLAC provider status: %s", exc)
+        providers = []
+        downloader["provider_error"] = str(exc)
+    return templates.TemplateResponse(
+        "admin_downloads.html",
+        {
+            "request": request,
+            "username": admin.username,
+            "is_admin": True,
+            "pool": {"used": pool_used, "limit": pool_limit, "percent": pool_pct},
+            "downloader": downloader,
+            "providers": providers,
+        },
+    )
+
+
+@router.get("/api/downloader/providers")
+async def api_downloader_providers(admin: database.User = Depends(get_current_admin)):
+    try:
+        providers = await asyncio.to_thread(downloader_worker_client.get_spotiflac_providers)
+    except downloader_worker_client.WorkerUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return JSONResponse({"providers": providers}, headers={"Cache-Control": "private, no-store"})
+
+
+@router.post("/api/downloader/providers/{provider}/start")
+async def api_start_downloader_provider(provider: str, admin: database.User = Depends(get_current_admin)):
+    try:
+        provider = downloader_worker_client.validate_spotiflac_provider(provider)
+        result = await asyncio.to_thread(downloader_worker_client.start_spotiflac_provider_auth, provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except downloader_worker_client.WorkerUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    verification_url = str(result.get("verification_url") or "")
+    if result.get("status") == "verification_required":
+        _validate_provider_verification_url(verification_url)
+        result["flow_token"] = _provider_flow_token(admin, provider)
+    return JSONResponse(result, headers={"Cache-Control": "private, no-store"})
+
+
+@router.post("/api/downloader/providers/{provider}/complete")
+async def api_complete_downloader_provider(
+    provider: str,
+    request: Request,
+    admin: database.User = Depends(get_current_admin),
+):
+    try:
+        provider = downloader_worker_client.validate_spotiflac_provider(provider)
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            raise ValueError("Invalid provider connection payload")
+        flow_token = str(payload.get("flow_token") or "")
+        grant = str(payload.get("grant") or "")
+        _validate_provider_flow_token(flow_token, admin, provider)
+        result = await asyncio.to_thread(
+            downloader_worker_client.complete_spotiflac_provider_auth,
+            provider,
+            grant,
+        )
+        return JSONResponse(result, headers={"Cache-Control": "private, no-store"})
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except downloader_worker_client.WorkerUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.delete("/api/downloader/providers/{provider}")
+async def api_disconnect_downloader_provider(provider: str, admin: database.User = Depends(get_current_admin)):
+    try:
+        provider = downloader_worker_client.validate_spotiflac_provider(provider)
+        result = await asyncio.to_thread(downloader_worker_client.disconnect_spotiflac_provider, provider)
+        return JSONResponse(result, headers={"Cache-Control": "private, no-store"})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except downloader_worker_client.WorkerUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.post("/system/downloader/mode")
 def update_downloader_mode(
     downloader_mode: str = Form(...),
@@ -536,13 +670,13 @@ def update_downloader_mode(
     try:
         mode = downloader_worker_client.set_downloader_mode(db, downloader_mode)
     except ValueError:
-        return RedirectResponse("/admin/system?error=Invalid downloader mode", status_code=303)
+        return RedirectResponse("/admin/downloads?error=Invalid downloader mode", status_code=303)
     labels = {
         "automatic": "Automatic (isolated worker with legacy fallback)",
         "worker": "Isolated worker only",
         "legacy": "Legacy Concierge downloader",
     }
-    return RedirectResponse(f"/admin/system?msg=Downloader mode set to {labels[mode]}", status_code=303)
+    return RedirectResponse(f"/admin/downloads?msg=Downloader mode set to {labels[mode]}", status_code=303)
 
 
 @router.get("/api/system-stats")

@@ -9,9 +9,11 @@ flowchart TB
     Clients[Web browser / Android wrapper / Subsonic clients]
     Proxy[nginx reverse proxy]
     Concierge[FastAPI concierge]
+    Downloader[Isolated downloader worker]
     Tunnel[Optional Cloudflare Tunnel]
     Data[(Persistent Navipod data)]
     Pool[(Shared music pool)]
+    Staging[(Download staging)]
     Providers[Spotify / YouTube / Last.fm / MusicBrainz]
     U1[Navidrome user container]
     U2[Navidrome user container]
@@ -26,6 +28,10 @@ flowchart TB
     Concierge --> Pool
     Concierge --> Data
     Concierge --> Providers
+    Concierge --> Downloader
+    Concierge --> Staging
+    Downloader --> Staging
+    Downloader --> Providers
 ```
 
 ## Standard Compose services
@@ -35,6 +41,12 @@ The shipping `Navipod/docker-compose.yaml` documents these main services:
 ### `concierge`
 
 FastAPI backend and orchestration layer. It manages the Navipod application experience and coordinates per-user Navidrome instances, shared data, provider integrations and admin operations.
+
+### `downloader`
+
+Private FastAPI worker that owns the current yt-dlp, spotDL and SpotiFLAC runtimes. Concierge authenticates to it with a token stored in the shared download-staging volume. Download output is staged there and copied into the library only after a job completes successfully.
+
+SpotiFLAC signed sessions live in the worker-only `downloader-state` volume. Admin browsers solve the provider's real verification page and return a short-lived grant through the protected Download Manager flow; provider credentials are never collected by Navipod. A worker heartbeat checks connected sessions every 15 minutes and triggers the upstream signed-session refresh when due. Per-provider locks prevent refresh, connection changes and active downloads from rotating the same session concurrently.
 
 ### `nginx`
 
@@ -62,6 +74,7 @@ Navipod can integrate with:
 
 - YouTube;
 - Spotify;
+- TIDAL, Qobuz, Deezer and Amazon Music through optional SpotiFLAC signed sessions;
 - Last.fm;
 - MusicBrainz.
 

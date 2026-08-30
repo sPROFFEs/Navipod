@@ -16,6 +16,7 @@ import * as sync from './sync.js';
 import * as library from './library.js';
 import * as party from './party.js';
 import { initSystemMonitor } from './system_monitor.js';
+import { initDownloadManager } from './admin_downloads.js';
 
 const SECRET_EYE_ICON = `
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -203,7 +204,14 @@ export function savePlaybackPrefs() {
 // === VIEW ROUTING ===
 
 function _canTrackSpaHistory(view) {
-  return !['settings_admin', 'system_monitor', 'admin_delete_requests', 'settings_user', 'help'].includes(view);
+  return ![
+    'settings_admin',
+    'system_monitor',
+    'admin_downloads',
+    'admin_delete_requests',
+    'settings_user',
+    'help',
+  ].includes(view);
 }
 
 function _pushSpaHistory(view, param = null, replace = false) {
@@ -298,6 +306,7 @@ export async function loadView(view, param = null, options = {}) {
       await trackRecentPlaylist(param);
     } else if (view === 'settings_admin') await renderExternalView(container, '/admin/');
     else if (view === 'system_monitor') await renderExternalView(container, '/admin/system');
+    else if (view === 'admin_downloads') await renderExternalView(container, '/admin/downloads');
     else if (view === 'admin_delete_requests') await renderExternalView(container, '/admin/song-delete-requests');
     else if (view === 'settings_user') await renderExternalView(container, '/user/settings');
     else if (view === 'help') await renderExternalView(container, '/help');
@@ -355,6 +364,9 @@ export async function renderExternalView(container, url) {
     }
     if (url === '/admin/system') {
       initSystemMonitor(container);
+    }
+    if (url === '/admin/downloads') {
+      initDownloadManager(container);
     }
     // Admin home page mounts the federation panel — bootstrap it the
     // same way as user settings, since inline <script> blocks in the

@@ -13,6 +13,7 @@ from navipod_config import settings
 logger = logging.getLogger(__name__)
 
 VALID_DOWNLOADER_MODES = {"automatic", "worker", "legacy"}
+VALID_SPOTIFLAC_PROVIDERS = {"tidal", "qobuz", "deezer", "amazon"}
 TERMINAL_WORKER_STATUSES = {"completed", "failed", "cancelled"}
 VALID_WORKER_STATUSES = {"pending", "running", *TERMINAL_WORKER_STATUSES}
 AUDIO_EXTENSIONS = {".mp3", ".m4a", ".flac", ".opus", ".ogg", ".wav", ".aac", ".webm"}
@@ -90,6 +91,59 @@ def get_worker_status() -> dict:
             "active_jobs": 0,
             "failed_jobs": 0,
         }
+
+
+def validate_spotiflac_provider(provider: str) -> str:
+    normalized = str(provider or "").strip().lower()
+    if normalized not in VALID_SPOTIFLAC_PROVIDERS:
+        raise ValueError("Invalid SpotiFLAC provider")
+    return normalized
+
+
+def _worker_json(response: httpx.Response) -> dict:
+    try:
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise TypeError("response is not an object")
+        return payload
+    except (httpx.HTTPError, ValueError, TypeError) as exc:
+        detail = ""
+        try:
+            detail = str(response.json().get("detail") or "")
+        except Exception:
+            pass
+        raise WorkerUnavailable(detail or f"Downloader worker request failed: {exc}") from exc
+
+
+def get_spotiflac_providers() -> list[dict]:
+    with _client(timeout=10.0) as client:
+        payload = _worker_json(client.get("/providers"))
+    providers = payload.get("providers")
+    if not isinstance(providers, list) or not all(isinstance(item, dict) for item in providers):
+        raise WorkerUnavailable("Downloader worker returned invalid provider status")
+    return providers
+
+
+def start_spotiflac_provider_auth(provider: str) -> dict:
+    provider = validate_spotiflac_provider(provider)
+    with _client(timeout=20.0) as client:
+        return _worker_json(client.post(f"/providers/{provider}/auth/start"))
+
+
+def complete_spotiflac_provider_auth(provider: str, grant: str) -> dict:
+    provider = validate_spotiflac_provider(provider)
+    grant = str(grant or "").strip()
+    if len(grant) < 16 or len(grant) > 4096 or any(char.isspace() for char in grant):
+        raise ValueError("Invalid provider grant")
+    with _client(timeout=20.0) as client:
+        return _worker_json(client.post(f"/providers/{provider}/auth/complete", json={"grant": grant}))
+
+
+def disconnect_spotiflac_provider(provider: str) -> dict:
+    provider = validate_spotiflac_provider(provider)
+    with _client(timeout=10.0) as client:
+        return _worker_json(client.delete(f"/providers/{provider}/auth"))
 
 
 def _safe_worker_source(job_id: str, relative_path: str) -> Path:

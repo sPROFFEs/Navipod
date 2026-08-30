@@ -379,6 +379,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // logic to highlight sidebar can be added here if needed
     console.log('[MAIN] Preserving server-rendered content for path:', window.location.pathname);
     if (window.location.pathname.includes('/admin/system')) state.setCurrentViewName('system_monitor');
+    else if (window.location.pathname.includes('/admin/downloads')) state.setCurrentViewName('admin_downloads');
   }
 
   // Initialize Lucide icons

@@ -1,3 +1,4 @@
+import { initDownloadManager } from './admin_downloads.js';
 import { initSystemMonitor } from './system_monitor.js';
 import { initUpdateProgress } from './update_progress.js';
 
@@ -67,6 +68,7 @@ function initUpdateToast() {
 
 function initAdminSystem() {
   initUpdateToast();
+  initDownloadManager(document);
   initSystemMonitor(document);
   initUpdateProgress(document);
 }
