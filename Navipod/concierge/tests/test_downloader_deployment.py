@@ -48,14 +48,16 @@ def test_worker_entrypoint_prepares_persistent_auth_browser_volume():
     assert "chown -R downloader:downloaders /home/downloader/.auth-browser" in entrypoint
 
 
-def test_auth_browser_proxy_allows_only_same_origin_framing():
+def test_auth_browser_proxy_supports_cookie_and_legacy_query_handoff():
     nginx = (PROJECT_ROOT / "nginx.conf").read_text(encoding="utf-8")
     authorization = nginx.split("location = /_internal/auth-browser-authorize {", 1)[1].split("}", 1)[0]
     location = nginx.split("location ^~ /admin/auth-browser/ {", 1)[1].split("}", 1)[0]
 
     assert "proxy_set_header Cookie $http_cookie;" in authorization
-    assert "X-Auth-Browser-Session" not in authorization
-    assert "X-Auth-Browser-Token" not in authorization
+    assert "proxy_set_header X-Auth-Browser-Session $auth_browser_session;" in authorization
+    assert "proxy_set_header X-Auth-Browser-Token $auth_browser_token;" in authorization
+    assert "set $auth_browser_session $arg_session_id;" in location
+    assert "set $auth_browser_token $arg_token;" in location
     assert 'add_header X-Frame-Options "SAMEORIGIN" always;' in location
     assert "add_header Content-Security-Policy \"frame-ancestors 'self'\" always;" in location
 
