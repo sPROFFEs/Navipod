@@ -41,6 +41,37 @@ def test_chromium_uses_container_safe_real_browser_defaults(tmp_path):
     assert "--window-size=1440,900" in command
 
 
+def test_auth_browser_removes_stale_container_profile_locks(tmp_path, monkeypatch):
+    manager = module.AuthBrowserManager()
+    profile = tmp_path / "chromium"
+    profile.mkdir()
+    for name in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+        (profile / name).symlink_to(f"stale-{name}")
+    monkeypatch.setattr(manager, "_profile_in_use", lambda _profile: False)
+
+    manager._clear_stale_profile_locks(profile)
+
+    assert not any((profile / name).exists() or (profile / name).is_symlink() for name in manager_profile_locks())
+
+
+def test_auth_browser_keeps_profile_locks_when_chromium_is_running(tmp_path, monkeypatch):
+    manager = module.AuthBrowserManager()
+    profile = tmp_path / "chromium"
+    profile.mkdir()
+    lock = profile / "SingletonLock"
+    lock.symlink_to("live-lock")
+    monkeypatch.setattr(manager, "_profile_in_use", lambda _profile: True)
+
+    with pytest.raises(RuntimeError, match="profile is still in use"):
+        manager._clear_stale_profile_locks(profile)
+
+    assert lock.is_symlink()
+
+
+def manager_profile_locks():
+    return ("SingletonLock", "SingletonCookie", "SingletonSocket")
+
+
 def test_component_startup_error_names_process_and_redacts_urls(tmp_path):
     log_path = tmp_path / "chromium.log"
     log_path.write_text("failed while opening https://provider.example/secret?id=abc", encoding="utf-8")

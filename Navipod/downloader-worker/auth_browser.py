@@ -112,6 +112,28 @@ class AuthBrowserManager:
         command.append(url)
         return command
 
+    @staticmethod
+    def _profile_in_use(browser_profile: Path) -> bool:
+        expected = f"--user-data-dir={browser_profile.resolve()}"
+        for cmdline_path in Path("/proc").glob("[0-9]*/cmdline"):
+            try:
+                arguments = cmdline_path.read_bytes().decode(errors="replace").split("\0")
+            except OSError:
+                continue
+            if expected in arguments:
+                return True
+        return False
+
+    def _clear_stale_profile_locks(self, browser_profile: Path) -> None:
+        """Remove container-bound Chromium locks only when the profile is idle."""
+        if self._profile_in_use(browser_profile):
+            raise RuntimeError("Chromium profile is still in use by a running process")
+        for name in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+            try:
+                (browser_profile / name).unlink(missing_ok=True)
+            except OSError as exc:
+                raise RuntimeError(f"could not clear stale Chromium profile lock: {name}") from exc
+
     def _spawn(self, name: str, command: list[str], *, env: dict[str, str] | None = None) -> BrowserProcess:
         log_path = Path("/tmp") / f"navipod-auth-browser-{secrets.token_hex(6)}-{name}.log"
         log_stream = log_path.open("w", encoding="utf-8")
@@ -232,6 +254,7 @@ class AuthBrowserManager:
                 self.profile_root.mkdir(parents=True, exist_ok=True)
                 browser_profile = self.profile_root / "chromium"
                 browser_profile.mkdir(parents=True, exist_ok=True)
+                self._clear_stale_profile_locks(browser_profile)
                 display_env = os.environ.copy()
                 display_env["DISPLAY"] = self.display
                 display_number = self.display.removeprefix(":").split(".", 1)[0]
