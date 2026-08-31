@@ -194,7 +194,11 @@ def test_remote_provider_connection_routes_are_not_exposed():
     assert '@router.delete("/api/downloader/providers/{provider}")' in source
 
 
-def test_auth_browser_url_authorizes_page_and_websocket_requests():
+def test_auth_browser_uses_path_scoped_cookie_for_page_assets_and_websocket():
     source = (Path(__file__).resolve().parents[1] / "routers" / "admin.py").read_text(encoding="utf-8")
-    assert 'websocket_path = quote(f"admin/auth-browser/websockify?session_id={session_id}&token={token}"' in source
-    assert "f\"&session_id={quote(session_id, safe='')}&token={quote(token, safe='')}\"" in source
+    assert 'websocket_path = quote("admin/auth-browser/websockify", safe="")' in source
+    assert "value=auth_browser.encode_cookie(session_id, token)" in source
+    assert 'path="/admin/auth-browser/"' in source
+    assert "httponly=True" in source
+    assert 'samesite="strict"' in source
+    assert '"token": token' not in source

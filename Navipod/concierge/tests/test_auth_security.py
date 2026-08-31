@@ -1,4 +1,7 @@
+import importlib.util
+import sys
 from datetime import timedelta
+from pathlib import Path
 
 import auth
 import database
@@ -6,6 +9,15 @@ import pytest
 import security
 from fastapi import HTTPException
 from starlette.requests import Request
+
+AUTH_BROWSER_SPEC = importlib.util.spec_from_file_location(
+    "navipod_concierge_auth_browser",
+    Path(__file__).resolve().parents[1] / "auth_browser.py",
+)
+auth_browser = importlib.util.module_from_spec(AUTH_BROWSER_SPEC)
+assert AUTH_BROWSER_SPEC and AUTH_BROWSER_SPEC.loader
+sys.modules["navipod_concierge_auth_browser"] = auth_browser
+AUTH_BROWSER_SPEC.loader.exec_module(auth_browser)
 
 
 def request_for(method="GET", *, token=None, host="navipod.test", origin=None):
@@ -75,6 +87,14 @@ def test_remembered_session_is_longer_but_bounded(monkeypatch):
 
     monkeypatch.setattr(auth, "REMEMBER_SESSION_DAYS", 10_000)
     assert auth.session_expiry(True) == timedelta(days=365)
+
+
+def test_auth_browser_cookie_round_trips_without_exposing_separate_credentials():
+    value = auth_browser.encode_cookie("session-123", "token-value-that-is-long-enough")
+
+    assert auth_browser.decode_cookie(value) == ("session-123", "token-value-that-is-long-enough")
+    assert auth_browser.decode_cookie("malformed") == ("", "")
+    assert auth_browser.decode_cookie("short.token") == ("", "")
 
 
 def test_cookie_authenticated_write_requires_same_origin():

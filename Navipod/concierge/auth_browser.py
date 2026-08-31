@@ -41,6 +41,18 @@ class AdminBrowserSession:
 
 _lock = threading.RLock()
 _sessions: dict[str, AdminBrowserSession] = {}
+COOKIE_NAME = "navipod_auth_browser"
+
+
+def encode_cookie(session_id: str, token: str) -> str:
+    return f"{session_id}.{token}"
+
+
+def decode_cookie(value: str | None) -> tuple[str, str]:
+    session_id, separator, token = str(value or "").partition(".")
+    if not separator or not (8 <= len(session_id) <= 128) or not (16 <= len(token) <= 256):
+        return "", ""
+    return session_id, token
 
 
 def create(session_id: str, provider: str, admin_id: int, ttl: int) -> tuple[AdminBrowserSession, str]:

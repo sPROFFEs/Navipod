@@ -41,8 +41,12 @@ def test_worker_entrypoint_prepares_persistent_auth_browser_volume():
 
 def test_auth_browser_proxy_allows_only_same_origin_framing():
     nginx = (PROJECT_ROOT / "nginx.conf").read_text(encoding="utf-8")
+    authorization = nginx.split("location = /_internal/auth-browser-authorize {", 1)[1].split("}", 1)[0]
     location = nginx.split("location ^~ /admin/auth-browser/ {", 1)[1].split("}", 1)[0]
 
+    assert "proxy_set_header Cookie $http_cookie;" in authorization
+    assert "X-Auth-Browser-Session" not in authorization
+    assert "X-Auth-Browser-Token" not in authorization
     assert 'add_header X-Frame-Options "SAMEORIGIN" always;' in location
     assert "add_header Content-Security-Policy \"frame-ancestors 'self'\" always;" in location
 

@@ -22,7 +22,7 @@ import path_security
 import psutil
 import track_identity
 import wrapped_service
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, Header, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from navipod_config import settings
 from pydantic import BaseModel, Field
@@ -632,19 +632,25 @@ async def api_start_auth_browser(
         raise HTTPException(status_code=502, detail="Downloader did not return a browser session")
     ttl = max(60, min(1800, int(os.getenv("AUTH_BROWSER_TTL", "600"))))
     session, token = auth_browser.create(session_id, payload.provider.strip().lower(), int(admin.id), ttl)
-    websocket_path = quote(f"admin/auth-browser/websockify?session_id={session_id}&token={token}", safe="")
-    return JSONResponse(
+    websocket_path = quote("admin/auth-browser/websockify", safe="")
+    response = JSONResponse(
         {
             "status": worker_session.get("status", "starting"),
             "browser_session": session.serialize(),
-            "token": token,
-            "novnc_url": (
-                f"/admin/auth-browser/vnc.html?path={websocket_path}"
-                f"&session_id={quote(session_id, safe='')}&token={quote(token, safe='')}"
-            ),
+            "novnc_url": f"/admin/auth-browser/vnc.html?path={websocket_path}",
         },
         headers={"Cache-Control": "private, no-store"},
     )
+    response.set_cookie(
+        key=auth_browser.COOKIE_NAME,
+        value=auth_browser.encode_cookie(session_id, token),
+        max_age=ttl,
+        path="/admin/auth-browser/",
+        secure=settings.COOKIE_SECURE,
+        httponly=True,
+        samesite="strict",
+    )
+    return response
 
 
 @router.get("/api/downloader/auth-browser/status")
@@ -661,15 +667,11 @@ async def api_auth_browser_status(admin: database.User = Depends(get_current_adm
 
 @router.get("/api/downloader/auth-browser/authorize")
 def authorize_auth_browser(
-    session_id: str | None = Query(None, min_length=8, max_length=128),
-    token: str | None = Query(None, min_length=16, max_length=256),
-    header_session_id: str | None = Header(None, alias="X-Auth-Browser-Session"),
-    header_token: str | None = Header(None, alias="X-Auth-Browser-Token"),
+    browser_cookie: str | None = Cookie(None, alias=auth_browser.COOKIE_NAME),
     admin: database.User = Depends(get_current_admin),
 ):
     """nginx auth_request target for the same-origin noVNC proxy."""
-    session_id = session_id or header_session_id or ""
-    token = token or header_token or ""
+    session_id, token = auth_browser.decode_cookie(browser_cookie)
     if not auth_browser.validate(session_id, token, int(admin.id)):
         raise HTTPException(status_code=403, detail="Invalid or expired auth-browser session")
     return {"status": "authorized"}
@@ -679,7 +681,15 @@ def authorize_auth_browser(
 async def api_stop_auth_browser(admin: database.User = Depends(get_current_admin)):
     result = await asyncio.to_thread(downloader_worker_client.stop_auth_browser)
     auth_browser.remove_for_admin(int(admin.id))
-    return JSONResponse(result, headers={"Cache-Control": "private, no-store"})
+    response = JSONResponse(result, headers={"Cache-Control": "private, no-store"})
+    response.delete_cookie(
+        auth_browser.COOKIE_NAME,
+        path="/admin/auth-browser/",
+        secure=settings.COOKIE_SECURE,
+        httponly=True,
+        samesite="strict",
+    )
+    return response
 
 
 @router.post("/system/downloader/mode")
