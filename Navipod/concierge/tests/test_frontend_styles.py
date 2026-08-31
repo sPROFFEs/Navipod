@@ -1,7 +1,45 @@
+import json
 import re
+import struct
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
+
+
+def test_branding_assets_cover_browser_pwa_and_touch_icon_sizes():
+    assets_root = Path(__file__).resolve().parents[2] / "assets"
+    expected_sizes = {
+        "icon.png": (1254, 1254),
+        "favicon-16x16.png": (16, 16),
+        "favicon-32x32.png": (32, 32),
+        "apple-touch-icon.png": (180, 180),
+        "android-chrome-192x192.png": (192, 192),
+        "android-chrome-512x512.png": (512, 512),
+    }
+
+    for filename, expected_size in expected_sizes.items():
+        png = (assets_root / filename).read_bytes()
+        assert png.startswith(b"\x89PNG\r\n\x1a\n")
+        assert struct.unpack(">II", png[16:24]) == expected_size
+
+    ico = (assets_root / "favicon.ico").read_bytes()
+    reserved, image_type, image_count = struct.unpack("<HHH", ico[:6])
+    assert (reserved, image_type, image_count) == (0, 1, 2)
+    ico_sizes = {(ico[offset] or 256, ico[offset + 1] or 256) for offset in (6, 22)}
+    assert ico_sizes == {(16, 16), (32, 32)}
+
+    manifest = json.loads((assets_root / "site.webmanifest").read_text(encoding="utf-8"))
+    manifest_icons = {icon["src"] for icon in manifest["icons"]}
+    assert "/assets/android-chrome-192x192.png?v=2" in manifest_icons
+    assert "/assets/android-chrome-512x512.png?v=2" in manifest_icons
+
+    templates_root = Path(__file__).resolve().parents[1] / "templates"
+    for template_name in ("base.html", "login.html"):
+        template = (templates_root / template_name).read_text(encoding="utf-8")
+        assert "/assets/favicon-16x16.png?v={{ static_v }}" in template
+        assert "/assets/favicon-32x32.png?v={{ static_v }}" in template
+        assert "/assets/favicon.ico?v={{ static_v }}" in template
+        assert "/assets/apple-touch-icon.png?v={{ static_v }}" in template
 
 
 def test_library_facet_buttons_reset_native_background():

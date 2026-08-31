@@ -13,8 +13,11 @@
     <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-    <link rel="icon" type="image/png" href="/assets/icon.png">
-    <link rel="manifest" href="/assets/site.webmanifest">
+    <link rel="manifest" href="/assets/site.webmanifest?v={{ static_v }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png?v={{ static_v }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png?v={{ static_v }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16x16.png?v={{ static_v }}">
+    <link rel="shortcut icon" href="/assets/favicon.ico?v={{ static_v }}">
 
     <style>
         :root {
@@ -401,7 +404,7 @@
     <div class="login-wrapper">
         <div class="login-card">
             <div class="brand-section">
-                <img src="/assets/icon.png" alt="Navipod" class="brand-icon"
+                <img src="/assets/icon.png?v={{ static_v }}" alt="Navipod" class="brand-icon"
                     onerror="this.src='/static/img/default_cover.png'">
                 <h1 class="app-title">Navipod</h1>
                 <p class="app-subtitle">Sign in to your library</p>
@@ -452,7 +455,7 @@
     </div>
     <!-- PWA Install Banner -->
     <div id="pwa-banner" class="pwa-banner" role="banner" aria-label="Install Navipod">
-        <img src="/assets/icon.png" class="pwa-banner-icon" alt="Navipod">
+        <img src="/assets/icon.png?v={{ static_v }}" class="pwa-banner-icon" alt="Navipod">
         <div class="pwa-banner-body">
             <strong>Install Navipod</strong>
             <span id="pwa-banner-hint">Add to your home screen for the full app experience</span>
