@@ -98,8 +98,14 @@ self.addEventListener('fetch', event => {
       }
       // Not cached yet: fetch, cache, and return
       return fetch(request).then(res => {
-        if (res.ok) caches.open(CACHE).then(c => c.put(request, res.clone()));
-        return res;
+        if (!res.ok) return res;
+        // Clone before yielding: once the browser starts consuming `res`, a
+        // later clone inside caches.open().then(...) throws Body has been used.
+        const cacheResponse = res.clone();
+        return caches.open(CACHE)
+          .then(cache => cache.put(request, cacheResponse))
+          .catch(() => {})
+          .then(() => res);
       });
     })
   );

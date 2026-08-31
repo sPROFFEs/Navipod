@@ -88,7 +88,19 @@ def test_admin_download_manager_matches_admin_shell_and_explains_host_verificati
     assert "/admin/api/downloader/providers" in javascript
     assert "document.querySelector('#auth-browser-modal')" in javascript
     assert "Verification browser interface is unavailable" in javascript
+    assert "modal.contains(document.activeElement)" in javascript
+    assert "returnFocus || root.querySelector('#download-provider-refresh')" in javascript
     assert 'id="downloader-runtime-panel"' not in system_template
+
+
+def test_service_worker_clones_fresh_assets_before_async_cache_open():
+    service_worker = (Path(__file__).resolve().parents[2] / "assets" / "sw.js").read_text(encoding="utf-8")
+    cache_miss = service_worker.split("// Not cached yet: fetch, cache, and return", 1)[1]
+
+    clone_index = cache_miss.index("const cacheResponse = res.clone();")
+    cache_open_index = cache_miss.index(".open(CACHE)")
+    assert clone_index < cache_open_index
+    assert "cache.put(request, cacheResponse)" in cache_miss
 
 
 def test_admin_download_manager_renders_worker_and_provider_states():

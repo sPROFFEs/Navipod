@@ -74,6 +74,12 @@ async function stopAuthBrowser(root) {
   );
   const modal = getAuthBrowserModal(root);
   if (modal) {
+    if (modal.contains(document.activeElement)) {
+      const returnFocus = [...root.querySelectorAll('[data-provider-verify]')].find(
+        (button) => button.dataset.providerVerify === modal.dataset.provider
+      );
+      (returnFocus || root.querySelector('#download-provider-refresh'))?.focus();
+    }
     modal.hidden = true;
     modal.setAttribute('aria-hidden', 'true');
   }
@@ -104,6 +110,7 @@ async function startAuthBrowser(root, provider) {
   modal.setAttribute('aria-hidden', 'false');
   modal.querySelector('#auth-browser-title').textContent = `${provider} provider verification`;
   frame.src = payload.novnc_url;
+  modal.querySelector('[data-auth-browser-close]')?.focus();
   const remaining = payload.browser_session?.remaining_seconds || 600;
   const countdown = modal.querySelector('[data-auth-browser-countdown]');
   if (countdown)
