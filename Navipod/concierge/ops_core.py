@@ -41,13 +41,11 @@ REBUILD_REQUIRED_PATHS = {
     "concierge/Dockerfile",
     "concierge/entrypoint.sh",
     "concierge/requirements.txt",
-    "nginx.conf",
     "downloader-worker/Dockerfile",
     "downloader-worker/entrypoint.sh",
     "downloader-worker/requirements.txt",
     "downloader-worker/worker.py",
     "downloader-worker/auth_browser.py",
-    "concierge/auth_browser.py",
 }
 UPDATER_INTERNAL_URL = "http://updater:8090/internal/update/apply"
 

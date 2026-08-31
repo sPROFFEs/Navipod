@@ -576,11 +576,13 @@ def _run_check_update_job(job_id: int, triggered_by: str | None):
 def _build_compose_update_args(rebuild_required: bool, services: list[str]) -> list[str]:
     # Application source is bind-mounted, so rebuilding can produce the same
     # image and Compose may otherwise leave the old Python process running
-    # against newly replaced templates and modules.
+    # against newly replaced templates and modules. The service selector
+    # already expands every affected service, so do not let depends_on pull
+    # unrelated images into this update.
     compose_args = ["up", "-d", "--force-recreate"]
     if rebuild_required:
         compose_args.append("--build")
-    return [*compose_args, "--remove-orphans", *services]
+    return [*compose_args, "--no-deps", "--remove-orphans", *services]
 
 
 def _run_compose_update(job_id: int, changed_files: list[str]):

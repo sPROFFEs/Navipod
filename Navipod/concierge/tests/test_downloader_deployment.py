@@ -33,6 +33,15 @@ def test_worker_image_installs_spotiflac_browser_runtime():
     assert "command -v Xvfb" in dockerfile
 
 
+def test_worker_image_uses_pinned_official_deno_binary():
+    dockerfile = (PROJECT_ROOT / "downloader-worker" / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "ARG DENO_VERSION=" in dockerfile
+    assert "FROM docker.io/denoland/deno:bin-${DENO_VERSION} AS deno" in dockerfile
+    assert "COPY --from=deno /deno /usr/local/bin/deno" in dockerfile
+    assert "https://deno.land/install.sh" not in dockerfile
+
+
 def test_worker_entrypoint_prepares_persistent_auth_browser_volume():
     entrypoint = (PROJECT_ROOT / "downloader-worker" / "entrypoint.sh").read_text(encoding="utf-8")
     assert "/home/downloader/.auth-browser" in entrypoint
@@ -72,6 +81,7 @@ def test_compose_update_forces_runtime_recreation_for_bind_mounted_source():
         "up",
         "-d",
         "--force-recreate",
+        "--no-deps",
         "--remove-orphans",
         "concierge",
     ]
@@ -80,9 +90,27 @@ def test_compose_update_forces_runtime_recreation_for_bind_mounted_source():
         "-d",
         "--force-recreate",
         "--build",
+        "--no-deps",
         "--remove-orphans",
         "concierge",
         "downloader",
+    ]
+
+
+def test_bind_mounted_runtime_changes_do_not_trigger_image_rebuild():
+    changed_files = ["Navipod/nginx.conf", "Navipod/concierge/auth_browser.py"]
+
+    assert update_service.ops.should_rebuild_for_changed_files(changed_files) is False
+    assert update_service.ops.matched_rebuild_targets(changed_files) == []
+
+
+def test_worker_image_changes_still_trigger_image_rebuild():
+    changed_files = ["Navipod/downloader-worker/Dockerfile", "Navipod/downloader-worker/worker.py"]
+
+    assert update_service.ops.should_rebuild_for_changed_files(changed_files) is True
+    assert update_service.ops.matched_rebuild_targets(changed_files) == [
+        "downloader-worker/Dockerfile",
+        "downloader-worker/worker.py",
     ]
 
 

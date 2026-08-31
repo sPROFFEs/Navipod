@@ -1,3 +1,6 @@
+ARG DENO_VERSION=2.9.4
+FROM docker.io/denoland/deno:bin-${DENO_VERSION} AS deno
+
 FROM python:3.11-slim
 
 ARG SPOTIFLAC_EXTENSIONS_COMMIT=6a4227aec696cd98d6fa9d25d92b1a38f9ae1a07
@@ -7,10 +10,13 @@ WORKDIR /app
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates chromium curl ffmpeg gosu nodejs novnc unzip websockify x11vnc xvfb && \
-    curl -fsSL https://deno.land/install.sh | sh -s -- -y && \
-    mv /root/.deno/bin/deno /usr/local/bin/deno && \
     command -v Xvfb && \
     rm -rf /var/lib/apt/lists/*
+
+# Pull a versioned binary from Deno's official image instead of executing an
+# unpinned network installer during every worker rebuild.
+COPY --from=deno /deno /usr/local/bin/deno
+RUN deno --version
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
