@@ -9,11 +9,11 @@ One place for your library, discovery, shared listening and personal Navidrome i
 
 ![Quality](https://github.com/sPROFFEs/Navipod/actions/workflows/quality.yml/badge.svg)![Version](https://img.shields.io/badge/version-1.1.0-1ed760)![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)![License](https://img.shields.io/badge/license-personal%20use%20only-555555)
 
-[**Get started**](#quick-start) · Documentation · Deployment · [Android APK](https://github.com/sPROFFEs/Navipod/releases)
+[**Get started**](#quick-start) · [Documentation](#documentation) · [Deployment](docs/DEPLOYMENT.md) · [Android APK](https://github.com/sPROFFEs/Navipod/releases)
 
 <img width="3400" height="2048" alt="image" src="https://github.com/user-attachments/assets/6a96a9a3-881b-4881-af96-324baa46afc1" />
 
-Navipod is a personal, self-hosted music platform built around isolated **Navidrome instances per user**, a central **FastAPI concierge**, and a shared music pool. It brings your local library together with discovery from **YouTube, Spotify, Last.fm and MusicBrainz**, while keeping the server under your control.
+Navipod is a personal, self-hosted music platform built around isolated **Navidrome instances per user**, a central **FastAPI concierge**, an isolated **downloader worker**, and a shared music pool. It brings your local library together with discovery from **YouTube, Spotify, Last.fm and MusicBrainz**, while keeping the server under your control.
 
 > \[!IMPORTANT\]  
 > Navipod is licensed for **private, personal, non-commercial use only**. It is not an open-source license. See [LICENSE](LICENSE) for the binding terms.
@@ -83,6 +83,8 @@ Navipod is a personal, self-hosted music platform built around isolated **Navidr
 - **Shared download pool** — deduplication, metadata enrichment and reusable downloads.
 - **Library views** — searchable and paginated artists, albums and genres.
 - **Smart playlists** — editable rules, previews and automatic refreshes.
+- **Everyday player tools** — persistent queues, lyrics, sleep timer, normalization and track fades.
+- **Playlist sharing** — public playlists, synchronized read-only copies, custom covers and track ordering.
 - **Party Rooms** — synchronized playback, room queues and host/guest controls.
 - **Subsonic compatibility** — connect established mobile clients to each user's Navidrome instance.
 - **Self-hosting operations** — updates, backups, monitoring and library maintenance from the admin UI.
@@ -93,15 +95,17 @@ Navipod is a personal, self-hosted music platform built around isolated **Navidr
 flowchart LR
     C[Browser / Android / Subsonic client] --> N[nginx]
     N --> F[FastAPI Concierge]
+    F --> W[Isolated downloader worker]
     F --> U1[Navidrome · User A]
     F --> U2[Navidrome · User B]
     F --> UX[Navidrome · User N]
     F --> P[(Shared music pool)]
     F --> D[(Navipod data / DB / backups)]
     F --> R[Spotify / YouTube / Last.fm / MusicBrainz]
+    W --> R
 ```
 
-The standard Docker stack contains the **concierge**, **nginx**, and an optional **Cloudflare Tunnel** connector. Persistent data is stored under `/opt/saas-data` by default. See Architecture for the full picture.
+The standard Docker stack contains the **concierge**, **isolated downloader**, **nginx**, per-user **Navidrome** containers, and an optional **Cloudflare Tunnel** connector. Persistent data is stored under `/opt/saas-data` by default. See [Architecture](docs/ARCHITECTURE.md) for the full picture.
 
 ## Quick Start
 

@@ -15,7 +15,54 @@ Check:
 - the host has outbound internet access;
 - YouTube cookies are current if the content/session requires them;
 - Spotify credentials are valid when Spotify-dependent discovery/enrichment is involved;
-- the concierge logs contain no provider, disk or permission error.
+- the Download Manager shows the expected **Automatic**, **Isolated worker only** or **Legacy Concierge only** policy;
+- any required lossless-provider session is connected;
+- the concierge and downloader logs contain no provider, disk or permission error.
+
+Inspect both services while retrying one job:
+
+```bash
+docker compose logs -f concierge downloader
+```
+
+The global Downloads panel includes the selected engine, fallback and error details for a failed job. Use those details before changing provider policy.
+
+## Downloader worker is unavailable
+
+Check its state and startup error:
+
+```bash
+docker compose ps downloader
+docker compose logs --tail=200 downloader
+```
+
+After pulling a release that changes the worker image, rebuild both sides of the integration:
+
+```bash
+docker compose up -d --build downloader concierge
+```
+
+Permission errors for `/downloads`, `.worker-token` or `.auth-browser` mean the mounted data directory is not writable by the worker's configured user. Fix the host-directory ownership for your deployment and recreate the downloader container; do not make the directory world-writable.
+
+## Provider verification fails
+
+Open **Admin → Download Manager** and start the provider's embedded verification browser. Complete the challenge there, then select **Check verification** in the Navipod modal. The embedded browser may close or show a black screen after the challenge succeeds; this is expected while the grant returns to the worker.
+
+If the challenge reports a network change, verification failure or Cloudflare Turnstile error:
+
+- keep the downloader worker on one stable outbound connection for the entire flow;
+- temporarily avoid a VPN or proxy that rotates or filters the worker's public IP;
+- do not complete the challenge in a separate local browser;
+- stop a stale verification browser before starting another one;
+- check downloader logs for Chromium profile-lock or startup errors.
+
+Verification is bound to the worker's browser and network context. A challenge completed from another machine or public IP cannot be safely transferred into the worker session.
+
+## Provider says Connected but downloads fail
+
+Provider session lifetimes are controlled by the provider. The worker checks stored sessions every 15 minutes and attempts normal signed renewal before expiry, including while idle.
+
+The **Connected** label refreshes when the Download Manager loads, when you select Refresh, and after a verification check. It is not continuously polled, and a provider may revoke a session before its recorded expiry. Refresh the page/status, inspect downloader logs, and reconnect the provider if the next download reports an authentication failure.
 
 ## Age-restricted YouTube content fails
 
