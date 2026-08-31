@@ -39,6 +39,29 @@ def test_chromium_uses_container_safe_real_browser_defaults(tmp_path):
     assert "--disable-dev-shm-usage" not in command
     assert "--disable-extensions" not in command
     assert "--window-size=1440,900" in command
+    assert "--remote-debugging-address=127.0.0.1" in command
+    assert "--remote-debugging-port=9222" in command
+
+
+def test_auth_browser_keeps_captured_grant_private():
+    manager = module.AuthBrowserManager()
+    session = module.BrowserSession(
+        session_id="browser-session",
+        provider="qobuz",
+        url="https://api.zarz.moe/v2/challenge?id=example",
+        started_at=0,
+        expires_at=9999999999,
+        status="ready",
+    )
+    manager._session = session
+
+    manager._store_grant(session.session_id, "grant-value-that-is-long-enough")
+
+    assert manager.captured_grant("qobuz") == "grant-value-that-is-long-enough"
+    assert session.serialize()["grant_captured"] is True
+    assert "grant" not in session.serialize()
+    manager.clear_captured_grant("qobuz")
+    assert manager.captured_grant("qobuz") is None
 
 
 def test_auth_browser_removes_stale_container_profile_locks(tmp_path, monkeypatch):

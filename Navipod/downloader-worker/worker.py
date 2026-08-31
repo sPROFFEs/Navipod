@@ -548,6 +548,7 @@ async def complete_provider_auth_callback(
                 await client.aclose()
 
     SPOTIFLAC_PENDING_AUTH.pop(provider, None)
+    auth_browser_manager.clear_captured_grant(provider)
     return _verification_result_page("The provider session is now connected.", success=True)
 
 
@@ -565,6 +566,36 @@ async def complete_provider_auth(provider: str, request: ProviderGrantRequest) -
                 return {"status": "connected", "provider": _spotiflac_provider_status(provider)}
             except Exception as exc:
                 logger.warning("SpotiFLAC provider %s grant exchange failed: %s", provider, exc)
+                raise HTTPException(status_code=502, detail="Provider verification could not be completed") from exc
+            finally:
+                await client.aclose()
+
+
+@app.post("/providers/{provider}/auth/browser-complete", dependencies=[Depends(require_auth)])
+async def complete_provider_browser_auth(provider: str) -> dict:
+    """Exchange a grant captured inside the worker without exposing it."""
+    provider = (provider or "").strip().lower()
+    _spotiflac_provider(provider)
+    current = _spotiflac_provider_status(provider)
+    if current.get("connected"):
+        auth_browser_manager.clear_captured_grant(provider)
+        return current
+    grant = auth_browser_manager.captured_grant(provider)
+    if not grant:
+        return _spotiflac_provider_status(provider)
+
+    async with SPOTIFLAC_AUTH_LOCKS[provider]:
+        async with _spotiflac_session_guard(provider):
+            client = _spotiflac_client(provider)
+            try:
+                await client.exchange_grant(grant)
+                if not client.authenticated:
+                    raise RuntimeError("provider did not return an authenticated session")
+                result = _spotiflac_provider_status(provider)
+                auth_browser_manager.clear_captured_grant(provider)
+                return result
+            except Exception as exc:
+                logger.warning("SpotiFLAC provider %s captured grant exchange failed: %s", provider, exc)
                 raise HTTPException(status_code=502, detail="Provider verification could not be completed") from exc
             finally:
                 await client.aclose()

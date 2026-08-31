@@ -166,10 +166,8 @@ def start_spotiflac_provider_auth(provider: str) -> dict:
 
 def check_spotiflac_provider(provider: str) -> dict:
     provider = validate_spotiflac_provider(provider)
-    providers = get_spotiflac_providers()
-    return next(
-        (item for item in providers if item.get("provider") == provider), {"provider": provider, "connected": False}
-    )
+    with _client(timeout=20.0) as client:
+        return _worker_json(client.post(f"/providers/{provider}/auth/browser-complete"))
 
 
 def _safe_worker_source(job_id: str, relative_path: str) -> Path:

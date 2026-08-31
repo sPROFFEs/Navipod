@@ -223,6 +223,68 @@ def test_provider_grant_is_exchanged_without_being_returned(monkeypatch):
     assert "grant" not in payload
 
 
+def test_captured_browser_grant_is_exchanged_inside_worker(monkeypatch):
+    exchanged = []
+    cleared = []
+    status_checks = 0
+
+    class FakeClient:
+        authenticated = True
+
+        async def exchange_grant(self, grant):
+            exchanged.append(grant)
+
+        async def aclose(self):
+            return None
+
+    monkeypatch.setattr(
+        worker.auth_browser_manager,
+        "captured_grant",
+        lambda provider: "captured-grant-value-long-enough" if provider == "qobuz" else None,
+    )
+    monkeypatch.setattr(worker.auth_browser_manager, "clear_captured_grant", cleared.append)
+    monkeypatch.setattr(worker, "_spotiflac_client", lambda _provider: FakeClient())
+
+    def provider_status(provider):
+        nonlocal status_checks
+        status_checks += 1
+        connected = status_checks > 1
+        return {
+            "provider": provider,
+            "connected": connected,
+            "status": "connected" if connected else "disconnected",
+        }
+
+    monkeypatch.setattr(worker, "_spotiflac_provider_status", provider_status)
+
+    payload = asyncio.run(worker.complete_provider_browser_auth("qobuz"))
+
+    assert payload["connected"] is True
+    assert exchanged == ["captured-grant-value-long-enough"]
+    assert cleared == ["qobuz"]
+    assert "grant" not in payload
+
+
+def test_captured_browser_grant_is_not_replayed_after_callback_connected(monkeypatch):
+    cleared = []
+    monkeypatch.setattr(
+        worker,
+        "_spotiflac_provider_status",
+        lambda provider: {"provider": provider, "connected": True, "status": "connected"},
+    )
+    monkeypatch.setattr(worker.auth_browser_manager, "clear_captured_grant", cleared.append)
+    monkeypatch.setattr(
+        worker.auth_browser_manager,
+        "captured_grant",
+        lambda _provider: (_ for _ in ()).throw(AssertionError("grant must not be replayed")),
+    )
+
+    payload = asyncio.run(worker.complete_provider_browser_auth("deezer"))
+
+    assert payload["connected"] is True
+    assert cleared == ["deezer"]
+
+
 def test_provider_grant_rejects_whitespace_and_extra_fields():
     with pytest.raises(ValidationError):
         worker.ProviderGrantRequest(grant="grant value that must not contain spaces")

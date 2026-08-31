@@ -7,6 +7,9 @@ protected by the existing worker bearer token.
 
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
 import os
 import re
 import secrets
@@ -19,6 +22,9 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
+from urllib.request import urlopen
+
+logger = logging.getLogger("navipod.auth_browser")
 
 
 @dataclass
@@ -30,6 +36,7 @@ class BrowserSession:
     expires_at: float
     status: str = "starting"
     error: str | None = None
+    grant: str | None = None
 
     def serialize(self) -> dict:
         remaining = max(0, int(self.expires_at - time.time()))
@@ -40,6 +47,7 @@ class BrowserSession:
             "started_at": self.started_at,
             "expires_at": self.expires_at,
             "remaining_seconds": remaining,
+            "grant_captured": bool(self.grant),
             **({"error": self.error} if self.error else {}),
         }
 
@@ -62,6 +70,7 @@ class AuthBrowserManager:
         self.height = max(600, min(1600, int(os.getenv("AUTH_BROWSER_HEIGHT", "900"))))
         self.vnc_port = int(os.getenv("AUTH_BROWSER_VNC_PORT", "5900"))
         self.websocket_port = int(os.getenv("AUTH_BROWSER_WEBSOCKET_PORT", "6080"))
+        self.debugging_port = int(os.getenv("AUTH_BROWSER_DEBUGGING_PORT", "9222"))
         self.profile_root = Path(os.getenv("AUTH_BROWSER_PROFILE", "/home/downloader/.auth-browser"))
         self.chromium_no_sandbox = os.getenv("AUTH_BROWSER_CHROMIUM_NO_SANDBOX", "true").strip().lower() not in {
             "0",
@@ -72,6 +81,8 @@ class AuthBrowserManager:
         self._session: BrowserSession | None = None
         self._processes: list[BrowserProcess] = []
         self._timer: threading.Timer | None = None
+        self._watcher_stop = threading.Event()
+        self._watcher_thread: threading.Thread | None = None
 
     def _validate_url(self, url: str) -> str:
         parsed = urlparse(str(url or "").strip())
@@ -100,6 +111,8 @@ class AuthBrowserManager:
             f"--display={self.display}",
             f"--user-data-dir={browser_profile}",
             f"--window-size={self.width},{self.height}",
+            "--remote-debugging-address=127.0.0.1",
+            f"--remote-debugging-port={self.debugging_port}",
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-sync",
@@ -111,6 +124,91 @@ class AuthBrowserManager:
             command.append("--no-sandbox")
         command.append(url)
         return command
+
+    def _debugger_websocket_url(self) -> str:
+        with urlopen(f"http://127.0.0.1:{self.debugging_port}/json/version", timeout=2) as response:
+            payload = json.load(response)
+        websocket_url = str(payload.get("webSocketDebuggerUrl") or "")
+        parsed = urlparse(websocket_url)
+        if (
+            parsed.scheme != "ws"
+            or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
+            or parsed.port != self.debugging_port
+        ):
+            raise RuntimeError("Chromium returned an invalid debugging endpoint")
+        return websocket_url
+
+    def _store_grant(self, session_id: str, grant: str) -> None:
+        grant = str(grant or "").strip()
+        if len(grant) < 16 or len(grant) > 4096 or any(char.isspace() for char in grant):
+            return
+        with self._lock:
+            if self._session and self._session.session_id == session_id:
+                self._session.grant = grant
+                self._session.status = "verified"
+
+    async def _watch_grant(self, session: BrowserSession, ready: threading.Event) -> None:
+        from pydoll.browser.chromium import Chrome
+        from pydoll.protocol.network.events import NetworkEvent
+
+        browser = Chrome(connection_port=self.debugging_port)
+        tab = await browser.connect(self._debugger_websocket_url())
+        challenge = urlparse(session.url)
+        expected_origin = (challenge.scheme, challenge.netloc)
+        expected_path = challenge.path.rstrip("/") + "/verify"
+
+        async def on_response(event: dict) -> None:
+            try:
+                params = event.get("params", {})
+                response = params.get("response", {})
+                response_url = urlparse(str(response.get("url") or ""))
+                if (response_url.scheme, response_url.netloc) != expected_origin or response_url.path != expected_path:
+                    return
+                body = await tab.get_network_response_body(str(params.get("requestId") or ""))
+                payload = json.loads(body)
+                if isinstance(payload, dict):
+                    self._store_grant(session.session_id, payload.get("grant"))
+            except Exception:
+                logger.debug("Could not capture provider verification response", exc_info=True)
+
+        try:
+            await tab.enable_network_events()
+            await tab.on(NetworkEvent.RESPONSE_RECEIVED, on_response)
+            ready.set()
+            while not self._watcher_stop.is_set():
+                await asyncio.sleep(0.1)
+        finally:
+            ready.set()
+            try:
+                await browser.close()
+            except Exception:
+                logger.debug("Could not close Chromium grant watcher", exc_info=True)
+
+    def _start_grant_watcher(self, session: BrowserSession) -> None:
+        self._watcher_stop = threading.Event()
+        ready = threading.Event()
+        startup_error: list[Exception] = []
+
+        def run() -> None:
+            try:
+                asyncio.run(self._watch_grant(session, ready))
+            except Exception as exc:
+                startup_error.append(exc)
+                ready.set()
+
+        self._watcher_thread = threading.Thread(target=run, name="auth-browser-grant", daemon=True)
+        self._watcher_thread.start()
+        if not ready.wait(timeout=5):
+            raise RuntimeError("Chromium grant capture did not become ready")
+        if startup_error:
+            raise RuntimeError(f"Chromium grant capture failed: {startup_error[0]}") from startup_error[0]
+
+    def _stop_grant_watcher(self) -> None:
+        self._watcher_stop.set()
+        watcher = self._watcher_thread
+        self._watcher_thread = None
+        if watcher and watcher is not threading.current_thread():
+            watcher.join(timeout=2)
 
     @staticmethod
     def _profile_in_use(browser_profile: Path) -> bool:
@@ -212,6 +310,7 @@ class AuthBrowserManager:
         if self._timer:
             self._timer.cancel()
             self._timer = None
+        self._stop_grant_watcher()
         self._terminate_processes()
         if self._session:
             self._session.status = "stopping"
@@ -278,8 +377,8 @@ class AuthBrowserManager:
                     chromium_command,
                     env=display_env,
                 )
-                chromium_ready_at = time.monotonic() + 0.5
-                self._wait_ready(chromium_process, lambda: time.monotonic() >= chromium_ready_at, 5)
+                self._wait_ready(chromium_process, lambda: self._port_ready(self.debugging_port), 5)
+                self._start_grant_watcher(session)
                 vnc = self._spawn(
                     "x11vnc",
                     [
@@ -332,6 +431,17 @@ class AuthBrowserManager:
         with self._lock:
             self._stop_locked()
             return {"status": "stopped"}
+
+    def captured_grant(self, provider: str) -> str | None:
+        with self._lock:
+            if not self._session or self._session.provider != provider:
+                return None
+            return self._session.grant
+
+    def clear_captured_grant(self, provider: str) -> None:
+        with self._lock:
+            if self._session and self._session.provider == provider:
+                self._session.grant = None
 
     def open_url(self, session_id: str, url: str) -> dict:
         url = self._validate_url(url)

@@ -130,6 +130,32 @@ def test_worker_protocol_rejects_malformed_payload_for_safe_fallback():
         downloader_worker_client._decode_job_payload(response)
 
 
+def test_provider_check_asks_worker_to_exchange_captured_grant(monkeypatch):
+    requested = []
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def post(self, path):
+            requested.append(path)
+            return httpx.Response(
+                200,
+                json={"provider": "qobuz", "connected": True},
+                request=httpx.Request("POST", f"http://downloader:8081{path}"),
+            )
+
+    monkeypatch.setattr(downloader_worker_client, "_client", lambda **_kwargs: FakeClient())
+
+    payload = downloader_worker_client.check_spotiflac_provider("qobuz")
+
+    assert payload["connected"] is True
+    assert requested == ["/providers/qobuz/auth/browser-complete"]
+
+
 def test_worker_output_copy_rolls_back_partial_promotion(tmp_path, monkeypatch):
     staging_root = tmp_path / "staging"
     job_root = staging_root / "jobs" / "job-atomic"
