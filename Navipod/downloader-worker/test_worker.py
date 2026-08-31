@@ -4,6 +4,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi import HTTPException
@@ -100,12 +101,13 @@ def test_spotiflac_shared_auth_timeout_does_not_retry_every_provider(tmp_path, m
     assert "skipped equivalent provider retries" in state.fallback_reasons[-1]
 
 
-def test_provider_auth_start_returns_real_challenge_without_callback(monkeypatch):
+def test_provider_auth_start_returns_callback_bearing_challenge(monkeypatch):
     class FakeClient:
         authenticated = False
         pending_challenge_id = "chl_safe123"
         endpoints = {"challenge": "/challenge"}
         base_url = "https://api.zarz.moe/v2"
+        namespace = "tidal-web"
 
         async def bootstrap(self):
             return "https://unused.example"
@@ -118,8 +120,80 @@ def test_provider_auth_start_returns_real_challenge_without_callback(monkeypatch
     payload = asyncio.run(worker.start_provider_auth("tidal"))
 
     assert payload["status"] == "verification_required"
-    assert payload["verification_url"] == "https://api.zarz.moe/v2/challenge?id=chl_safe123"
-    assert "cb=" not in payload["verification_url"]
+    challenge = urlparse(payload["verification_url"])
+    challenge_query = parse_qs(challenge.query)
+    callback = urlparse(challenge_query["cb"][0])
+    callback_query = parse_qs(callback.query)
+    assert challenge.scheme == "https"
+    assert challenge.netloc == "api.zarz.moe"
+    assert challenge.path == "/v2/challenge"
+    assert challenge_query["id"] == ["chl_safe123"]
+    assert callback.scheme == "http"
+    assert callback.netloc == "127.0.0.1:8081"
+    assert callback.path == "/providers/tidal/auth/callback"
+    assert callback_query["cb_version"] == ["v2grant"]
+    assert callback_query["state"] == ["tidal-web"]
+    assert len(callback_query["token"][0]) >= 32
+
+
+def test_provider_auth_callback_exchanges_one_time_grant(monkeypatch):
+    exchanged = []
+
+    class FakeClient:
+        authenticated = True
+
+        async def exchange_grant(self, grant):
+            exchanged.append(grant)
+
+        async def aclose(self):
+            return None
+
+    worker.SPOTIFLAC_PENDING_AUTH["tidal"] = {
+        "token": "callback-token-that-is-long-enough",
+        "state": "tidal-web",
+        "expires_at": time.time() + 60,
+    }
+    monkeypatch.setattr(worker, "_spotiflac_client", lambda _provider: FakeClient())
+
+    response = asyncio.run(
+        worker.complete_provider_auth_callback(
+            "tidal",
+            token="callback-token-that-is-long-enough",
+            grant="grant-value-that-is-long-enough",
+            state="tidal-web",
+            cb_version="v2grant",
+        )
+    )
+
+    assert response.status_code == 200
+    assert exchanged == ["grant-value-that-is-long-enough"]
+    assert "tidal" not in worker.SPOTIFLAC_PENDING_AUTH
+
+
+def test_provider_auth_callback_rejects_wrong_token(monkeypatch):
+    worker.SPOTIFLAC_PENDING_AUTH["qobuz"] = {
+        "token": "expected-callback-token-long-enough",
+        "state": "qobuz-web",
+        "expires_at": time.time() + 60,
+    }
+    monkeypatch.setattr(
+        worker,
+        "_spotiflac_client",
+        lambda _provider: (_ for _ in ()).throw(AssertionError("grant must not be exchanged")),
+    )
+
+    response = asyncio.run(
+        worker.complete_provider_auth_callback(
+            "qobuz",
+            token="incorrect-callback-token-long-enough",
+            grant="grant-value-that-is-long-enough",
+            state="qobuz-web",
+            cb_version="v2grant",
+        )
+    )
+
+    assert response.status_code == 403
+    assert "qobuz" in worker.SPOTIFLAC_PENDING_AUTH
 
 
 def test_provider_grant_is_exchanged_without_being_returned(monkeypatch):

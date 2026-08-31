@@ -16,12 +16,13 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import httpx
 import yt_dlp
 from auth_browser import manager as auth_browser_manager
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 logging.basicConfig(level=logging.INFO)
@@ -48,6 +49,8 @@ SPOTIFLAC_PROVIDERS = {
 }
 SPOTIFLAC_AUTH_LOCKS = {provider: asyncio.Lock() for provider in SPOTIFLAC_PROVIDERS}
 SPOTIFLAC_SESSION_LOCKS = {provider: threading.Lock() for provider in SPOTIFLAC_PROVIDERS}
+SPOTIFLAC_PENDING_AUTH: dict[str, dict[str, str | float]] = {}
+SPOTIFLAC_AUTH_CALLBACK_TTL_SECONDS = 300
 
 
 class DownloadRequest(BaseModel):
@@ -261,6 +264,60 @@ def _spotiflac_provider_status(provider: str) -> dict:
     }
 
 
+def _spotiflac_challenge_url(client, provider: str) -> str:
+    """Build the callback-bearing URL required by signedSession@1."""
+    challenge_id = str(client.pending_challenge_id or "").strip()
+    if not challenge_id:
+        raise RuntimeError("provider bootstrap returned no challenge")
+
+    callback_token = secrets.token_urlsafe(32)
+    callback_url = f"http://127.0.0.1:8081/providers/{provider}/auth/callback?{urlencode({'token': callback_token})}"
+    callback_parts = list(urlparse(callback_url))
+    callback_query = dict(parse_qsl(callback_parts[4]))
+    callback_query["cb_version"] = "v2grant"
+    callback_query["state"] = str(client.namespace)
+    callback_parts[4] = urlencode(callback_query)
+
+    challenge_path = str(client.endpoints.get("challenge") or "/challenge")
+    challenge_parts = list(urlparse(f"{client.base_url}{challenge_path}"))
+    challenge_query = dict(parse_qsl(challenge_parts[4]))
+    challenge_query["id"] = challenge_id
+    challenge_query["cb"] = urlunparse(callback_parts)
+    challenge_parts[4] = urlencode(challenge_query)
+
+    SPOTIFLAC_PENDING_AUTH[provider] = {
+        "token": callback_token,
+        "state": str(client.namespace),
+        "expires_at": time.time() + SPOTIFLAC_AUTH_CALLBACK_TTL_SECONDS,
+    }
+    return urlunparse(challenge_parts)
+
+
+def _verification_result_page(message: str, *, success: bool, status_code: int = 200) -> HTMLResponse:
+    title = "Verification complete" if success else "Verification failed"
+    color = "#1ed760" if success else "#ff5c5c"
+    body = (
+        "You can return to Navipod and select Check verification."
+        if success
+        else "Return to Navipod and start a new verification session."
+    )
+    return HTMLResponse(
+        "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' "
+        "content='width=device-width,initial-scale=1'><title>Navipod provider verification</title>"
+        "<style>body{margin:0;background:#101215;color:#f5f7fa;font:16px system-ui;display:grid;"
+        "min-height:100vh;place-items:center}.card{max-width:34rem;padding:2rem;border:1px solid #343942;"
+        "border-radius:1rem;background:#181b20}h1{color:"
+        + color
+        + ";margin-top:0}p{line-height:1.5;color:#bac2ce}</style></head><body><main class='card'>"
+        f"<h1>{title}</h1><p>{message}</p><p>{body}</p></main></body></html>",
+        status_code=status_code,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+        },
+    )
+
+
 def _connected_spotiflac_services() -> list[str]:
     connected = []
     for provider, definition in SPOTIFLAC_PROVIDERS.items():
@@ -425,11 +482,7 @@ async def start_provider_auth(provider: str) -> dict:
                 result = await client.bootstrap()
                 if result is True and client.authenticated:
                     return {"status": "connected", "provider": _spotiflac_provider_status(provider)}
-                challenge_id = (client.pending_challenge_id or "").strip()
-                if not challenge_id:
-                    raise RuntimeError("provider bootstrap returned no challenge")
-                challenge_path = str(client.endpoints.get("challenge") or "/challenge")
-                verification_url = f"{client.base_url}{challenge_path}?{urlencode({'id': challenge_id})}"
+                verification_url = _spotiflac_challenge_url(client, provider)
                 return {
                     "status": "verification_required",
                     "provider": provider,
@@ -444,6 +497,58 @@ async def start_provider_auth(provider: str) -> dict:
                 raise HTTPException(status_code=502, detail="Provider verification could not be started") from exc
             finally:
                 await client.aclose()
+
+
+@app.get("/providers/{provider}/auth/callback", response_class=HTMLResponse)
+async def complete_provider_auth_callback(
+    provider: str,
+    token: str = Query(min_length=32, max_length=256),
+    grant: str = Query(min_length=16, max_length=4096),
+    state: str = Query(min_length=1, max_length=128),
+    cb_version: str = Query(min_length=1, max_length=32),
+) -> HTMLResponse:
+    """Receive the one-time signed-session grant from worker-local Chromium."""
+    provider = (provider or "").strip().lower()
+    try:
+        _spotiflac_provider(provider)
+    except HTTPException:
+        return _verification_result_page("Unknown provider.", success=False, status_code=404)
+
+    pending = SPOTIFLAC_PENDING_AUTH.get(provider)
+    valid = bool(
+        pending
+        and time.time() < float(pending["expires_at"])
+        and secrets.compare_digest(token, str(pending["token"]))
+        and secrets.compare_digest(state, str(pending["state"]))
+        and cb_version == "v2grant"
+    )
+    if not valid:
+        if pending and time.time() >= float(pending["expires_at"]):
+            SPOTIFLAC_PENDING_AUTH.pop(provider, None)
+        return _verification_result_page(
+            "The verification session is invalid or expired.", success=False, status_code=403
+        )
+
+    if any(char.isspace() for char in grant):
+        return _verification_result_page("The provider returned a malformed grant.", success=False, status_code=400)
+
+    async with SPOTIFLAC_AUTH_LOCKS[provider]:
+        async with _spotiflac_session_guard(provider):
+            client = _spotiflac_client(provider)
+            try:
+                await client.exchange_grant(grant)
+                if not client.authenticated:
+                    raise RuntimeError("provider did not return an authenticated session")
+            except Exception as exc:
+                logger.warning("SpotiFLAC provider %s callback exchange failed: %s", provider, exc)
+                return _verification_result_page(
+                    "The provider grant could not be exchanged.", success=False, status_code=502
+                )
+            finally:
+                await client.aclose()
+
+    SPOTIFLAC_PENDING_AUTH.pop(provider, None)
+    return _verification_result_page("The provider session is now connected.", success=True)
 
 
 @app.post("/providers/{provider}/auth/complete", dependencies=[Depends(require_auth)])
@@ -469,6 +574,7 @@ async def complete_provider_auth(provider: str, request: ProviderGrantRequest) -
 async def disconnect_provider(provider: str) -> dict:
     provider = (provider or "").strip().lower()
     _spotiflac_provider(provider)
+    SPOTIFLAC_PENDING_AUTH.pop(provider, None)
     async with SPOTIFLAC_AUTH_LOCKS[provider]:
         async with _spotiflac_session_guard(provider):
             client = _spotiflac_client(provider)

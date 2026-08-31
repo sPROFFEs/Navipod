@@ -99,12 +99,10 @@ class AuthBrowserManager:
             chromium,
             f"--display={self.display}",
             f"--user-data-dir={browser_profile}",
+            f"--window-size={self.width},{self.height}",
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-sync",
-            "--disable-extensions",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
         ]
         # Docker remains the outer sandbox: this container has no new
         # privileges and drops all capabilities. Chromium's namespace/SUID

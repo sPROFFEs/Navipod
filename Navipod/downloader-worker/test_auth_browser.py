@@ -31,11 +31,14 @@ def test_auth_browser_rejects_non_http_urls():
         manager._validate_url("file:///tmp/provider.html")
 
 
-def test_chromium_uses_container_safe_mode_by_default(tmp_path):
+def test_chromium_uses_container_safe_real_browser_defaults(tmp_path):
     manager = module.AuthBrowserManager()
     command = manager._chromium_command("/usr/bin/chromium", tmp_path, "https://provider.example/verify")
     assert "--no-sandbox" in command
-    assert "--disable-gpu" in command
+    assert "--disable-gpu" not in command
+    assert "--disable-dev-shm-usage" not in command
+    assert "--disable-extensions" not in command
+    assert "--window-size=1440,900" in command
 
 
 def test_component_startup_error_names_process_and_redacts_urls(tmp_path):
