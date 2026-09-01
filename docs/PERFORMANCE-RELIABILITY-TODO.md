@@ -13,7 +13,7 @@ Status: all reviewed P1 and P2 items are complete as of 2026-09-01.
 
 ## P2 — completed
 
-- [x] Reuse bounded SQLAlchemy and HTTP connection pools and close provider clients on shutdown.
+- [x] Keep SQLite request connections isolated, reuse HTTP connection pools, and close provider clients on shutdown.
 - [x] Run independent search/recommendation providers concurrently while isolating provider failures.
 - [x] Use indexed FTS or normalized identity columns instead of loading/scanning the full track catalog.
 - [x] Remove the per-track query in smart-mix playlist creation.

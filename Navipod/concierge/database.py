@@ -7,7 +7,7 @@ from navipod_config import settings
 from secrets_store import decrypt_secret, encrypt_secret
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, event
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
-from sqlalchemy.pool import QueuePool
+from sqlalchemy.pool import NullPool
 from sqlalchemy.sql import func
 
 
@@ -60,12 +60,11 @@ _ensure_sqlite_parent_dir(SQLALCHEMY_DATABASE_URL)
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args={"check_same_thread": False, "timeout": 30},
-    poolclass=QueuePool,
-    pool_size=5,
-    max_overflow=5,
-    pool_timeout=30,
-    pool_recycle=1800,
-    pool_pre_ping=True,
+    # Request-scoped sessions can remain alive for the full duration of audio
+    # streams and remote cover lookups. A bounded QueuePool lets those slow
+    # responses consume every slot and stalls unrelated API requests. SQLite
+    # connections are cheap; isolate each request and close it with the session.
+    poolclass=NullPool,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -3,14 +3,13 @@ from pathlib import Path
 import database
 import track_identity
 import yaml
-from sqlalchemy.pool import QueuePool
+from sqlalchemy.pool import NullPool
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_sqlite_uses_a_small_reusable_connection_pool():
-    assert isinstance(database.engine.pool, QueuePool)
-    assert database.engine.pool.size() == 5
+def test_sqlite_does_not_cap_concurrent_streaming_requests():
+    assert isinstance(database.engine.pool, NullPool)
 
 
 def test_identity_sync_only_reads_tracks_missing_identity_fields(db_session, monkeypatch):
