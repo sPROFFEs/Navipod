@@ -23,6 +23,9 @@ def test_all_compose_variants_include_isolated_downloader():
         concierge = payload["services"]["concierge"]
         assert "downloader" in concierge["depends_on"]
         assert concierge["environment"]
+        updater = payload["services"]["updater"]
+        assert updater["build"]["context"] == "./concierge"
+        assert updater["build"]["dockerfile"] == "Dockerfile.updater"
 
 
 def test_worker_image_installs_spotiflac_browser_runtime():
@@ -40,6 +43,19 @@ def test_worker_image_uses_pinned_official_deno_binary():
     assert "FROM docker.io/denoland/deno:bin-${DENO_VERSION} AS deno" in dockerfile
     assert "COPY --from=deno /deno /usr/local/bin/deno" in dockerfile
     assert "https://deno.land/install.sh" not in dockerfile
+
+
+def test_concierge_image_uses_pinned_deno_and_updater_has_minimal_system_runtime():
+    concierge = (PROJECT_ROOT / "concierge" / "Dockerfile").read_text(encoding="utf-8")
+    updater = (PROJECT_ROOT / "concierge" / "Dockerfile.updater").read_text(encoding="utf-8")
+
+    assert "FROM docker.io/denoland/deno:bin-${DENO_VERSION} AS deno" in concierge
+    assert "https://deno.land/install.sh" not in concierge
+    assert "--no-install-recommends" in concierge
+    assert "--no-install-recommends" in updater
+    assert "ffmpeg" not in updater
+    assert "nodejs" not in updater
+    assert "deno" not in updater.lower()
 
 
 def test_worker_entrypoint_prepares_persistent_auth_browser_volume():

@@ -243,14 +243,14 @@ async def get_cover(track_id: int, request: Request, db: Session = Depends(get_d
 
 
 @router.get("/api/stream/{track_id}")
-async def stream_track(track_id: int, request: Request, db: Session = Depends(get_db)):
+def stream_track(track_id: int, request: Request, db: Session = Depends(get_db)):
     """Stream local audio file with Range support (Essential for correct duration/seeking)"""
     if not get_current_user_safe(db, request):
         return Response(status_code=401)
-    return await stream_track_authorized(track_id, request, db)
+    return stream_track_authorized(track_id, request, db)
 
 
-async def stream_track_authorized(track_id: int, request: Request, db: Session):
+def stream_track_authorized(track_id: int, request: Request, db: Session):
     """Stream helper for callers that already authenticated by another scheme."""
     track = db.query(database.Track).filter(database.Track.id == track_id).first()
     file_path = _resolve_allowed_media_path(track.filepath if track else None)
@@ -310,7 +310,7 @@ async def stream_track_authorized(track_id: int, request: Request, db: Session):
 
 
 @router.get("/api/track/{track_id}/gain")
-async def get_track_gain(track_id: int, request: Request, db: Session = Depends(get_db)):
+def get_track_gain(track_id: int, request: Request, db: Session = Depends(get_db)):
     """Return loudness-normalisation gain for client-side application.
 
     Resolution order:
@@ -394,7 +394,7 @@ async def get_track_gain(track_id: int, request: Request, db: Session = Depends(
 
 
 @router.get("/api/random-track")
-async def get_random_track(request: Request, db: Session = Depends(get_db)):
+def get_random_track(request: Request, db: Session = Depends(get_db)):
     """Return a random track from the local library."""
     if not get_current_user_safe(db, request):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)

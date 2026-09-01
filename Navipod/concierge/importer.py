@@ -317,11 +317,9 @@ async def enrich_pass(track_ids: list[int], settings: DownloadSettings, workers:
     # call to enrich_metadata. The DB session opened ABOVE that
     # semaphore was unbounded — for an N-track import, asyncio.gather
     # spawned N concurrent _process tasks, each holding a fresh
-    # SQLAlchemy connection (we use NullPool, so each session is its
-    # own SQLite file descriptor). On a 1700-track import that blows
-    # past the default Linux fd limit of 1024 and SQLite starts
-    # returning "unable to open database file" — a transient error
-    # that the metadata_cache helper then mistakes for corruption.
+    # SQLAlchemy connection. The database uses a small shared pool, and
+    # this semaphore prevents a large import from exhausting it while
+    # keeping the previous protection against SQLite descriptor spikes.
     #
     # Add an OUTER semaphore that bounds total concurrent tasks. The
     # inner `sem` is kept for the HTTP enrich call so we don't change

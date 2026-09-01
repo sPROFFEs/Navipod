@@ -35,7 +35,7 @@ class SaveMixRequest(BaseModel):
 
 
 @router.post("/api/activity/listen")
-async def record_listen_event(payload: ListenEventRequest, request: Request, db: Session = Depends(get_db)):
+def record_listen_event(payload: ListenEventRequest, request: Request, db: Session = Depends(get_db)):
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -95,7 +95,7 @@ async def record_listen_event(payload: ListenEventRequest, request: Request, db:
 
 
 @router.get("/api/mixes")
-async def list_mixes(request: Request, db: Session = Depends(get_db)):
+def list_mixes(request: Request, db: Session = Depends(get_db)):
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -103,7 +103,7 @@ async def list_mixes(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/api/mixes/{mix_key}")
-async def get_mix(mix_key: str, request: Request, db: Session = Depends(get_db)):
+def get_mix(mix_key: str, request: Request, db: Session = Depends(get_db)):
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -115,7 +115,7 @@ async def get_mix(mix_key: str, request: Request, db: Session = Depends(get_db))
 
 
 @router.post("/api/mixes/{mix_key}/save")
-async def save_mix_as_playlist(mix_key: str, payload: SaveMixRequest, request: Request, db: Session = Depends(get_db)):
+def save_mix_as_playlist(mix_key: str, payload: SaveMixRequest, request: Request, db: Session = Depends(get_db)):
     user = get_current_user_safe(db, request)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -134,22 +134,26 @@ async def save_mix_as_playlist(mix_key: str, payload: SaveMixRequest, request: R
     db.commit()
     db.refresh(playlist)
 
-    position = 0
+    requested_track_ids = [int(item.get("db_id") or 0) for item in mix["items"]]
+    valid_track_ids = {
+        int(track_id)
+        for (track_id,) in db.query(database.Track.id)
+        .filter(database.Track.id.in_({track_id for track_id in requested_track_ids if track_id > 0}))
+        .all()
+    }
+    playlist_items = []
     for item in mix["items"]:
         track_id = int(item.get("db_id") or 0)
-        if not track_id:
+        if track_id not in valid_track_ids:
             continue
-        exists = db.query(database.Track.id).filter(database.Track.id == track_id).first()
-        if not exists:
-            continue
-        db.add(
+        playlist_items.append(
             database.PlaylistItem(
                 playlist_id=playlist.id,
                 track_id=track_id,
-                position=position,
+                position=len(playlist_items),
             )
         )
-        position += 1
+    db.add_all(playlist_items)
     db.commit()
 
     generate_m3u_for_playlist(db, playlist, user.username)

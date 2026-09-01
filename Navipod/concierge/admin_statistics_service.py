@@ -6,6 +6,7 @@ import sqlite3
 import threading
 import time
 from collections import defaultdict
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -25,6 +26,7 @@ SORT_FIELDS = {"username", "qualified_listens", "listening_seconds", "last_liste
 
 _cache_lock = threading.Lock()
 _period_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_period_build_locks: dict[str, threading.Lock] = {period: threading.Lock() for period in PERIODS}
 
 
 def clear_statistics_cache() -> None:
@@ -97,7 +99,7 @@ def _read_user_activity(username: str, start: datetime | None) -> tuple[list[dic
     where = "" if start is None else "AND recorded_at >= ?"
     params: tuple[Any, ...] = () if start is None else (start.isoformat(),)
     try:
-        with sqlite3.connect(f"file:{activity_path.as_posix()}?mode=ro", uri=True, timeout=5) as conn:
+        with closing(sqlite3.connect(f"file:{activity_path.as_posix()}?mode=ro", uri=True, timeout=5)) as conn, conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 f"""
@@ -279,9 +281,17 @@ def get_user_statistics(
         snapshot = cached[1] if cached and now - cached[0] < STATISTICS_CACHE_TTL_SECONDS else None
 
     if snapshot is None:
-        snapshot = _build_period_snapshot(db, period)
-        with _cache_lock:
-            _period_cache[period] = (time.monotonic(), snapshot)
+        # Only one request rebuilds a period. Other admin polls wait briefly
+        # and then reuse that snapshot instead of reopening every user DB.
+        with _period_build_locks[period]:
+            now = time.monotonic()
+            with _cache_lock:
+                cached = _period_cache.get(period)
+                snapshot = cached[1] if cached and now - cached[0] < STATISTICS_CACHE_TTL_SECONDS else None
+            if snapshot is None:
+                snapshot = _build_period_snapshot(db, period)
+                with _cache_lock:
+                    _period_cache[period] = (time.monotonic(), snapshot)
 
     users = list(snapshot["users"])
     if sort == "username":

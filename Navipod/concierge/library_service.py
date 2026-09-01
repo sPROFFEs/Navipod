@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 
 import database
@@ -180,7 +181,7 @@ def normalize_smart_rules(rules: dict) -> dict:
 def _activity_stats(username: str) -> dict[int, dict]:
     try:
         path = personalization_service.ensure_user_activity_db(username)
-        with sqlite3.connect(str(path)) as conn:
+        with closing(sqlite3.connect(str(path))) as conn, conn:
             rows = conn.execute("SELECT track_id, play_count, last_played_at FROM track_stats").fetchall()
     except (OSError, sqlite3.Error):
         return {}

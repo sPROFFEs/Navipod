@@ -20,6 +20,7 @@ import media_metadata
 import operations_service
 import path_security
 import psutil
+import storage_maintenance
 import track_identity
 import wrapped_service
 from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Form, HTTPException, Query, Request
@@ -472,7 +473,7 @@ async def reset_user_password(
 
 
 @router.get("/system")
-async def system_monitor(request: Request, db: Session = Depends(get_db)):
+def system_monitor(request: Request, db: Session = Depends(get_db)):
     admin = get_current_admin(request, db)
 
     # Disk Statistics on data path
@@ -711,7 +712,7 @@ def update_downloader_mode(
 
 
 @router.get("/api/system-stats")
-async def api_system_stats(
+def api_system_stats(
     request: Request,
     db: Session = Depends(get_db),
     admin: database.User = Depends(get_current_admin),
@@ -756,53 +757,69 @@ def api_user_statistics(
     return JSONResponse(payload, headers={"Cache-Control": "private, no-store"})
 
 
-@router.post("/system/purge-storage")
-async def purge_storage(db: Session = Depends(get_db), admin: database.User = Depends(get_current_admin)):
-    """Delete download residue and temporary files."""
-    import shutil
-
-    # Directorios a limpiar
-    paths_to_clean = ["/tmp", "/app/temp"]  # Ajusta según tu Dockerfile
-
-    # Extensiones de archivos basura (descargas incompletas)
-    trash_extensions = [".part", ".ytdl", ".tmp", ".cache"]
-
-    bytes_freed = 0
-
+def _run_storage_purge_job(job_id: int):
+    db = database.SessionLocal()
     try:
-        # 1. Limpiar carpetas temporales globales
-        for path in paths_to_clean:
-            if os.path.exists(path):
-                for root, dirs, files in os.walk(path):
-                    for f in files:
-                        file_path = os.path.join(root, f)
-                        bytes_freed += os.path.getsize(file_path)
-                        os.remove(file_path)
+        operations_service.update_admin_job_progress(
+            job_id,
+            status="running",
+            message="Scanning stale Navipod download residue",
+            phase="scan",
+            progress=10,
+        )
+        active_jobs = (
+            db.query(database.DownloadJob.id, database.User.username)
+            .join(database.User, database.User.id == database.DownloadJob.user_id)
+            .filter(database.DownloadJob.status.in_(("pending", "processing", "downloading")))
+            .all()
+        )
+        active_users = {str(username) for _job_id, username in active_jobs if username}
+        active_staging_names = {str(job_id) for job_id, _username in active_jobs if job_id is not None}
+        result = storage_maintenance.purge_stale_storage(
+            staging_roots=(Path(settings.DOWNLOADER_STAGING_ROOT) / "jobs",),
+            users_root=Path(settings.MUSIC_ROOT),
+            protected_usernames=active_users,
+            protected_staging_names=active_staging_names,
+        )
+        freed_mb = round(result["bytes_freed"] / (1024**2), 2)
+        operations_service.update_admin_job_progress(
+            job_id,
+            status="completed",
+            message=f"Storage cleanup completed: freed {freed_mb} MB",
+            phase="completed",
+            progress=100,
+            extra={
+                "result": result,
+                "protected_active_users": len(active_users),
+                "protected_active_jobs": len(active_staging_names),
+            },
+            finished=True,
+        )
+    except Exception as exc:
+        operations_service.update_admin_job_progress(
+            job_id,
+            status="failed",
+            message=f"Storage cleanup failed: {exc}",
+            phase="failed",
+            progress=100,
+            extra={"error": str(exc)},
+            finished=True,
+        )
+    finally:
+        db.close()
 
-        # 2. Buscar basura en las carpetas de los usuarios
-        users_root = "/saas-data/users"
-        for root, dirs, files in os.walk(users_root):
-            # Eliminar archivos temporales de motores
-            for f in files:
-                if any(f.endswith(ext) for ext in trash_extensions):
-                    file_path = os.path.join(root, f)
-                    bytes_freed += os.path.getsize(file_path)
-                    os.remove(file_path)
 
-            # Eliminar carpetas .spotdl-cache que suelen pesar bastante
-            for d in dirs:
-                if d == ".spotdl-cache":
-                    dir_path = os.path.join(root, d)
-                    bytes_freed += sum(
-                        os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(dir_path) for f in fs
-                    )
-                    shutil.rmtree(dir_path)
-
-        freed_gb = round(bytes_freed / (1024**3), 3)
-        return RedirectResponse(f"/admin/system?msg=Storage purge completed. Freed {freed_gb} GB", status_code=303)
-
-    except Exception as e:
-        return RedirectResponse(f"/admin/system?error=Storage purge failed: {str(e)}", status_code=303)
+@router.post("/system/purge-storage")
+def purge_storage(background_tasks: BackgroundTasks, admin: database.User = Depends(get_current_admin)):
+    """Queue bounded cleanup of stale Navipod-owned download residue."""
+    job_id = operations_service.create_admin_job(
+        "storage_cleanup",
+        admin.username,
+        "Storage cleanup queued",
+        {"phase": "queued", "progress": 0},
+    )
+    background_tasks.add_task(_run_storage_purge_job, job_id)
+    return RedirectResponse(f"/admin/system?msg=Storage cleanup queued as job {job_id}", status_code=303)
 
 
 @router.post("/system/pool-limit")
@@ -1310,7 +1327,7 @@ def _run_loudness_scan_job(job_id: int):
                 message=f"Measuring {measured}/{total} tracks",
                 phase="scan",
                 progress=min(pct, 99),
-                extra={"measured": measured, "total": total},
+                extra={"measured": measured, "total": total, "current_title": current_title},
             )
 
         measured = loudness.backfill_loudness(progress_callback=_progress)

@@ -2,6 +2,7 @@ import re
 import unicodedata
 
 import database
+from sqlalchemy import or_
 
 YOUTUBE_PATTERNS = [
     re.compile(r"(?:v=|youtu\.be/|embed/|shorts/)([a-zA-Z0-9_-]{11})"),
@@ -181,7 +182,14 @@ def sync_track_identities(db, batch_size: int = 500) -> int:
     while True:
         tracks = (
             db.query(database.Track)
-            .filter(database.Track.id > last_id)
+            .filter(
+                database.Track.id > last_id,
+                or_(
+                    database.Track.artist_norm.is_(None),
+                    database.Track.title_norm.is_(None),
+                    database.Track.version_tag.is_(None),
+                ),
+            )
             .order_by(database.Track.id.asc())
             .limit(batch_size)
             .all()

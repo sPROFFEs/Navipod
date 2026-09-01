@@ -309,7 +309,7 @@ async def federation_catalog(
 
 
 @router.get("/api/federation/stream/{track_id}")
-async def federation_stream(
+def federation_stream(
     track_id: int,
     request: Request,
     db: Session = Depends(get_db),
@@ -325,7 +325,7 @@ async def federation_stream(
     # forwarded transparently.
     from routers.music.streaming import stream_track_authorized
 
-    return await stream_track_authorized(track_id, request, db)
+    return stream_track_authorized(track_id, request, db)
 
 
 # ============================================================================

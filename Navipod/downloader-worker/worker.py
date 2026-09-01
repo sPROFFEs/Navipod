@@ -64,14 +64,14 @@ class DownloadRequest(BaseModel):
 
     @field_validator("job_id")
     @classmethod
-    def validate_job_id(cls, value: str) -> str:
+    def validate_job_id(_cls, value: str) -> str:
         if not JOB_ID_RE.fullmatch(value):
             raise ValueError("job_id contains unsupported characters")
         return value
 
     @field_validator("url")
     @classmethod
-    def validate_url(cls, value: str) -> str:
+    def validate_url(_cls, value: str) -> str:
         value = value.strip()
         if value.startswith("ytsearch1:"):
             return value
@@ -87,7 +87,7 @@ class ProviderGrantRequest(BaseModel):
 
     @field_validator("grant")
     @classmethod
-    def validate_grant(cls, value: str) -> str:
+    def validate_grant(_cls, value: str) -> str:
         value = value.strip()
         if not value or any(char.isspace() for char in value):
             raise ValueError("grant is malformed")

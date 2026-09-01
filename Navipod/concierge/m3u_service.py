@@ -25,6 +25,9 @@ class M3UService:
         self.playlists_root.mkdir(parents=True, exist_ok=True)
 
     def create_playlist(self, name: str, source_url: str = None) -> database.Playlist:
+        # Retained for callers using the historical API; source-backed
+        # playlists are represented by Playlist.source_playlist_id now.
+        del source_url
         display_name = normalize_playlist_name(name)
         existing = (
             self.db.query(database.Playlist)

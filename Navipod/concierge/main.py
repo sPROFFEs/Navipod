@@ -12,13 +12,16 @@ import cache_maintenance
 import database
 import httpx
 import i18n
+import lastfm_service
 import manager
 import media_metadata
+import musicbrainz_service
 import operations_service
 import party_service
 import ram_audit
 import reaper
 import security
+import spotify_service
 import track_identity
 import wrapped_service
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
@@ -187,7 +190,10 @@ async def startup_event():
     asyncio.create_task(operations_service.updater_runtime_handoff_scheduler())
     asyncio.create_task(wrapped_daily_scheduler())
     asyncio.create_task(library_metadata_backfill())
-    asyncio.create_task(loudness_backfill())
+    if settings.STARTUP_LOUDNESS_BACKFILL:
+        asyncio.create_task(loudness_backfill())
+    else:
+        logger.info("Startup loudness backfill disabled; use the admin library scan when needed")
     asyncio.create_task(party_service.party_clock_scheduler())
     # Append per-tick RAM stats to /workspace/ram_audit.log (= repo root
     # on the host via the bind mount) so memory growth can be inspected
@@ -349,7 +355,7 @@ def _validate_radio_proxy_url(url: str) -> tuple[bool, str]:
 async def _fetch_radio_proxy_response(url: str) -> httpx.Response:
     current_url = url
     for _ in range(RADIO_PROXY_MAX_REDIRECTS + 1):
-        is_valid, error_message = _validate_radio_proxy_url(current_url)
+        is_valid, error_message = await asyncio.to_thread(_validate_radio_proxy_url, current_url)
         if not is_valid:
             raise ValueError(error_message)
 
@@ -381,9 +387,14 @@ def get_db():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    await proxy_client.aclose()
-    # Also close shared http_client if used
-    await http_client.aclose()
+    await asyncio.gather(
+        proxy_client.aclose(),
+        http_client.aclose(),
+        lastfm_service.lastfm_service.client.aclose(),
+        musicbrainz_service.musicbrainz_service.client.aclose(),
+        spotify_service.spotify_service.client.aclose(),
+        return_exceptions=True,
+    )
 
 
 @app.get("/api/proxy/radio")

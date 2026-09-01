@@ -38,6 +38,9 @@ class TrackService:
     def search_hybrid(
         self, query: str, spotify_service=None, youtube_service=None, spotify_creds: Dict = None, limit: int = 20
     ) -> Dict[str, Any]:
+        # Preserve the legacy method signature while remote search lives in
+        # the provider services and router orchestration.
+        del spotify_service, youtube_service, spotify_creds
         return {
             "local": [self._track_to_dict(track) for track in self.search_local(query, limit)],
             "remote_spotify": [],

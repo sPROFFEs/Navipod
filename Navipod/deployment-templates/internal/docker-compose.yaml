@@ -122,13 +122,16 @@ services:
       # Enable Python's stdlib allocator tracker (10-frame depth). Used by
       # the ram_audit background task that appends to /workspace/ram_audit.log
       # so you can see WHICH allocator grows day-to-day.
-      - PYTHONTRACEMALLOC=10
+      - PYTHONTRACEMALLOC=${PYTHONTRACEMALLOC:-0}
+      - STARTUP_LOUDNESS_BACKFILL=${STARTUP_LOUDNESS_BACKFILL:-false}
     networks:
       navidrome-net:
         ipv4_address: 172.20.0.5
 
   updater:
-    build: ./concierge
+    build:
+      context: ./concierge
+      dockerfile: Dockerfile.updater
     container_name: navipod_updater
     user: root
     restart: unless-stopped

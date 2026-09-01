@@ -20,8 +20,11 @@
     <link rel="stylesheet" href="/assets/css/ui_mobile.css?v={{ static_v }}">
     <link rel="stylesheet" href="/assets/css/ui_motion.css?v={{ static_v }}">
     <link rel="stylesheet" href="/assets/css/mobile_fixes.css?v={{ static_v }}">
+    <!-- Admin-only styles: ordinary library pages should not download them. -->
+    {% if is_admin %}
     <link rel="stylesheet" href="/assets/css/admin_system.css?v={{ static_v }}">
     <link rel="stylesheet" href="/assets/css/admin_downloads.css?v={{ static_v }}">
+    {% endif %}
     <!-- Mobile-only stylesheet. Browser still downloads it (media attribute
          is a hint, not a gate) but only applies its rules when the viewport
          is <=768px, so desktop layouts stay untouched. -->
@@ -69,8 +72,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png?v={{ static_v }}">
     <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16x16.png?v={{ static_v }}">
     <link rel="shortcut icon" href="/assets/favicon.ico?v={{ static_v }}">
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script defer src="https://unpkg.com/lucide@0.468.0"></script>
+    <script defer src="https://unpkg.com/htmx.org@1.9.10"></script>
     {% block head %}{% endblock %}
 </head>
 
@@ -559,9 +562,9 @@
             }
         };
     </script>
-    <script type="module" src="/assets/js/main.js?v={{ range(1, 99999) | random }}"></script>
+    <script type="module" src="/assets/js/main.js?v={{ static_v }}"></script>
     {% if is_admin %}
-    <script type="module" src="/assets/js/modules/admin_system.js?v={{ range(1, 99999) | random }}"></script>
+    <script type="module" src="/assets/js/modules/admin_system.js?v={{ static_v }}"></script>
     {% endif %}
     {% block scripts %}{% endblock %}
 </body>

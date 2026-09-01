@@ -3,6 +3,8 @@
 # duplicate here causes missing-module failures whenever those imports grow.
 -r Navipod/concierge/requirements.txt
 
-mutagen>=1.47.0
-pytest>=8.0.0
+mutagen==1.48.1
+pytest==9.1.1
+pytest-cov==7.0.0
 ruff==0.15.10
+vulture==2.14

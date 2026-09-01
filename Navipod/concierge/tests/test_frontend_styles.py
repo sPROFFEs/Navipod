@@ -52,6 +52,23 @@ def test_library_facet_buttons_reset_native_background():
     assert "appearance: none;" in rule.group("body")
 
 
+def test_admin_styles_are_only_loaded_for_admin_sessions_and_cdn_scripts_are_pinned():
+    template_path = Path(__file__).resolve().parents[1] / "templates" / "base.html"
+    template = template_path.read_text(encoding="utf-8")
+
+    admin_block = re.search(
+        r"<!-- Admin-only styles:.*?\{% if is_admin %\}(?P<body>.*?)\{% endif %\}",
+        template,
+        re.DOTALL,
+    )
+    assert admin_block is not None
+    assert "/assets/css/admin_system.css" in admin_block.group("body")
+    assert "/assets/css/admin_downloads.css" in admin_block.group("body")
+    assert "lucide@latest" not in template
+    assert re.search(r'<script defer src="https://unpkg\.com/lucide@[^"]+">', template)
+    assert '<script defer src="https://unpkg.com/htmx.org@1.9.10">' in template
+
+
 def test_library_search_controls_and_facets_have_explicit_dark_styles():
     css_path = Path(__file__).resolve().parents[2] / "assets" / "css" / "ui_components.css"
     css = css_path.read_text(encoding="utf-8")

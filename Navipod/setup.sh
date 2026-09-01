@@ -67,7 +67,7 @@ if [ ! -f "$CONFIG_ENV" ]; then
 
     echo "Action required: open $CONFIG_ENV and set your DOMAIN/TUNNEL_TOKEN if needed."
     echo "   (Press Enter to continue setup once you're ready, or Ctrl+C to stop)"
-    read
+    read -r
 else
     echo "Runtime config already exists at $CONFIG_ENV."
 fi
@@ -87,10 +87,10 @@ sleep 10
 echo ""
 echo "------------------------------------------------"
 echo "ADMIN USER CREATION"
-read -p "Do you want to create an Admin user now? (y/n): " CREATE_ADMIN
+read -r -p "Do you want to create an Admin user now? (y/n): " CREATE_ADMIN
 if [[ "$CREATE_ADMIN" == "y" || "$CREATE_ADMIN" == "Y" ]]; then
-    read -p "Username: " ADMIN_USER
-    read -s -p "Password: " ADMIN_PASS
+    read -r -p "Username: " ADMIN_USER
+    read -r -s -p "Password: " ADMIN_PASS
     echo ""
 
     echo "Creating admin user in database..."
@@ -111,21 +111,21 @@ echo "------------------------------------------------"
 echo "MUSIC LIBRARY IMPORT"
 echo "Navipod can import your existing music library."
 echo "Ideally, point to a folder structured like /Artist/Album/Song.mp3"
-read -p "Do you want to import music now? (y/n): " IMPORT_MUSIC
+read -r -p "Do you want to import music now? (y/n): " IMPORT_MUSIC
 
 if [[ "$IMPORT_MUSIC" == "y" || "$IMPORT_MUSIC" == "Y" ]]; then
-    read -p "Enter full path to music folder on HOST: " SRC_PATH
+    read -r -p "Enter full path to music folder on HOST: " SRC_PATH
 
     if [ -d "$SRC_PATH" ]; then
         echo "WARNING: This will MOVE files from the source to the internal pool to save space."
         echo "   The source folder will be emptied."
-        read -p "Are you sure? (y/n): " CONFIRM_MOVE
+        read -r -p "Are you sure? (y/n): " CONFIRM_MOVE
 
         if [[ "$CONFIRM_MOVE" == "y" || "$CONFIRM_MOVE" == "Y" ]]; then
             echo "Moving music to staging area ($IMPORT_STAGE)..."
             mv "$SRC_PATH"/* "$IMPORT_STAGE/" 2>/dev/null || mv "$SRC_PATH"/.[!.]* "$IMPORT_STAGE/" 2>/dev/null
 
-            read -p "Use remote APIs to download missing covers + enrich metadata? (y/N): " ENRICH_ANS
+            read -r -p "Use remote APIs to download missing covers + enrich metadata? (y/N): " ENRICH_ANS
             ENRICH_FLAG=""
             if [[ "$ENRICH_ANS" == "y" || "$ENRICH_ANS" == "Y" ]]; then
                 ENRICH_FLAG="--enrich"

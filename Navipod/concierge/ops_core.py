@@ -39,6 +39,7 @@ UPDATE_TRACKING_REMOTE = "refs/remotes/navipod-update/tracked"
 REBUILD_REQUIRED_PATHS = {
     "docker-compose.yaml",
     "concierge/Dockerfile",
+    "concierge/Dockerfile.updater",
     "concierge/entrypoint.sh",
     "concierge/requirements.txt",
     "downloader-worker/Dockerfile",

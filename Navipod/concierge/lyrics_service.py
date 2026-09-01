@@ -24,8 +24,8 @@ import logging
 import time
 from typing import Optional
 
-import httpx
 import metadata_cache
+from http_client import http_client
 
 logger = logging.getLogger(__name__)
 
@@ -110,49 +110,48 @@ async def get_lyrics(
     # blocked the full 8s on a hung peer.
     PER_CALL_TIMEOUT = 4.0
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(PER_CALL_TIMEOUT)) as client:
-        try:
-            resp = await client.get(url, params=params, headers=headers, timeout=PER_CALL_TIMEOUT)
-            if resp.status_code == 200:
-                data = resp.json()
-                synced = data.get("syncedLyrics") or ""
-                plain = data.get("plainLyrics") or ""
-                instrumental = bool(data.get("instrumental"))
-                found = bool(synced or plain or instrumental)
-            elif resp.status_code != 404:
-                logger.warning("lrclib /get unexpected status %s for %s — %s", resp.status_code, artist, title)
-        except Exception as e:
-            logger.warning("lrclib /get failed for %s — %s: %s", artist, title, e)
+    try:
+        resp = await http_client.get(url, params=params, headers=headers, timeout=PER_CALL_TIMEOUT)
+        if resp.status_code == 200:
+            data = resp.json()
+            synced = data.get("syncedLyrics") or ""
+            plain = data.get("plainLyrics") or ""
+            instrumental = bool(data.get("instrumental"))
+            found = bool(synced or plain or instrumental)
+        elif resp.status_code != 404:
+            logger.warning("lrclib /get unexpected status %s for %s — %s", resp.status_code, artist, title)
+    except Exception as e:
+        logger.warning("lrclib /get failed for %s — %s: %s", artist, title, e)
 
-        # Short-circuit on instrumental: /get already told us the track
-        # has no lyrics; running /search would just confirm that and
-        # waste a network round trip + worker time.
-        # If the exact-match endpoint missed otherwise, try the search
-        # endpoint — lrclib's /get demands tight metadata; /search is
-        # fuzzy. We only accept the first result if its title+artist
-        # match (case-insensitive) to avoid serving wrong-track lyrics.
-        if not found and not instrumental:
-            try:
-                s_resp = await client.get(
-                    f"{LRCLIB_BASE}/search",
-                    params={"track_name": title, "artist_name": artist},
-                    headers=headers,
-                    timeout=PER_CALL_TIMEOUT,
-                )
-                if s_resp.status_code == 200:
-                    results = s_resp.json() or []
-                    for cand in results[:5]:
-                        cand_title = (cand.get("trackName") or "").strip().lower()
-                        cand_artist = (cand.get("artistName") or "").strip().lower()
-                        if cand_title == title.strip().lower() and cand_artist == artist.strip().lower():
-                            synced = cand.get("syncedLyrics") or ""
-                            plain = cand.get("plainLyrics") or ""
-                            instrumental = bool(cand.get("instrumental"))
-                            found = bool(synced or plain or instrumental)
-                            if found:
-                                break
-            except Exception as e:
-                logger.warning("lrclib /search failed for %s — %s: %s", artist, title, e)
+    # Short-circuit on instrumental: /get already told us the track
+    # has no lyrics; running /search would just confirm that and
+    # waste a network round trip + worker time.
+    # If the exact-match endpoint missed otherwise, try the search
+    # endpoint — lrclib's /get demands tight metadata; /search is
+    # fuzzy. We only accept the first result if its title+artist
+    # match (case-insensitive) to avoid serving wrong-track lyrics.
+    if not found and not instrumental:
+        try:
+            s_resp = await http_client.get(
+                f"{LRCLIB_BASE}/search",
+                params={"track_name": title, "artist_name": artist},
+                headers=headers,
+                timeout=PER_CALL_TIMEOUT,
+            )
+            if s_resp.status_code == 200:
+                results = s_resp.json() or []
+                for cand in results[:5]:
+                    cand_title = (cand.get("trackName") or "").strip().lower()
+                    cand_artist = (cand.get("artistName") or "").strip().lower()
+                    if cand_title == title.strip().lower() and cand_artist == artist.strip().lower():
+                        synced = cand.get("syncedLyrics") or ""
+                        plain = cand.get("plainLyrics") or ""
+                        instrumental = bool(cand.get("instrumental"))
+                        found = bool(synced or plain or instrumental)
+                        if found:
+                            break
+        except Exception as e:
+            logger.warning("lrclib /search failed for %s — %s: %s", artist, title, e)
 
     if found:
         payload = {

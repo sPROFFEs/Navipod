@@ -7,10 +7,10 @@ import logging
 import os
 
 import database
-import httpx
 import manager
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
+from http_client import http_client
 from navipod_config import settings
 from playlist_files import playlist_m3u_filename
 from sqlalchemy.orm import Session, joinedload
@@ -88,43 +88,42 @@ async def sync_favorite_to_navidrome(user, track, is_starred: bool):
 
         search_params = {**base_params, "query": query, "songCount": 20}
 
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(search_url, params=search_params, headers=headers)
-            if resp.status_code == 200:
-                results = resp.json().get("subsonic-response", {}).get("searchResult3", {}).get("song", [])
-                if isinstance(results, dict):
-                    results = [results]
+        client = http_client
+        resp = await client.get(search_url, params=search_params, headers=headers, timeout=5.0)
+        if resp.status_code == 200:
+            results = resp.json().get("subsonic-response", {}).get("searchResult3", {}).get("song", [])
+            if isinstance(results, dict):
+                results = [results]
 
-                navidrome_track_id = None
-                track_filename = os.path.basename(track.filepath) if track.filepath else None
+            navidrome_track_id = None
+            track_filename = os.path.basename(track.filepath) if track.filepath else None
 
-                for candidate in results:
-                    if track_filename and track_filename in (candidate.get("path") or ""):
-                        navidrome_track_id = candidate.get("id")
-                        break
-                    if candidate.get("title") == track.title and candidate.get("artist") == track.artist:
-                        navidrome_track_id = candidate.get("id")
-                        break
+            for candidate in results:
+                if track_filename and track_filename in (candidate.get("path") or ""):
+                    navidrome_track_id = candidate.get("id")
+                    break
+                if candidate.get("title") == track.title and candidate.get("artist") == track.artist:
+                    navidrome_track_id = candidate.get("id")
+                    break
 
-                # Fallback to first result
-                if not navidrome_track_id and results:
-                    navidrome_track_id = results[0].get("id")
+            # Fallback to first result
+            if not navidrome_track_id and results:
+                navidrome_track_id = results[0].get("id")
 
-                if navidrome_track_id:
-                    # 2. Star/Unstar
-                    action = "star" if is_starred else "unstar"
-                    action_url = f"http://{target_ip}:4533/{user.username}/rest/{action}"
-                    action_params = {**base_params, "id": navidrome_track_id}
-                    async with httpx.AsyncClient(timeout=5.0) as client:
-                        await client.get(action_url, params=action_params, headers=headers)
-                    logger.info(
-                        "Successfully synced favorite action=%s track=%s navidrome_id=%s",
-                        action,
-                        track.title,
-                        navidrome_track_id,
-                    )
-                else:
-                    logger.warning("Favorite track not found in Navidrome: %s", track.title)
+            if navidrome_track_id:
+                # 2. Star/Unstar
+                action = "star" if is_starred else "unstar"
+                action_url = f"http://{target_ip}:4533/{user.username}/rest/{action}"
+                action_params = {**base_params, "id": navidrome_track_id}
+                await client.get(action_url, params=action_params, headers=headers, timeout=5.0)
+                logger.info(
+                    "Successfully synced favorite action=%s track=%s navidrome_id=%s",
+                    action,
+                    track.title,
+                    navidrome_track_id,
+                )
+            else:
+                logger.warning("Favorite track not found in Navidrome: %s", track.title)
     except Exception as e:
         logger.warning("Favorite sync error: %s", e)
 
@@ -145,60 +144,60 @@ async def sync_navidrome_to_local(db: Session, user):
         }
         headers = {"x-navidrome-user": user.username}
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            # 1. SYNC FAVORITES (Starred)
-            starred_url = f"http://{target_ip}:4533/{user.username}/rest/getStarred"
-            resp = await client.get(starred_url, params=base_params, headers=headers)
-            if resp.status_code == 200:
-                starred_data = resp.json().get("subsonic-response", {}).get("starred", {}).get("song", [])
-                if isinstance(starred_data, dict):
-                    starred_data = [starred_data]
+        client = http_client
+        # 1. SYNC FAVORITES (Starred)
+        starred_url = f"http://{target_ip}:4533/{user.username}/rest/getStarred"
+        resp = await client.get(starred_url, params=base_params, headers=headers, timeout=10.0)
+        if resp.status_code == 200:
+            starred_data = resp.json().get("subsonic-response", {}).get("starred", {}).get("song", [])
+            if isinstance(starred_data, dict):
+                starred_data = [starred_data]
 
-                # Get current local favorites
-                local_favs = {f.track.artist + " " + f.track.title: f for f in user.favorites if f.track}
-                navidrome_starred_titles = set()
+            # Get current local favorites
+            local_favs = {f.track.artist + " " + f.track.title: f for f in user.favorites if f.track}
+            navidrome_starred_titles = set()
 
-                for song in starred_data:
-                    title = song.get("title")
-                    artist = song.get("artist")
-                    key = f"{artist} {title}"
-                    navidrome_starred_titles.add(key)
+            for song in starred_data:
+                title = song.get("title")
+                artist = song.get("artist")
+                key = f"{artist} {title}"
+                navidrome_starred_titles.add(key)
 
-                    if key not in local_favs:
-                        # Try to find track locally
-                        track = (
-                            db.query(database.Track)
-                            .filter((database.Track.title == title) & (database.Track.artist == artist))
-                            .first()
-                        )
-                        if track:
-                            new_fav = database.UserFavorite(user_id=user.id, track_id=track.id)
-                            db.add(new_fav)
-                            logger.info("Added Navidrome-starred track to local favorites: %s", title)
+                if key not in local_favs:
+                    # Try to find track locally
+                    track = (
+                        db.query(database.Track)
+                        .filter((database.Track.title == title) & (database.Track.artist == artist))
+                        .first()
+                    )
+                    if track:
+                        new_fav = database.UserFavorite(user_id=user.id, track_id=track.id)
+                        db.add(new_fav)
+                        logger.info("Added Navidrome-starred track to local favorites: %s", title)
 
-                db.commit()
+            db.commit()
 
-            # 2. SYNC PLAYLISTS (API Check)
-            pl_url = f"http://{target_ip}:4533/{user.username}/rest/getPlaylists"
-            resp_pl = await client.get(pl_url, params=base_params, headers=headers)
-            if resp_pl.status_code == 200:
-                nd_playlists = resp_pl.json().get("subsonic-response", {}).get("playlists", {}).get("playlist", [])
-                if isinstance(nd_playlists, dict):
-                    nd_playlists = [nd_playlists]
+        # 2. SYNC PLAYLISTS (API Check)
+        pl_url = f"http://{target_ip}:4533/{user.username}/rest/getPlaylists"
+        resp_pl = await client.get(pl_url, params=base_params, headers=headers, timeout=10.0)
+        if resp_pl.status_code == 200:
+            nd_playlists = resp_pl.json().get("subsonic-response", {}).get("playlists", {}).get("playlist", [])
+            if isinstance(nd_playlists, dict):
+                nd_playlists = [nd_playlists]
 
-                nd_playlist_names = {p.get("name") for p in nd_playlists}
-                local_playlists = db.query(database.Playlist).filter(database.Playlist.owner_id == user.id).all()
+            nd_playlist_names = {p.get("name") for p in nd_playlists}
+            local_playlists = db.query(database.Playlist).filter(database.Playlist.owner_id == user.id).all()
 
-                for pl in local_playlists:
-                    if pl.name not in nd_playlist_names:
-                        playlist_dir = f"{settings.MUSIC_ROOT}/{user.username}/music/playlists"
-                        m3u_path = pl.m3u_path or os.path.join(playlist_dir, playlist_m3u_filename(pl.name, pl.id))
+            for pl in local_playlists:
+                if pl.name not in nd_playlist_names:
+                    playlist_dir = f"{settings.MUSIC_ROOT}/{user.username}/music/playlists"
+                    m3u_path = pl.m3u_path or os.path.join(playlist_dir, playlist_m3u_filename(pl.name, pl.id))
 
-                        if not os.path.exists(m3u_path):
-                            logger.info("Deleting local playlist missing in Navidrome and disk: %s", pl.name)
-                            db.delete(pl)
+                    if not os.path.exists(m3u_path):
+                        logger.info("Deleting local playlist missing in Navidrome and disk: %s", pl.name)
+                        db.delete(pl)
 
-                db.commit()
+            db.commit()
 
     except Exception as e:
         logger.warning("Sync-back error: %s", e)

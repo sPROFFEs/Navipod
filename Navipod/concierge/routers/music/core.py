@@ -2,6 +2,7 @@
 Core utilities and shared dependencies for music routers.
 """
 
+import asyncio
 import io
 import os
 
@@ -18,6 +19,14 @@ from shared_templates import templates
 from sqlalchemy.orm import Session
 
 router = APIRouter()
+
+
+def _convert_image_to_webp(payload: bytes) -> bytes:
+    with Image.open(io.BytesIO(payload)) as img:
+        img.thumbnail((300, 300))
+        output = io.BytesIO()
+        img.save(output, format="WEBP", quality=80)
+        return output.getvalue()
 
 
 # --- SHARED DEPENDENCIES ---
@@ -95,26 +104,21 @@ async def proxy_image(url: str, request: Request, db: Session = Depends(get_db))
     except Exception:
         return JSONResponse({"error": "Image fetch failed"}, status_code=502)
 
-    # Process image with Pillow
+    # Pillow decoding is CPU-bound and may parse compressed images. Keep it
+    # off the single Uvicorn event loop.
     try:
-        img = Image.open(io.BytesIO(downloaded))
-        img.thumbnail((300, 300))  # Resize to card size
-        img_io = io.BytesIO()
-        img.save(img_io, format="WEBP", quality=80)  # Convert to WebP
-        img_io.seek(0)
+        optimized = await asyncio.to_thread(_convert_image_to_webp, bytes(downloaded))
     except Exception:
         return JSONResponse({"error": "Invalid image payload"}, status_code=400)
 
-    return Response(
-        content=img_io.getvalue(), media_type="image/webp", headers={"Cache-Control": "public, max-age=604800"}
-    )
+    return Response(content=optimized, media_type="image/webp", headers={"Cache-Control": "public, max-age=604800"})
 
 
 # --- HTML VIEWS ---
 
 
 @router.get("/downloads")
-async def downloads_page(request: Request, db: Session = Depends(get_db)):
+def downloads_page(request: Request, db: Session = Depends(get_db)):
     """Downloads management page"""
     user = get_current_user_safe(db, request)
     if not user:
@@ -153,7 +157,7 @@ async def downloads_page(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/library")
-async def library_page(request: Request, db: Session = Depends(get_db)):
+def library_page(request: Request, db: Session = Depends(get_db)):
     """Library page"""
     user = get_current_user_safe(db, request)
     if not user:
@@ -169,7 +173,7 @@ async def library_page(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/search")
-async def search_page(request: Request, db: Session = Depends(get_db)):
+def search_page(request: Request, db: Session = Depends(get_db)):
     """Search page"""
     user = get_current_user_safe(db, request)
     if not user:

@@ -13,7 +13,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 import database
-from sqlalchemy import or_
+from search_utils import build_fts_query
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
 
 MAX_ROOM_USERS = 15
@@ -410,6 +411,22 @@ def pause_all_rooms(db: Session) -> int:
 
 def search_tracks(db: Session, query: str, limit: int = 20) -> list[dict]:
     term = query.strip()
+    fts_query = build_fts_query(term)
+    if fts_query:
+        try:
+            rows = db.execute(
+                text("SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH :query LIMIT :limit"),
+                {"query": fts_query, "limit": limit},
+            ).fetchall()
+            track_ids = [int(row[0]) for row in rows]
+            if not track_ids:
+                return []
+            tracks = db.query(database.Track).filter(database.Track.id.in_(track_ids)).all()
+            tracks_by_id = {int(track.id): track for track in tracks}
+            return [_track_dict(tracks_by_id[track_id]) for track_id in track_ids if track_id in tracks_by_id]
+        except Exception as exc:
+            logger.debug("Party track FTS unavailable, falling back to ILIKE: %s", exc)
+
     q = db.query(database.Track)
     if term:
         pattern = f"%{term}%"

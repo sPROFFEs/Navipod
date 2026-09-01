@@ -11,7 +11,9 @@ import time
 import database
 import manager
 import spotify_service
+import track_identity
 import youtube_service
+from async_utils import gather_named
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from http_client import http_client
@@ -31,6 +33,13 @@ RECS_CACHE_DIR = "/saas-data/cache"
 
 
 # --- HELPER FUNCTIONS ---
+
+
+async def _fetch_lastfm_recommendations(api_key: str, seed: str):
+    tracks = await lastfm_service.get_top_tracks(api_key, limit=12)
+    if tracks:
+        return tracks
+    return await lastfm_service.search_tracks(api_key, seed, limit=12)
 
 
 def get_user_country(request: Request) -> str:
@@ -328,19 +337,46 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
     top_artists_list = list(top_artists)
     random.shuffle(top_artists_list)
 
+    settings_obj = user.download_settings
+    spotify_search_term = top_artists_list[0] if top_artists_list else "pop hits"
+    yt_search_term = (
+        top_artists_list[1] if len(top_artists_list) > 1 else (top_artists_list[0] if top_artists_list else None)
+    )
+    yt_query = f"{yt_search_term} music" if yt_search_term else None
+    yt_cache_path = f"/saas-data/cache/yt_recs_{user.username}.json" if yt_query else None
+    lastfm_key = getattr(settings_obj, "lastfm_api_key", None) if settings_obj else None
+    lastfm_seed = top_artists_list[0] if top_artists_list else "rock"
+    mb_seed = top_artists_list[3] if len(top_artists_list) > 3 else spotify_search_term
+
+    provider_calls = {
+        "youtube": youtube_service.youtube_service.get_trending_music(
+            limit=24,
+            query_override=yt_query,
+            cache_path=yt_cache_path,
+        ),
+        "musicbrainz": musicbrainz_service.search_recordings(mb_seed, limit=12),
+    }
+    if settings_obj and settings_obj.spotify_client_id and settings_obj.spotify_client_secret:
+        provider_calls["spotify"] = spotify_service.spotify_service.search_tracks(
+            settings_obj.spotify_client_id,
+            settings_obj.spotify_client_secret,
+            spotify_search_term,
+            type="track",
+            limit=10,
+        )
+    if lastfm_key:
+        provider_calls["lastfm"] = _fetch_lastfm_recommendations(lastfm_key, lastfm_seed)
+
+    provider_payloads = await gather_named(
+        provider_calls,
+        on_error=lambda name, exc: logger.warning("Recommendations %s error: %s", name, exc),
+    )
+
     # 1. Spotify Recommendations
     spotify_items = []
-    settings_obj = user.download_settings
     if settings_obj and settings_obj.spotify_client_id and settings_obj.spotify_client_secret:
         try:
-            search_term = top_artists_list[0] if top_artists_list else "pop hits"
-            sp_tracks = await spotify_service.spotify_service.search_tracks(
-                settings_obj.spotify_client_id,
-                settings_obj.spotify_client_secret,
-                search_term,
-                type="track",
-                limit=10,
-            )
+            sp_tracks = provider_payloads.get("spotify", [])
             for item in sp_tracks:
                 title = item.get("name") or item.get("title") or "Unknown"
                 artist = item.get("artist", "Unknown")
@@ -371,13 +407,16 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
             # embed scraper. Bounded to keep the cache miss latency
             # reasonable — runs once per 48h cache window.
             backfill_targets = [it for it in spotify_items if not it.get("preview") and it.get("_spotify_id")][:6]
+            preview_payloads = await gather_named(
+                {
+                    it["_spotify_id"]: spotify_service.spotify_service.get_embed_preview(it["_spotify_id"])
+                    for it in backfill_targets
+                },
+                on_error=lambda _name, exc: logger.debug("Embed preview scrape failed: %s", exc),
+            )
             for it in backfill_targets:
-                try:
-                    url = await spotify_service.spotify_service.get_embed_preview(it["_spotify_id"])
-                    if url:
-                        it["preview"] = url
-                except Exception as e:
-                    logger.debug("Embed preview scrape failed: %s", e)
+                if preview_payloads.get(it["_spotify_id"]):
+                    it["preview"] = preview_payloads[it["_spotify_id"]]
             for it in spotify_items:
                 it.pop("_spotify_id", None)
         except Exception as e:
@@ -389,22 +428,14 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
     # 2. YouTube Personalized
     yt_items = []
     try:
-        yt_search_term = (
-            top_artists_list[1] if len(top_artists_list) > 1 else (top_artists_list[0] if top_artists_list else None)
-        )
-        query = f"{yt_search_term} music" if yt_search_term else None
-        cache_path = f"/saas-data/cache/yt_recs_{user.username}.json" if query else None
-
-        yt_raw = await youtube_service.youtube_service.get_trending_music(
-            limit=24, query_override=query, cache_path=cache_path
-        )
+        yt_raw = provider_payloads.get("youtube", [])
         for item in yt_raw:
             yt_items.append(
                 {
                     "id": item.get("url") or f"https://www.youtube.com/watch?v={item['id']}",
                     "title": item.get("title", "Unknown"),
                     "artist": item.get("artist", "Unknown"),
-                    "album": "YouTube • Taste" if query else "Trending",
+                    "album": "YouTube • Taste" if yt_query else "Trending",
                     "thumbnail": item.get("image", "/static/img/default_cover.png"),
                     "is_local": False,
                     "source": "youtube",
@@ -420,35 +451,28 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
 
     # 3. Last.fm Recommendations
     lastfm_items = []
-    if settings_obj:
-        lastfm_key = getattr(settings_obj, "lastfm_api_key", None)
-        if lastfm_key:
-            try:
-                # Try chart top tracks first (better images)
-                lfm_raw = await lastfm_service.get_top_tracks(lastfm_key, limit=12)
-                # Fallback to artist-based search if charts empty
-                if not lfm_raw:
-                    lfm_seed = top_artists_list[0] if top_artists_list else "rock"
-                    lfm_raw = await lastfm_service.search_tracks(lastfm_key, lfm_seed, limit=12)
-                for item in lfm_raw:
-                    title = item.get("name") or "Unknown"
-                    artist = item.get("artist", "Unknown")
-                    thumbnail = item.get("image") or ""
-                    if not thumbnail:
-                        thumbnail = f"/api/cover/resolve?artist={artist}&title={title}"
-                    lastfm_items.append(
-                        {
-                            "id": f"ytsearch1:{artist} {title} official audio",
-                            "title": title,
-                            "artist": artist,
-                            "album": "Last.fm",
-                            "thumbnail": thumbnail or f"/api/cover/resolve?artist={artist}&title={title}",
-                            "is_local": False,
-                            "source": "lastfm",
-                        }
-                    )
-            except Exception as e:
-                logger.warning("Recommendations Last.fm error: %s", e)
+    if lastfm_key:
+        try:
+            lfm_raw = provider_payloads.get("lastfm", [])
+            for item in lfm_raw:
+                title = item.get("name") or "Unknown"
+                artist = item.get("artist", "Unknown")
+                thumbnail = item.get("image") or ""
+                if not thumbnail:
+                    thumbnail = f"/api/cover/resolve?artist={artist}&title={title}"
+                lastfm_items.append(
+                    {
+                        "id": f"ytsearch1:{artist} {title} official audio",
+                        "title": title,
+                        "artist": artist,
+                        "album": "Last.fm",
+                        "thumbnail": thumbnail or f"/api/cover/resolve?artist={artist}&title={title}",
+                        "is_local": False,
+                        "source": "lastfm",
+                    }
+                )
+        except Exception as e:
+            logger.warning("Recommendations Last.fm error: %s", e)
 
     if lastfm_items:
         sections.append({"title": "Last.fm • Discover", "items": lastfm_items})
@@ -456,10 +480,7 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
     # 4. MusicBrainz Recommendations
     mb_items = []
     try:
-        mb_seed = (
-            top_artists_list[3] if len(top_artists_list) > 3 else (top_artists_list[0] if top_artists_list else "pop")
-        )
-        mb_raw = await musicbrainz_service.search_recordings(mb_seed, limit=12)
+        mb_raw = provider_payloads.get("musicbrainz", [])
         for item in mb_raw:
             title = item.get("name") or "Unknown"
             artist = item.get("artist", "Unknown")
@@ -537,7 +558,7 @@ async def get_recommendations(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/api/discovery/feed")
-async def discovery_feed(request: Request, db: Session = Depends(get_db), limit: int = 20):
+def discovery_feed(request: Request, db: Session = Depends(get_db), limit: int = 20):
     """Discovery feed — flat list of remote tracks (with preview URLs)
     the user doesn't already own. Reuses the 48h /api/recommendations
     cache so the endpoint stays cheap; if the cache is empty (user
@@ -578,23 +599,29 @@ async def discovery_feed(request: Request, db: Session = Depends(get_db), limit:
     except Exception as e:
         logger.warning("Discovery feed cache read error: %s", e)
 
-    # De-dupe against the user's library by lowercase title|artist match
-    # so we only surface things they don't already have.
+    # De-dupe through indexed normalized columns. The previous implementation
+    # loaded every title/artist in the library for each feed request.
     existing_keys = set()
     try:
-        for t in db.query(database.Track.title, database.Track.artist).all():
-            title = (t[0] or "").strip().lower()
-            artist = (t[1] or "").strip().lower()
-            if title:
-                existing_keys.add(f"{title}|{artist}")
+        candidate_titles = {
+            track_identity.normalize_text(item.get("title") or "") for item in items if item.get("title")
+        }
+        if candidate_titles:
+            for title_norm, artist_norm in (
+                db.query(database.Track.title_norm, database.Track.artist_norm)
+                .filter(database.Track.title_norm.in_(candidate_titles))
+                .all()
+            ):
+                if title_norm:
+                    existing_keys.add(f"{title_norm}|{artist_norm or ''}")
     except Exception as e:
         logger.warning("Discovery feed library lookup error: %s", e)
 
     seen = set()
     filtered = []
     for item in items:
-        title = (item.get("title") or "").strip().lower()
-        artist = (item.get("artist") or "").strip().lower()
+        title = track_identity.normalize_text(item.get("title") or "")
+        artist = track_identity.normalize_text(item.get("artist") or "")
         if not title:
             continue
         key = f"{title}|{artist}"

@@ -33,18 +33,28 @@ fi
 if [ "$(id -u)" = "0" ]; then
     echo "[ENTRYPOINT] Ensuring /saas-data is owned by appuser (UID 1000)..."
     mkdir -p /saas-data/cache /saas-data/users /saas-data/download-staging/jobs
-    
-    # Repair ownership without making credentials and databases group-writable.
-    echo "[ENTRYPOINT] Fixing ownership on /saas-data..."
-    chown -R appuser:appuser /saas-data
-    find /saas-data -type d -exec chmod 750 {} +
-    find /saas-data -type f -exec chmod 640 {} +
 
-    # The isolated downloader shares only this staging subtree. Keep it
-    # group-accessible to GID 2000 without widening permissions elsewhere.
-    chown -R appuser:downloaders /saas-data/download-staging
-    find /saas-data/download-staging -type d -exec chmod 2770 {} +
-    find /saas-data/download-staging -type f -exec chmod 660 {} +
+    # Existing installations may contain files created by older root-running
+    # releases. Repair that tree once, then keep restarts O(1) even when the
+    # music library contains hundreds of thousands of files.
+    PERMISSION_MARKER="/saas-data/.permissions-v2"
+    if [ ! -f "$PERMISSION_MARKER" ]; then
+        echo "[ENTRYPOINT] Running one-time /saas-data permission migration..."
+        chown -R appuser:appuser /saas-data
+        find /saas-data -type d -exec chmod 750 {} +
+        find /saas-data -type f -exec chmod 640 {} +
+        chown -R appuser:downloaders /saas-data/download-staging
+        find /saas-data/download-staging -type d -exec chmod 2770 {} +
+        find /saas-data/download-staging -type f -exec chmod 660 {} +
+        touch "$PERMISSION_MARKER"
+        chown appuser:appuser "$PERMISSION_MARKER"
+        chmod 640 "$PERMISSION_MARKER"
+    else
+        chown appuser:appuser /saas-data /saas-data/cache /saas-data/users
+        chmod 750 /saas-data /saas-data/cache /saas-data/users
+        chown appuser:downloaders /saas-data/download-staging /saas-data/download-staging/jobs
+        chmod 2770 /saas-data/download-staging /saas-data/download-staging/jobs
+    fi
 fi
 
 # 3. DROP PRIVILEGES AND RUN COMMAND

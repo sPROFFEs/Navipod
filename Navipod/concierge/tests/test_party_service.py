@@ -47,6 +47,14 @@ def test_room_is_unique_per_owner_and_can_seed_owned_playlist(db_session):
     assert duplicate.value.status_code == 409
 
 
+def test_party_track_search_preserves_existing_fallback_behavior(db_session):
+    _owner, _guest, tracks, _playlist = _library(db_session)
+
+    results = party_service.search_tracks(db_session, "Second")
+
+    assert [item["id"] for item in results] == [tracks[1].id]
+
+
 def test_room_limits_and_playlist_ownership_are_enforced(db_session):
     owner, guest, _, playlist = _library(db_session)
 

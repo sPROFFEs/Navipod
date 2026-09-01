@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     PROXY_IMAGE_MAX_BYTES: int = 5 * 1024 * 1024
     PROXY_IMAGE_TIMEOUT_SECONDS: float = 8.0
     PROXY_IMAGE_ALLOWED_CONTENT_TYPES: str = "image/jpeg,image/png,image/webp,image/gif,image/avif"
+    STARTUP_LOUDNESS_BACKFILL: bool = False
 
     # Allowed Hosts (CORS & TrustedHost)
     DOMAIN: str = "localhost"

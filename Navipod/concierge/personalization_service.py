@@ -4,7 +4,9 @@ import json
 import logging
 import os
 import sqlite3
+import threading
 import time
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -36,6 +38,15 @@ MIX_TRACK_LIMIT = 50
 TOP_POOL_TRACK_LIMIT = 50
 LATEST_POOL_TRACK_LIMIT = 100
 TOP_REPEAT_EXCLUDE_COUNT = 10
+
+_mix_locks_guard = threading.Lock()
+_mix_locks: dict[str, threading.Lock] = {}
+
+
+def _mix_lock(username: str) -> threading.Lock:
+    with _mix_locks_guard:
+        return _mix_locks.setdefault(username, threading.Lock())
+
 
 MIX_DEFINITIONS = [
     ("repeat", "Repeat Mix"),
@@ -221,7 +232,7 @@ def _migrate_legacy_recent_cache(username: str) -> None:
         return
 
     try:
-        with _connect(username) as conn:
+        with closing(_connect(username)) as conn, conn:
             count = conn.execute("SELECT COUNT(*) FROM recent_items").fetchone()[0]
             if count > 0:
                 return
@@ -309,7 +320,7 @@ def _upsert_recent_item(
 
 def record_recent_playlist(username: str, playlist_id: int) -> None:
     ensure_user_activity_db(username)
-    with _connect(username) as conn:
+    with closing(_connect(username)) as conn, conn:
         _upsert_recent_item(
             conn,
             item_type="playlist",
@@ -330,7 +341,7 @@ def record_recent_radio(username: str, radio_id: str, name: str = "", stream_url
         },
         ensure_ascii=False,
     )
-    with _connect(username) as conn:
+    with closing(_connect(username)) as conn, conn:
         _upsert_recent_item(
             conn,
             item_type="radio",
@@ -362,7 +373,7 @@ def record_recent_mix(username: str, mix_key: str, title: str = "", thumbnail: s
         },
         ensure_ascii=False,
     )
-    with _connect(username) as conn:
+    with closing(_connect(username)) as conn, conn:
         _upsert_recent_item(
             conn,
             item_type="mix",
@@ -375,21 +386,21 @@ def record_recent_mix(username: str, mix_key: str, title: str = "", thumbnail: s
 
 def remove_recent_playlist(username: str, playlist_id: int) -> None:
     ensure_user_activity_db(username)
-    with _connect(username) as conn:
+    with closing(_connect(username)) as conn, conn:
         conn.execute("DELETE FROM recent_items WHERE item_type = 'playlist' AND item_key = ?", (str(int(playlist_id)),))
         conn.commit()
 
 
 def remove_recent_radio(username: str, radio_id: str) -> None:
     ensure_user_activity_db(username)
-    with _connect(username) as conn:
+    with closing(_connect(username)) as conn, conn:
         conn.execute("DELETE FROM recent_items WHERE item_type = 'radio' AND item_key = ?", (str(radio_id).strip(),))
         conn.commit()
 
 
 def remove_recent_mix(username: str, mix_key: str) -> None:
     ensure_user_activity_db(username)
-    with _connect(username) as conn:
+    with closing(_connect(username)) as conn, conn:
         conn.execute("DELETE FROM recent_items WHERE item_type = 'mix' AND item_key = ?", (str(mix_key).strip(),))
         conn.commit()
 
@@ -445,7 +456,7 @@ def get_library_shelves(db: Session, user, limit_per_shelf: int = 12) -> list[di
     cutoff_60d = (utcnow() - timedelta(days=60)).isoformat()
 
     try:
-        with _connect(user.username) as conn:
+        with closing(_connect(user.username)) as conn, conn:
             # 0. "Recently played": last distinct tracks with a real listen.
             recently_played_ids = [
                 int(row["track_id"])
@@ -577,7 +588,7 @@ def get_recent_activity_payload(db: Session, user) -> dict[str, Any]:
     ensure_user_activity_db(user.username)
     from routers.music.playlists import fetch_playlist_summaries
 
-    with _connect(user.username) as conn:
+    with closing(_connect(user.username)) as conn, conn:
         playlist_ids = [
             int(row["item_key"])
             for row in conn.execute(
@@ -760,7 +771,7 @@ def record_tracking_event(
         except Exception:
             payload_json = ""
 
-    with _connect(username) as conn:
+    with closing(_connect(username)) as conn, conn:
         cur = conn.execute(
             """
             INSERT OR IGNORE INTO user_tracking_raw (
@@ -819,7 +830,7 @@ def record_track_play(
     now_iso = _iso_now()
     artist_name = (track.artist or "").strip()
 
-    with _connect(user.username) as conn:
+    with closing(_connect(user.username)) as conn, conn:
         conn.execute(
             """
             INSERT INTO listen_events (
@@ -911,7 +922,7 @@ def fetch_user_tracking_events(username: str, year: int) -> list[sqlite3.Row]:
     ensure_user_activity_db(username)
     start = datetime(int(year), 1, 1, tzinfo=timezone.utc).isoformat()
     end = datetime(int(year) + 1, 1, 1, tzinfo=timezone.utc).isoformat()
-    with _connect(username) as conn:
+    with closing(_connect(username)) as conn, conn:
         return conn.execute(
             """
             SELECT
@@ -939,7 +950,7 @@ def get_user_tracking_stats(username: str, year: int) -> dict[str, Any]:
     ensure_user_activity_db(username)
     start = datetime(int(year), 1, 1, tzinfo=timezone.utc).isoformat()
     end = datetime(int(year) + 1, 1, 1, tzinfo=timezone.utc).isoformat()
-    with _connect(username) as conn:
+    with closing(_connect(username)) as conn, conn:
         row = conn.execute(
             """
             SELECT
@@ -968,7 +979,7 @@ def get_user_tracking_stats(username: str, year: int) -> dict[str, Any]:
 
 def reset_user_tracking_data(username: str) -> dict[str, int]:
     ensure_user_activity_db(username)
-    with _connect(username) as conn:
+    with closing(_connect(username)) as conn, conn:
         deleted_tracking = conn.execute("DELETE FROM user_tracking_raw").rowcount or 0
         deleted_listen_events = conn.execute("DELETE FROM listen_events").rowcount or 0
         deleted_track_stats = conn.execute("DELETE FROM track_stats").rowcount or 0
@@ -1275,7 +1286,7 @@ def _generate_top_pool_mix(db: Session) -> dict[str, Any]:
         if not activity_path.exists():
             continue
         try:
-            with sqlite3.connect(str(activity_path)) as conn:
+            with closing(sqlite3.connect(str(activity_path))) as conn, conn:
                 conn.row_factory = sqlite3.Row
                 rows = conn.execute(
                     """
@@ -1546,11 +1557,20 @@ def _build_daily_decade_mixes(
 
 def _generate_mixes(db: Session, user) -> dict[str, Any]:
     ensure_user_activity_db(user.username)
-    with _connect(user.username) as conn:
+    with closing(_connect(user.username)) as conn, conn:
         track_stats_rows = conn.execute("SELECT * FROM track_stats").fetchall()
         artist_stats_rows = conn.execute("SELECT * FROM artist_stats").fetchall()
 
-    tracks = db.query(database.Track).all()
+    tracks = db.query(
+        database.Track.id,
+        database.Track.source_id,
+        database.Track.title,
+        database.Track.artist,
+        database.Track.album,
+        database.Track.duration,
+        database.Track.filepath,
+        database.Track.created_at,
+    ).all()
     favorite_ids = {
         int(track_id)
         for (track_id,) in db.query(database.UserFavorite.track_id)
@@ -1630,7 +1650,7 @@ def _generate_mixes(db: Session, user) -> dict[str, Any]:
     # builder writes back any newly-discovered years into
     # track_metadata_cache for next time.
     try:
-        with _connect(user.username) as decade_conn:
+        with closing(_connect(user.username)) as decade_conn, decade_conn:
             decade_mixes = _build_daily_decade_mixes(candidates, decade_conn)
         mixes.extend(decade_mixes)
     except Exception as e:
@@ -1650,9 +1670,14 @@ def get_personalized_mixes(db: Session, user, *, force_refresh: bool = False) ->
     if cached and float(cached.get("expires_at") or 0) > time.time():
         return cached
 
-    payload = _generate_mixes(db, user)
-    _write_mix_cache(user.username, payload)
-    return payload
+    with _mix_lock(user.username):
+        # A request may have filled the cache while this one waited.
+        cached = None if force_refresh else _load_mix_cache(user.username)
+        if cached and float(cached.get("expires_at") or 0) > time.time():
+            return cached
+        payload = _generate_mixes(db, user)
+        _write_mix_cache(user.username, payload)
+        return payload
 
 
 def get_mix_summaries(db: Session, user, *, force_refresh: bool = False) -> list[dict[str, Any]]:

@@ -4,7 +4,7 @@ import os
 import shutil
 import sqlite3
 import time
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from typing import Any, Iterator
 
 logger = logging.getLogger(__name__)
@@ -284,7 +284,10 @@ def purge_expired() -> int:
 
     if vacuum_needed:
         try:
-            with sqlite3.connect(CACHE_DB_PATH, timeout=CACHE_BUSY_TIMEOUT_MS / 1000) as vacuum_conn:
+            with (
+                closing(sqlite3.connect(CACHE_DB_PATH, timeout=CACHE_BUSY_TIMEOUT_MS / 1000)) as vacuum_conn,
+                vacuum_conn,
+            ):
                 vacuum_conn.execute(f"PRAGMA busy_timeout = {CACHE_BUSY_TIMEOUT_MS}")
                 vacuum_conn.execute("VACUUM")
         except Exception as exc:

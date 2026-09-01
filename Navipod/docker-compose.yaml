@@ -106,16 +106,20 @@ services:
       # the biggest source of "RAM keeps growing" on long-running Python
       # workloads on Linux. Zero functional impact.
       - MALLOC_ARENA_MAX=2
-      # Enable Python's stdlib allocator tracker (10-frame depth). Used by
-      # the ram_audit background task that appends to /workspace/ram_audit.log
-      # so you can see WHICH allocator grows day-to-day.
-      - PYTHONTRACEMALLOC=10
+      # Deep allocation tracing is diagnostic and expensive. Enable explicitly
+      # with PYTHONTRACEMALLOC=10 only while investigating memory growth.
+      - PYTHONTRACEMALLOC=${PYTHONTRACEMALLOC:-0}
+      # New imports are measured immediately. Existing-library FFmpeg scans are
+      # admin-triggered unless explicitly enabled for unattended migrations.
+      - STARTUP_LOUDNESS_BACKFILL=${STARTUP_LOUDNESS_BACKFILL:-false}
     networks:
       navidrome-net:
         ipv4_address: 172.20.0.5
 
   updater:
-    build: ./concierge
+    build:
+      context: ./concierge
+      dockerfile: Dockerfile.updater
     container_name: navipod_updater
     user: root
     restart: unless-stopped

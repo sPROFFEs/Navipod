@@ -10,11 +10,11 @@ import os
 import uuid
 
 import database
-import httpx
 import library_service
 import manager
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from http_client import http_client
 from navipod_config import settings
 from PIL import Image
 from playlist_files import normalize_playlist_name, playlist_m3u_filename
@@ -379,10 +379,9 @@ def schedule_playlist_sync(db, user, playlist_id=None, force_now=False):
             url = f"http://{target_ip}:4533/{user.username}/rest/startScan"
             params = {"u": user.username, "p": "enc:000000", "v": "1.16.1", "c": "navipod-concierge", "f": "json"}
             headers = {"x-navidrome-user": user.username}
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                await client.get(url, params=params, headers=headers)
-                action_type = "immediate" if force_now else "batched"
-                logger.info("Triggered %s playlist background scan for %s", action_type, user.username)
+            await http_client.get(url, params=params, headers=headers, timeout=10.0)
+            action_type = "immediate" if force_now else "batched"
+            logger.info("Triggered %s playlist background scan for %s", action_type, user.username)
 
         except asyncio.CancelledError:
             logger.info("Playlist sync scan cancelled because a new update arrived")
@@ -402,19 +401,18 @@ async def clean_remote_playlist(username: str, playlist_name: str):
         auth_params = {"u": username, "p": "enc:000000", "v": "1.16.1", "c": "navipod-concierge", "f": "json"}
         headers = {"x-navidrome-user": username}
 
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(f"{base_url}/getPlaylists", params=auth_params, headers=headers)
-            if resp.status_code == 200:
-                data = resp.json()
-                remote_playlists = data.get("subsonic-response", {}).get("playlists", {}).get("playlist", [])
+        resp = await http_client.get(f"{base_url}/getPlaylists", params=auth_params, headers=headers, timeout=3.0)
+        if resp.status_code == 200:
+            data = resp.json()
+            remote_playlists = data.get("subsonic-response", {}).get("playlists", {}).get("playlist", [])
 
-                for rp in remote_playlists:
-                    if rp.get("name") == playlist_name:
-                        rp_id = rp.get("id")
-                        logger.info("Deleting remote playlist %s with id %s", playlist_name, rp_id)
-                        del_params = {**auth_params, "id": rp_id}
-                        await client.get(f"{base_url}/deletePlaylist", params=del_params, headers=headers)
-                        return True
+            for rp in remote_playlists:
+                if rp.get("name") == playlist_name:
+                    rp_id = rp.get("id")
+                    logger.info("Deleting remote playlist %s with id %s", playlist_name, rp_id)
+                    del_params = {**auth_params, "id": rp_id}
+                    await http_client.get(f"{base_url}/deletePlaylist", params=del_params, headers=headers, timeout=3.0)
+                    return True
     except Exception as e:
         logger.warning("Playlist remote cleanup error: %s", e)
     return False

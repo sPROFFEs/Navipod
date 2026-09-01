@@ -10,6 +10,7 @@ import metadata_cache
 import metadata_service
 import spotify_service
 import youtube_service
+from async_utils import gather_named
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from lastfm_service import lastfm_service
@@ -191,11 +192,38 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
 
     # 2. REMOTE SEARCH (If requested)
     remote_results = []
+    settings_obj = user.download_settings
+    lastfm_key = getattr(settings_obj, "lastfm_api_key", None) if settings_obj else None
+    provider_calls = {}
+    if source in ["all", "youtube"]:
+        provider_calls["youtube"] = youtube_service.youtube_service.search_videos(q, limit=20)
+    if (
+        source in ["all", "spotify"]
+        and settings_obj
+        and settings_obj.spotify_client_id
+        and settings_obj.spotify_client_secret
+    ):
+        provider_calls["spotify"] = spotify_service.spotify_service.search_tracks(
+            settings_obj.spotify_client_id,
+            settings_obj.spotify_client_secret,
+            q,
+            type="track",
+            limit=20,
+        )
+    if source in ["all", "lastfm"] and lastfm_key:
+        provider_calls["lastfm"] = lastfm_service.search_tracks(lastfm_key, q, limit=20)
+    if source in ["all", "musicbrainz"]:
+        provider_calls["musicbrainz"] = musicbrainz_service.search_recordings(q, limit=20)
+
+    provider_payloads = await gather_named(
+        provider_calls,
+        on_error=lambda name, exc: logger.warning("Unified search %s error: %s", name, exc),
+    )
 
     # YouTube Search
     if source in ["all", "youtube"]:
         try:
-            yt_items = await youtube_service.youtube_service.search_videos(q, limit=20)
+            yt_items = provider_payloads.get("youtube", [])
             youtube_existing_ids = _fetch_existing_source_ids(
                 db,
                 {candidate for item in yt_items for candidate in youtube_source_candidates(item.get("id"))},
@@ -220,15 +248,8 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
     # Spotify Search (Optional, needs auth)
     if source in ["all", "spotify"]:
         try:
-            settings = user.download_settings
-            if settings and settings.spotify_client_id and settings.spotify_client_secret:
-                sp_items = await spotify_service.spotify_service.search_tracks(
-                    settings.spotify_client_id,
-                    settings.spotify_client_secret,
-                    q,
-                    type="track",
-                    limit=20,
-                )
+            if settings_obj and settings_obj.spotify_client_id and settings_obj.spotify_client_secret:
+                sp_items = provider_payloads.get("spotify", [])
                 spotify_existing_ids = _fetch_existing_source_ids(
                     db,
                     {
@@ -271,10 +292,8 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
     # Last.fm Search
     if source in ["all", "lastfm"]:
         try:
-            settings = user.download_settings
-            lastfm_key = getattr(settings, "lastfm_api_key", None) if settings else None
             if lastfm_key:
-                lfm_items = await lastfm_service.search_tracks(lastfm_key, q, limit=20)
+                lfm_items = provider_payloads.get("lastfm", [])
                 for item in lfm_items:
                     title = item.get("name") or item.get("title") or "Unknown"
                     artist = item.get("artist", "Unknown")
@@ -299,8 +318,7 @@ async def unified_search(request: Request, q: str = "", source: str = "all", db:
     # MusicBrainz Search
     if source in ["all", "musicbrainz"]:
         try:
-            settings = user.download_settings
-            mb_items = await musicbrainz_service.search_recordings(q, limit=20)
+            mb_items = provider_payloads.get("musicbrainz", [])
             for item in mb_items:
                 title = item.get("name") or "Unknown"
                 artist = item.get("artist", "Unknown")

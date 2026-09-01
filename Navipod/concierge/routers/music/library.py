@@ -11,7 +11,7 @@ router = APIRouter()
 
 
 @router.get("/api/library/facets")
-async def library_facets(
+def library_facets(
     request: Request,
     kind: str = "artists",
     q: str = "",
@@ -42,7 +42,7 @@ async def library_facets(
 
 
 @router.get("/api/library/tracks")
-async def library_tracks(
+def library_tracks(
     request: Request,
     artist: str = "",
     album: str = "",

@@ -4,6 +4,7 @@ import json
 import logging
 import sqlite3
 from collections import defaultdict
+from contextlib import closing
 from datetime import datetime, timezone
 from math import isfinite
 from pathlib import Path
@@ -209,7 +210,7 @@ def _connect_summary() -> sqlite3.Connection:
 
 
 def ensure_wrapped_summary_db() -> Path:
-    with _connect_summary() as conn:
+    with closing(_connect_summary()) as conn, conn:
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS user_wrapped_aggregate (
@@ -481,7 +482,7 @@ def _fetch_legacy_activity_rows(username: str, year: int) -> list[dict[str, Any]
         return []
     start, end = _year_bounds(year)
     try:
-        with sqlite3.connect(str(activity_path)) as conn:
+        with closing(sqlite3.connect(str(activity_path))) as conn, conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 """
@@ -761,7 +762,7 @@ def build_user_wrapped_summary(
 
 def _cached_user_meta(user_id: int, year: int) -> sqlite3.Row | None:
     ensure_wrapped_summary_db()
-    with _connect_summary() as conn:
+    with closing(_connect_summary()) as conn, conn:
         return conn.execute(
             """
             SELECT wrapped_schema_version, source_latest_event_at, raw_event_count
@@ -775,7 +776,7 @@ def _cached_user_meta(user_id: int, year: int) -> sqlite3.Row | None:
 def save_user_wrapped_summary(payload: dict[str, Any]) -> dict[str, Any]:
     ensure_wrapped_summary_db()
     user = payload["user"]
-    with _connect_summary() as conn:
+    with closing(_connect_summary()) as conn, conn:
         conn.execute(
             """
             INSERT INTO user_wrapped_aggregate (
@@ -809,7 +810,7 @@ def save_user_wrapped_summary(payload: dict[str, Any]) -> dict[str, Any]:
 
 def get_cached_user_wrapped_summary(user_id: int, year: int) -> dict[str, Any] | None:
     ensure_wrapped_summary_db()
-    with _connect_summary() as conn:
+    with closing(_connect_summary()) as conn, conn:
         row = conn.execute(
             "SELECT payload_json FROM user_wrapped_aggregate WHERE year = ? AND user_id = ?",
             (int(year), int(user_id)),
@@ -848,7 +849,7 @@ def get_or_build_user_wrapped_summary(
 
 def _party_source_marker(year: int) -> str:
     ensure_wrapped_summary_db()
-    with _connect_summary() as conn:
+    with closing(_connect_summary()) as conn, conn:
         row = conn.execute(
             "SELECT MAX(generated_at) AS max_generated_at FROM user_wrapped_aggregate WHERE year = ?",
             (int(year),),
@@ -915,7 +916,7 @@ def build_party_summary(db: Session, year: int | None = None) -> dict[str, Any]:
 
 def save_party_summary(payload: dict[str, Any]) -> dict[str, Any]:
     ensure_wrapped_summary_db()
-    with _connect_summary() as conn:
+    with closing(_connect_summary()) as conn, conn:
         conn.execute(
             """
             INSERT INTO wrapped_party_aggregate (
@@ -943,7 +944,7 @@ def save_party_summary(payload: dict[str, Any]) -> dict[str, Any]:
 
 def get_cached_party_summary(year: int) -> dict[str, Any] | None:
     ensure_wrapped_summary_db()
-    with _connect_summary() as conn:
+    with closing(_connect_summary()) as conn, conn:
         row = conn.execute("SELECT payload_json FROM wrapped_party_aggregate WHERE year = ?", (int(year),)).fetchone()
     if not row:
         return None
@@ -971,7 +972,7 @@ def get_or_build_party_summary(db: Session, year: int | None = None, *, force_re
 
 def _upsert_job_state(key: str, value: str) -> None:
     ensure_wrapped_summary_db()
-    with _connect_summary() as conn:
+    with closing(_connect_summary()) as conn, conn:
         conn.execute(
             """
             INSERT INTO wrapped_job_state (key, value, updated_at)
@@ -987,7 +988,7 @@ def _upsert_job_state(key: str, value: str) -> None:
 
 def _get_job_state(key: str) -> str:
     ensure_wrapped_summary_db()
-    with _connect_summary() as conn:
+    with closing(_connect_summary()) as conn, conn:
         row = conn.execute("SELECT value FROM wrapped_job_state WHERE key = ?", (key,)).fetchone()
     return str((row["value"] if row else "") or "")
 
@@ -998,7 +999,7 @@ def _wrapped_regen_lock_key(year: int) -> str:
 
 def _read_wrapped_regen_lock(year: int) -> dict[str, Any] | None:
     ensure_wrapped_summary_db()
-    with _connect_summary() as conn:
+    with closing(_connect_summary()) as conn, conn:
         row = conn.execute(
             "SELECT key, value, updated_at FROM wrapped_job_state WHERE key = ?",
             (_wrapped_regen_lock_key(year),),
@@ -1023,7 +1024,7 @@ def acquire_wrapped_regeneration_lock(year: int, triggered_by: str | None = None
     now_iso = _iso_now()
     now_ts = utcnow().timestamp()
 
-    with _connect_summary() as conn:
+    with closing(_connect_summary()) as conn, conn:
         row = conn.execute(
             "SELECT value, updated_at FROM wrapped_job_state WHERE key = ?",
             (key,),
@@ -1069,7 +1070,7 @@ def set_wrapped_regeneration_lock_job(year: int, job_id: int) -> None:
     ensure_wrapped_summary_db()
     key = _wrapped_regen_lock_key(year)
     now_iso = _iso_now()
-    with _connect_summary() as conn:
+    with closing(_connect_summary()) as conn, conn:
         row = conn.execute("SELECT value FROM wrapped_job_state WHERE key = ?", (key,)).fetchone()
         if not row:
             return
@@ -1093,7 +1094,7 @@ def release_wrapped_regeneration_lock(year: int, job_id: int | None = None) -> N
     year = _safe_year(year)
     ensure_wrapped_summary_db()
     key = _wrapped_regen_lock_key(year)
-    with _connect_summary() as conn:
+    with closing(_connect_summary()) as conn, conn:
         if job_id is None:
             conn.execute("DELETE FROM wrapped_job_state WHERE key = ?", (key,))
             conn.commit()
@@ -1124,7 +1125,7 @@ def finalize_wrapped_year_snapshot(db: Session, year: int) -> dict[str, Any]:
 
     users = db.query(database.User).filter(database.User.is_active == True).order_by(database.User.username.asc()).all()
     user_snapshot_count = 0
-    with _connect_summary() as conn:
+    with closing(_connect_summary()) as conn, conn:
         for user in users:
             summary = get_or_build_user_wrapped_summary(db, user, year, force_refresh=False)
             cur = conn.execute(
@@ -1225,7 +1226,7 @@ def _create_regeneration_audit(
     message: str = "",
 ) -> int:
     ensure_wrapped_summary_db()
-    with _connect_summary() as conn:
+    with closing(_connect_summary()) as conn, conn:
         cur = conn.execute(
             """
             INSERT INTO wrapped_regeneration_audit (
@@ -1259,7 +1260,7 @@ def _finalize_regeneration_audit(
     user_count: int = 0,
 ) -> None:
     ensure_wrapped_summary_db()
-    with _connect_summary() as conn:
+    with closing(_connect_summary()) as conn, conn:
         conn.execute(
             """
             UPDATE wrapped_regeneration_audit
@@ -1281,7 +1282,7 @@ def _finalize_regeneration_audit(
 
 def get_latest_regeneration_audit(year: int | None = None) -> dict[str, Any] | None:
     ensure_wrapped_summary_db()
-    with _connect_summary() as conn:
+    with closing(_connect_summary()) as conn, conn:
         if year is None:
             row = conn.execute(
                 """
@@ -1459,7 +1460,7 @@ def reset_user_wrapped_data(db: Session, username: str, *, purge_tracking: bool 
         raise ValueError("User not found")
 
     ensure_wrapped_summary_db()
-    with _connect_summary() as conn:
+    with closing(_connect_summary()) as conn, conn:
         deleted_user_aggregates = (
             conn.execute(
                 "DELETE FROM user_wrapped_aggregate WHERE user_id = ? OR username = ?",

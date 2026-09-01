@@ -1,0 +1,24 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# The updater only needs Git and the Docker/Compose clients. Keeping media and
+# downloader runtimes out of this image cuts rebuild time without changing the
+# Concierge image used by the legacy download fallback.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates docker.io docker-compose git gosu && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+RUN adduser --disabled-password --gecos '' appuser && \
+    groupadd --gid 2000 downloaders && \
+    usermod -aG downloaders appuser && \
+    chown -R appuser:appuser /app
+
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod 0755 /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["uvicorn", "updater_api:app", "--host", "0.0.0.0", "--port", "8090"]

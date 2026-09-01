@@ -7,7 +7,7 @@ from navipod_config import settings
 from secrets_store import decrypt_secret, encrypt_secret
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, event
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import QueuePool
 from sqlalchemy.sql import func
 
 
@@ -60,7 +60,12 @@ _ensure_sqlite_parent_dir(SQLALCHEMY_DATABASE_URL)
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args={"check_same_thread": False, "timeout": 30},
-    poolclass=NullPool,
+    poolclass=QueuePool,
+    pool_size=5,
+    max_overflow=5,
+    pool_timeout=30,
+    pool_recycle=1800,
+    pool_pre_ping=True,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -68,7 +73,7 @@ Base = declarative_base()
 
 
 @event.listens_for(engine, "connect")
-def _configure_sqlite(dbapi_connection, connection_record):
+def _configure_sqlite(dbapi_connection, _connection_record):
     if not isinstance(dbapi_connection, sqlite3.Connection):
         return
 

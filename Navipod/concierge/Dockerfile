@@ -1,15 +1,20 @@
+ARG DENO_VERSION=2.9.4
+FROM docker.io/denoland/deno:bin-${DENO_VERSION} AS deno
+
 FROM python:3.11-slim
 
 WORKDIR /app
 
 # Rebuild trigger for updater validation
 
-# --- CAMBIO AQUÍ: Añadir ffmpeg, nodejs, git y deno (vía curl) ---
 RUN apt-get update && \
-    apt-get install -y docker.io docker-compose ffmpeg git unzip nodejs curl ca-certificates gosu && \
-    curl -fsSL https://deno.land/install.sh | sh -s -- -y && \
-    mv /root/.deno/bin/deno /usr/bin/deno && \
+    apt-get install -y --no-install-recommends docker.io docker-compose ffmpeg git unzip nodejs ca-certificates gosu && \
     rm -rf /var/lib/apt/lists/*
+
+# Pull a versioned Deno binary from its official image. Executing the mutable
+# deno.land installer made otherwise-identical rebuilds non-reproducible.
+COPY --from=deno /deno /usr/local/bin/deno
+RUN deno --version
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
