@@ -1,5 +1,7 @@
+import subprocess
 from pathlib import Path
 
+import pytest
 import update_service
 import yaml
 
@@ -92,6 +94,82 @@ def test_regular_frontend_change_does_not_recreate_worker():
 
     assert selected == ["concierge"]
     assert deferred == ["updater"]
+
+
+def test_compose_change_keeps_tunnel_running():
+    selected, deferred = update_service._select_services_for_update(["Navipod/docker-compose.yaml"])
+
+    assert selected == ["concierge", "downloader", "nginx"]
+    assert "tunnel" not in selected
+    assert deferred == ["updater"]
+
+
+def test_tunnel_uses_dynamic_network_address():
+    payload = yaml.safe_load((PROJECT_ROOT / "docker-compose.yaml").read_text(encoding="utf-8"))
+
+    assert payload["services"]["tunnel"]["networks"] == ["navidrome-net"]
+
+
+def test_host_bind_compose_uses_inspected_concierge_mount_and_preserves_named_volumes(monkeypatch):
+    repo_root = PROJECT_ROOT.parent
+    host_repo_root = Path("/srv/navipod")
+    host_concierge_root = host_repo_root / "Navipod" / "concierge"
+
+    monkeypatch.setattr(update_service.ops, "REPO_ROOT", repo_root)
+    monkeypatch.setattr(update_service.ops, "COMPOSE_PROJECT_ROOT", PROJECT_ROOT)
+
+    def fake_mount_source(destination):
+        if destination == repo_root:
+            return host_repo_root
+        if destination == Path("/app"):
+            return host_concierge_root
+        return None
+
+    monkeypatch.setattr(update_service.ops, "_get_container_mount_source", fake_mount_source)
+    generated = update_service.ops._build_host_bind_compose_file()
+    try:
+        payload = yaml.safe_load(generated.read_text(encoding="utf-8"))
+    finally:
+        generated.unlink(missing_ok=True)
+
+    concierge_volumes = payload["services"]["concierge"]["volumes"]
+    downloader_volumes = payload["services"]["downloader"]["volumes"]
+    assert f"{host_concierge_root.as_posix()}:/app" in concierge_volumes
+    assert f"{host_concierge_root.as_posix()}/templates:/app/templates" in concierge_volumes
+    assert "downloader-state:/home/downloader/.spotiflac" in downloader_volumes
+
+
+def test_container_compose_recreate_fails_closed_when_host_mounts_cannot_be_resolved(monkeypatch):
+    monkeypatch.setenv("SELF_CONTAINER_NAME", "navipod_updater")
+    monkeypatch.setattr(update_service.ops, "_build_host_bind_compose_file", lambda: None)
+
+    with pytest.raises(RuntimeError, match="refusing an unsafe Compose recreate"):
+        update_service.ops._run_compose_command(["up", "-d", "concierge"])
+
+
+def test_stale_compose_container_cleanup_uses_service_label(monkeypatch):
+    calls = []
+
+    def fake_docker(args, **_kwargs):
+        calls.append(args)
+        if args[0] == "ps":
+            return subprocess.CompletedProcess(
+                args,
+                0,
+                stdout=(
+                    "abc123\tnavipod-tunnel-1\tExited (1)\ttunnel\n"
+                    "def456\tnavipod-concierge-1\tUp 1 minute\tconcierge\n"
+                ),
+                stderr="",
+            )
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(update_service.ops, "_run_docker_command", fake_docker)
+
+    removed = update_service.ops.cleanup_stale_recreate_containers(["tunnel", "concierge"])
+
+    assert removed == ["navipod-tunnel-1"]
+    assert ["rm", "-f", "abc123"] in calls
 
 
 def test_compose_update_forces_runtime_recreation_for_bind_mounted_source():

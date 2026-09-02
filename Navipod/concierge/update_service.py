@@ -133,8 +133,10 @@ def _select_services_for_update(changed_files: list[str]) -> tuple[list[str], li
     if compose_changed:
         if "nginx" not in selected:
             selected.append("nginx")
-        if "tunnel" not in selected:
-            selected.append("tunnel")
+        # Keep the externally-facing Cloudflare tunnel alive while application
+        # services are recreated. It has no runtime dependency on the changed
+        # Python/Compose source, and recreating it interrupts the update monitor
+        # precisely when the rest of the stack is temporarily unavailable.
 
     return selected, deferred
 

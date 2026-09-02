@@ -211,8 +211,11 @@ def _get_host_visible_compose_roots():
 
 def _build_host_bind_compose_file():
     host_repo_root, host_app_root = _get_host_visible_compose_roots()
+    host_concierge_root = _get_container_mount_source(Path("/app"))
     compose_file = COMPOSE_PROJECT_ROOT / "docker-compose.yaml"
     if not host_repo_root or not host_app_root or not compose_file.exists():
+        return None
+    if os.getenv("SELF_CONTAINER_NAME") and not host_concierge_root:
         return None
 
     compose_data = yaml.safe_load(compose_file.read_text(encoding="utf-8")) or {}
@@ -221,6 +224,10 @@ def _build_host_bind_compose_file():
         candidate = Path(raw_path)
         if candidate.is_absolute():
             return candidate.as_posix()
+        normalized = raw_path.removeprefix("./")
+        if host_concierge_root and (normalized == "concierge" or normalized.startswith("concierge/")):
+            relative = Path(normalized).relative_to("concierge")
+            return (host_concierge_root / relative).as_posix()
         if raw_path.startswith("../"):
             return (host_app_root / raw_path).resolve().as_posix()
         return (host_app_root / raw_path).resolve().as_posix()
@@ -228,9 +235,12 @@ def _build_host_bind_compose_file():
     def _rewrite_volume_entry(entry):
         if isinstance(entry, str):
             if ":" not in entry:
-                return _resolve_host_path(entry)
+                return entry
             source, remainder = entry.split(":", 1)
             if not source or source.startswith("/") or source.startswith("${"):
+                return entry
+            # A bare token is a named volume, not a relative host bind.
+            if not source.startswith(".") and "/" not in source:
                 return entry
             return f"{_resolve_host_path(source)}:{remainder}"
         if isinstance(entry, dict):
@@ -269,6 +279,10 @@ def _run_compose_command(
     args, *, check=True, timeout_seconds: int | None = None, on_wait=None, wait_tick_seconds: int = 15
 ):
     temp_compose_file = _build_host_bind_compose_file()
+    if os.getenv("SELF_CONTAINER_NAME") and not temp_compose_file:
+        raise RuntimeError(
+            "Could not resolve host bind mounts from the current container; refusing an unsafe Compose recreate"
+        )
     compose_file_arg = str(temp_compose_file) if temp_compose_file else "docker-compose.yaml"
     commands_to_try = [
         ["docker", "compose", "-f", compose_file_arg, "--env-file", COMPOSE_ENV_FILE, *args],
@@ -358,25 +372,34 @@ def cleanup_stale_recreate_containers(services: list[str]) -> list[str]:
     removed = []
     try:
         completed = _run_docker_command(
-            ["ps", "-a", "--format", "{{.ID}}\t{{.Names}}\t{{.Status}}"],
+            [
+                "ps",
+                "-a",
+                "--format",
+                '{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Label "com.docker.compose.service"}}',
+            ],
             timeout_seconds=30,
         )
         if completed.returncode != 0:
             return removed
 
         for line in (completed.stdout or "").splitlines():
-            parts = line.split("\t", 2)
-            if len(parts) != 3:
+            parts = line.split("\t", 3)
+            if len(parts) < 3:
                 continue
 
-            container_id, name, status = parts
-            match = re.fullmatch(r"([0-9a-f]{12,})_(.+)", name.strip())
-            if not match:
-                continue
-
-            service_name = match.group(2)
-            normalized_service = service_name.removeprefix("navipod_")
-            if service_name not in service_set and normalized_service not in service_set:
+            container_id, name, status = parts[:3]
+            compose_service = parts[3].strip() if len(parts) == 4 else ""
+            normalized_name = name.strip()
+            matched_service = compose_service if compose_service in service_set else None
+            if not matched_service:
+                for service_name in service_set:
+                    if re.search(rf"(?:-|_){re.escape(service_name)}(?:-|_)\d+$", normalized_name) or re.fullmatch(
+                        rf"[0-9a-f]{{12,}}_{re.escape(service_name)}", normalized_name
+                    ):
+                        matched_service = service_name
+                        break
+            if not matched_service:
                 continue
 
             if status.lower().startswith("up "):

@@ -54,8 +54,7 @@ services:
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
     networks:
-      navidrome-net:
-        ipv4_address: 172.20.0.2
+      - navidrome-net
 
   concierge:
     build: ./concierge
