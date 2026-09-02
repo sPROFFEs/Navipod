@@ -35,3 +35,16 @@ def test_party_clock_sync_uses_server_relative_time_without_restarting_audio():
     assert "startsAtMs - serverTimeMs" in player_javascript
     assert "startsAtMs - Date.now()" not in player_javascript
     assert "Date.now() - transitReferenceMs" not in player_javascript
+
+
+def test_desktop_player_controls_do_not_open_fullscreen_player():
+    template = (TEMPLATE_ROOT / "base.html").read_text(encoding="utf-8")
+    css = (ASSETS_ROOT / "css" / "ui_player.css").read_text(encoding="utf-8")
+    player_javascript = (ASSETS_ROOT / "js" / "modules" / "player.js").read_text(encoding="utf-8")
+
+    assert template.count("data-fullscreen-player-trigger") == 2
+    assert ".player-footer .control-btn:not(.play-main)" in css
+    assert "flex: 0 0 36px;" in css
+    assert "window.matchMedia('(max-width: 768px)').matches" in player_javascript
+    assert "e.target.closest('[data-fullscreen-player-trigger]')" in player_javascript
+    assert "if (!isMobileMiniPlayer && !isDesktopExpandTarget) return;" in player_javascript

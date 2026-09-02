@@ -20,6 +20,16 @@
     pointer-events: none;
 }
 
+/* Give every desktop transport icon a real hit area. Without this, only the
+ * SVG itself was reliably clickable and the 20px control gaps belonged to
+ * the footer's expand surface. */
+.player-footer .control-btn:not(.play-main) {
+    width: 36px;
+    height: 36px;
+    padding: 6px;
+    flex: 0 0 36px;
+}
+
 /* Keep the primary transport control visually consistent with the other
  * outline icons. Its larger hit area still communicates priority without a
  * colored disc competing with the album art. */

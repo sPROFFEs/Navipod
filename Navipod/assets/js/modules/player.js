@@ -1330,9 +1330,10 @@ export function setupPlayer() {
   window.navipodOnVolumeChange = persistVolume;
 
   // ── Mini-player tap-to-expand ──────────────────────────────────
-  // Desktop: clicking the track title/artist (not just the cover
-  // image) opens the fullscreen player. Mobile: tapping anywhere on
-  // the banner except interactive controls opens it.
+  // Desktop: only the cover/track information opens the fullscreen
+  // player. Mobile: tapping anywhere on the banner except interactive
+  // controls opens it. Keeping the desktop target explicit prevents
+  // clicks in the transport-control spacing from opening the overlay.
   const footer = document.querySelector('.player-footer');
   if (footer) {
     footer.addEventListener('click', (e) => {
@@ -1343,6 +1344,11 @@ export function setupPlayer() {
         )
       )
         return;
+
+      const isMobileMiniPlayer = window.matchMedia('(max-width: 768px)').matches;
+      const isDesktopExpandTarget = e.target.closest('[data-fullscreen-player-trigger]');
+      if (!isMobileMiniPlayer && !isDesktopExpandTarget) return;
+
       ui.toggleFullscreenPlayer();
     });
     // Show pointer cursor on the clickable areas (desktop).
