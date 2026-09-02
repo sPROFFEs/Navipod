@@ -139,6 +139,30 @@ def test_host_bind_compose_uses_inspected_concierge_mount_and_preserves_named_vo
     assert "downloader-state:/home/downloader/.spotiflac" in downloader_volumes
 
 
+def test_mount_discovery_falls_back_to_current_container_id_when_configured_name_is_stale(monkeypatch):
+    inspect_targets = []
+    monkeypatch.setenv("SELF_CONTAINER_NAME", "navipod_updater")
+    monkeypatch.setenv("HOSTNAME", "runtime-container-id")
+
+    def fake_run(args, **_kwargs):
+        inspect_targets.append(args[-1])
+        if args[-1] == "runtime-container-id":
+            return subprocess.CompletedProcess(
+                args,
+                0,
+                stdout='[{"Type":"bind","Source":"/srv/navipod","Destination":"/workspace"}]\n',
+                stderr="",
+            )
+        return subprocess.CompletedProcess(args, 1, stdout="", stderr="No such container")
+
+    monkeypatch.setattr(update_service.ops.subprocess, "run", fake_run)
+
+    source = update_service.ops._get_container_mount_source(Path("/workspace"))
+
+    assert source == Path("/srv/navipod")
+    assert inspect_targets == ["navipod_updater", "runtime-container-id"]
+
+
 def test_container_compose_recreate_fails_closed_when_host_mounts_cannot_be_resolved(monkeypatch):
     monkeypatch.setenv("SELF_CONTAINER_NAME", "navipod_updater")
     monkeypatch.setattr(update_service.ops, "_build_host_bind_compose_file", lambda: None)

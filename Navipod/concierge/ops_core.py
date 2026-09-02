@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import socket
 import subprocess
 import tempfile
 import time
@@ -174,26 +175,41 @@ def _run_git(args, *, check=True, fallback=None, include_details=False):
 
 
 def _get_container_mount_source(destination_path: Path):
-    container_name = os.getenv("SELF_CONTAINER_NAME")
-    if not container_name:
+    configured_name = os.getenv("SELF_CONTAINER_NAME")
+    if not configured_name:
         return None
+
+    # Explicit container names are stable for current installations, but old
+    # Compose deployments may still use a generated project/service name. The
+    # container hostname is its runtime ID, which Docker can always inspect.
+    inspect_targets = [configured_name, os.getenv("HOSTNAME")]
     try:
-        completed = subprocess.run(
-            ["docker", "inspect", "--format", "{{json .Mounts}}", container_name],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if completed.returncode != 0:
-            return None
-        mounts = json.loads((completed.stdout or "").strip() or "[]")
-        for mount in mounts:
-            if mount.get("Destination") == str(destination_path):
-                source = mount.get("Source")
-                if source:
-                    return Path(source)
-    except Exception:
-        return None
+        inspect_targets.append(socket.gethostname())
+    except OSError:
+        pass
+
+    seen = set()
+    for inspect_target in inspect_targets:
+        if not inspect_target or inspect_target in seen:
+            continue
+        seen.add(inspect_target)
+        try:
+            completed = subprocess.run(
+                ["docker", "inspect", "--format", "{{json .Mounts}}", inspect_target],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if completed.returncode != 0:
+                continue
+            mounts = json.loads((completed.stdout or "").strip() or "[]")
+            for mount in mounts:
+                if Path(mount.get("Destination") or "") == destination_path:
+                    source = mount.get("Source")
+                    if source:
+                        return Path(source)
+        except Exception:
+            continue
     return None
 
 
