@@ -89,6 +89,13 @@ def test_remembered_session_is_longer_but_bounded(monkeypatch):
     assert auth.session_expiry(True) == timedelta(days=365)
 
 
+def test_login_cookie_persists_for_the_selected_token_lifetime():
+    main_source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
+
+    assert "max_age=int(session_lifetime.total_seconds())," in main_source
+    assert "if remember_me else None" not in main_source
+
+
 def test_auth_browser_cookie_round_trips_without_exposing_separate_credentials():
     value = auth_browser.encode_cookie("session-123", "token-value-that-is-long-enough")
 

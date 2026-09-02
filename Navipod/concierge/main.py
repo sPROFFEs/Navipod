@@ -541,9 +541,10 @@ async def login(
         httponly=True,
         secure=settings.COOKIE_SECURE,
         samesite="lax",
-        # No Max-Age means the browser discards the cookie when its session
-        # ends. Remembered sessions persist, but remain revocable server-side.
-        max_age=int(session_lifetime.total_seconds()) if remember_me else None,
+        # Keep the pre-"Remember me" behavior: ordinary logins persist for
+        # their configured token lifetime (24h by default). Remembered logins
+        # use the longer bounded lifetime selected by auth.session_expiry().
+        max_age=int(session_lifetime.total_seconds()),
     )
     if user.is_admin:
         try:
