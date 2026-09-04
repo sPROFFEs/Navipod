@@ -114,6 +114,9 @@
                                     <i data-lucide="key-round" width="18" height="18"></i>
                                 </button>
                                 {% if u.username != username %}
+                                <button type="button" class="admin-icon-btn" onclick="toggleRole('{{ u.id }}', '{{ u.username }}', {{ 'true' if u.is_admin else 'false' }})" title="Toggle Role">
+                                    <i data-lucide="shield" width="18" height="18"></i>
+                                </button>
                                 <button type="button" class="admin-icon-btn danger" onclick="deleteUser('{{ u.id }}', '{{ u.username }}')" title="Delete User">
                                     <i data-lucide="trash-2" width="18" height="18"></i>
                                 </button>

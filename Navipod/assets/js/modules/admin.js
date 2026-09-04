@@ -111,6 +111,20 @@ export async function createUser(event) {
   await adminAction('/admin/users/create', formData);
 }
 
+export async function toggleRole(userId, username, currentRole) {
+  const newRole = currentRole ? 'Standard User' : 'Admin';
+  const confirmed = await showAdminConfirmDialog({
+    title: 'Change role',
+    message: `Change role for user "${username}" to ${newRole}?`,
+    confirmLabel: 'Change role',
+    tone: 'warning'
+  });
+  if (!confirmed) return;
+  const formData = new FormData();
+  formData.append('user_id', userId);
+  await adminAction('/admin/users/toggle-role', formData);
+}
+
 export async function resetPassword(userId, username) {
   const confirmed = await showAdminConfirmDialog({
     title: 'Reset password',

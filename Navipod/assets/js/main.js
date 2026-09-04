@@ -291,6 +291,7 @@ if (window.USER_DATA?.is_admin) {
     window.adminAction = admin.adminAction;
     window.handleAdminForm = admin.handleAdminForm;
     window.deleteUser = admin.deleteUser;
+    window.toggleRole = admin.toggleRole;
     window.createUser = admin.createUser;
     window.resetPassword = admin.resetPassword;
     window.adminSearchLibrary = admin.adminSearchLibrary;
