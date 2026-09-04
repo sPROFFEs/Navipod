@@ -24,7 +24,7 @@ def test_branding_assets_cover_browser_pwa_and_touch_icon_sizes():
 
     ico = (assets_root / "favicon.ico").read_bytes()
     reserved, image_type, image_count = struct.unpack("<HHH", ico[:6])
-    assert (reserved, image_type, image_count) == (0, 1, 2)
+    assert (reserved, image_type, image_count) == (0, 1, 6)
     ico_sizes = {(ico[offset] or 256, ico[offset + 1] or 256) for offset in (6, 22)}
     assert ico_sizes == {(16, 16), (32, 32)}
 

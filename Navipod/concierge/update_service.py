@@ -114,8 +114,22 @@ def is_updater_monitor_available(job_id: int) -> bool:
 
 
 def _select_services_for_update(changed_files: list[str]) -> tuple[list[str], list[str]]:
-    selected = ["concierge"]
+    selected = []
     deferred = ["updater"]
+
+    compose_changed = any(ops._path_matches_required_target(path, "docker-compose.yaml") for path in changed_files)
+    
+    concierge_backend_changed = compose_changed or any(
+        (variant.endswith(".py") and "concierge/" in variant) or
+        ops._path_matches_required_target(path, "concierge/requirements.txt") or
+        ops._path_matches_required_target(path, "concierge/Dockerfile") or
+        ops._path_matches_required_target(path, "concierge/Dockerfile.updater") or
+        ops._path_matches_required_target(path, "concierge/entrypoint.sh")
+        for path in changed_files for variant in ops._path_variants_for_match(path)
+    )
+
+    if concierge_backend_changed:
+        selected.append("concierge")
 
     worker_changed = any(
         "downloader-worker/" in variant for path in changed_files for variant in ops._path_variants_for_match(path)
@@ -592,6 +606,24 @@ def _run_compose_update(job_id: int, changed_files: list[str]):
     normalized_changed_files = ops.normalize_changed_files(changed_files)
     rebuild_targets = ops.matched_rebuild_targets(changed_files)
     rebuild_required = ops.should_rebuild_for_changed_files(changed_files)
+
+    if not services:
+        update_admin_job_progress(
+            job_id,
+            message="No backend services require recreation",
+            phase="skip_recreate",
+            progress=85,
+            status="running",
+            extra={
+                "changed_files": normalized_changed_files[:100],
+                "rebuild_required": rebuild_required,
+                "rebuild_targets": rebuild_targets,
+                "services": services,
+                "deferred_services": deferred_services,
+            },
+        )
+        return False, {"status": "skipped", "message": "No backend services require recreation"}, normalized_changed_files, rebuild_targets
+
     compose_args = _build_compose_update_args(rebuild_required, services)
     compose_phase = "build" if rebuild_required else "recreate"
     compose_progress = 80 if rebuild_required else 85

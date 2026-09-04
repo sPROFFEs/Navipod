@@ -92,7 +92,7 @@ def test_updater_rebuilds_worker_for_worker_changes_and_keeps_updater_alive():
 def test_regular_frontend_change_does_not_recreate_worker():
     selected, deferred = update_service._select_services_for_update(["Navipod/assets/css/style.css"])
 
-    assert selected == ["concierge"]
+    assert selected == []
     assert deferred == ["updater"]
 
 
