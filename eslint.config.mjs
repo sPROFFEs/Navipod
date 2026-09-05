@@ -6,7 +6,7 @@ export default [
   },
   js.configs.recommended,
   {
-    files: ["Navipod/assets/js/**/*.js"],
+    files: ["Navipod/assets/js/**/*.js", "Navipod/playlist-importer/bookmarklet.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "module",
@@ -41,6 +41,7 @@ export default [
         lucide: "readonly",
         location: "readonly",
         navigator: "readonly",
+        prompt: "readonly",
         requestAnimationFrame: "readonly",
         setInterval: "readonly",
         setTimeout: "readonly",

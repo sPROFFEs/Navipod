@@ -533,6 +533,7 @@ def _migration_000_base_schema(conn):
             input_url TEXT,
             target_playlist_id INTEGER,
             target_modern_playlist_id INTEGER,
+            resolved_track_id INTEGER,
             new_playlist_name TEXT,
             status TEXT DEFAULT 'pending',
             progress_percent INTEGER DEFAULT 0,
@@ -541,7 +542,8 @@ def _migration_000_base_schema(conn):
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id),
             FOREIGN KEY (target_playlist_id) REFERENCES user_playlists(id),
-            FOREIGN KEY (target_modern_playlist_id) REFERENCES playlists(id)
+            FOREIGN KEY (target_modern_playlist_id) REFERENCES playlists(id) ON DELETE SET NULL,
+            FOREIGN KEY (resolved_track_id) REFERENCES tracks(id) ON DELETE SET NULL
         )
     """)
     )
@@ -589,7 +591,7 @@ def _migration_002_user_favorites(conn):
             track_id INTEGER NOT NULL,
             added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id),
-            FOREIGN KEY (track_id) REFERENCES tracks(id),
+            FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE,
             UNIQUE(user_id, track_id)
         )
     """)
@@ -621,7 +623,10 @@ def _migration_004_playlists_and_sync_copy(conn):
             is_public INTEGER NOT NULL DEFAULT 0,
             source_playlist_id INTEGER,
             m3u_path TEXT,
-            FOREIGN KEY (owner_id) REFERENCES users(id)
+            cover_path TEXT,
+            cover_track_id INTEGER,
+            FOREIGN KEY (owner_id) REFERENCES users(id),
+            FOREIGN KEY (cover_track_id) REFERENCES tracks(id) ON DELETE SET NULL
         )
     """)
     )
@@ -633,8 +638,8 @@ def _migration_004_playlists_and_sync_copy(conn):
             track_id INTEGER NOT NULL,
             position INTEGER DEFAULT 0,
             added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (playlist_id) REFERENCES playlists(id),
-            FOREIGN KEY (track_id) REFERENCES tracks(id)
+            FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
+            FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
         )
     """)
     )
@@ -1044,7 +1049,7 @@ def _migration_017_track_delete_requests(conn):
         CREATE TABLE IF NOT EXISTS track_delete_requests (
             id INTEGER PRIMARY KEY,
             user_id INTEGER NOT NULL,
-            track_id INTEGER NOT NULL,
+            track_id INTEGER,
             track_title TEXT,
             track_artist TEXT,
             reason TEXT NOT NULL,
@@ -1054,7 +1059,7 @@ def _migration_017_track_delete_requests(conn):
             requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             reviewed_at DATETIME,
             FOREIGN KEY (user_id) REFERENCES users(id),
-            FOREIGN KEY (track_id) REFERENCES tracks(id),
+            FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE SET NULL,
             FOREIGN KEY (reviewed_by_user_id) REFERENCES users(id)
         )
     """)
@@ -1428,6 +1433,48 @@ def _migration_028_downloader_mode(conn):
         conn.execute(text("ALTER TABLE system_settings ADD COLUMN downloader_mode TEXT NOT NULL DEFAULT 'automatic'"))
 
 
+def _migration_029_delete_reference_cleanup(conn):
+    """Backport deletion semantics without a risky multi-table SQLite rebuild.
+
+    Fresh databases get equivalent foreign-key actions from the earlier schema
+    migrations. Existing databases retain their current tables and use these
+    triggers, which also cover raw SQL and older deletion paths.
+    """
+    conn.execute(
+        text("""
+        CREATE TRIGGER IF NOT EXISTS trg_playlist_clear_download_jobs
+        BEFORE DELETE ON playlists
+        FOR EACH ROW
+        BEGIN
+            DELETE FROM playlist_items
+             WHERE playlist_id = OLD.id;
+            UPDATE download_jobs
+               SET target_modern_playlist_id = NULL
+             WHERE target_modern_playlist_id = OLD.id;
+        END
+        """)
+    )
+    conn.execute(
+        text("""
+        CREATE TRIGGER IF NOT EXISTS trg_track_cleanup_references
+        BEFORE DELETE ON tracks
+        FOR EACH ROW
+        BEGIN
+            DELETE FROM user_favorites
+             WHERE track_id = OLD.id;
+            DELETE FROM playlist_items
+             WHERE track_id = OLD.id;
+            UPDATE playlists
+               SET cover_track_id = NULL
+             WHERE cover_track_id = OLD.id;
+            UPDATE download_jobs
+               SET resolved_track_id = NULL
+             WHERE resolved_track_id = OLD.id;
+        END
+        """)
+    )
+
+
 MIGRATIONS = [
     ("000_base_schema", _migration_000_base_schema),
     ("001_tracks_library_columns", _migration_001_tracks_library_columns),
@@ -1458,6 +1505,7 @@ MIGRATIONS = [
     ("026_track_loudness_columns", _migration_026_track_loudness_columns),
     ("027_playback_queue_volume", _migration_027_playback_queue_volume),
     ("028_downloader_mode", _migration_028_downloader_mode),
+    ("029_delete_reference_cleanup", _migration_029_delete_reference_cleanup),
 ]
 
 

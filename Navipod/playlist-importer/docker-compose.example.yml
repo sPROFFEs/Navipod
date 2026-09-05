@@ -1,0 +1,50 @@
+services:
+  importer:
+    build: .
+    container_name: ${IMPORTER_CONTAINER_NAME:-navipod_importer}
+    restart: unless-stopped
+    init: true
+    environment:
+      NAVIPOD_BASE_URL: ${NAVIPOD_BASE_URL:-http://concierge:8000}
+      NAVIPOD_PUBLIC_ORIGIN: ${NAVIPOD_PUBLIC_ORIGIN:?Set NAVIPOD_PUBLIC_ORIGIN in .env}
+      DATA_DIR: /data
+      NAVIPOD_COVER_CACHE_DIR: /navipod-cover-cache
+      IMPORT_CONCURRENCY: ${IMPORT_CONCURRENCY:-3}
+      MAX_ATTEMPTS: ${MAX_ATTEMPTS:-3}
+      RETRY_BASE_SECONDS: ${RETRY_BASE_SECONDS:-30}
+      FAVORITE_DELAY_SECONDS: ${FAVORITE_DELAY_SECONDS:-0.5}
+      FAVORITE_BATCH_SIZE: ${FAVORITE_BATCH_SIZE:-10}
+      IMPORTER_FERNET_KEY: ${IMPORTER_FERNET_KEY:?Set IMPORTER_FERNET_KEY in .env}
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
+      YTDLP_COOKIE_FILE: ${YTDLP_COOKIE_FILE:-/data/youtube-cookies.txt}
+    volumes:
+      - ${IMPORTER_DATA_HOST_PATH:-./data}:/data
+      - ${NAVIPOD_COVER_CACHE_HOST_PATH:-./cover-cache}:/navipod-cover-cache:rw
+    networks:
+      - navipod
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 384m
+    cpus: 1.0
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/health', timeout=3).read()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  navipod:
+    external: true
+    name: ${NAVIPOD_DOCKER_NETWORK:-navipod-global}

@@ -22,7 +22,9 @@ CANCEL_CONFIRM_TIMEOUT_SECONDS = 30.0
 
 
 class WorkerUnavailable(RuntimeError):
-    pass
+    def __init__(self, message: str, *, detail: dict | None = None):
+        super().__init__(message)
+        self.detail = detail
 
 
 class WorkerConflict(RuntimeError):
@@ -113,13 +115,38 @@ def _worker_json(response: httpx.Response) -> dict:
         return payload
     except (httpx.HTTPError, ValueError, TypeError) as exc:
         detail = ""
+        structured_detail = None
         try:
-            detail = str(response.json().get("detail") or "")
+            raw_detail = response.json().get("detail")
+            if isinstance(raw_detail, dict):
+                message = raw_detail.get("message")
+                detail = message[:500] if isinstance(message, str) else ""
+                structured_detail = {"message": detail or "Downloader worker request failed"}
+                code = raw_detail.get("code")
+                if isinstance(code, str) and len(code) <= 80 and code.replace("_", "").isalnum():
+                    structured_detail["code"] = code
+                provider = raw_detail.get("provider")
+                if provider in VALID_SPOTIFLAC_PROVIDERS:
+                    structured_detail["provider"] = provider
+                retryable = raw_detail.get("retryable")
+                if isinstance(retryable, bool):
+                    structured_detail["retryable"] = retryable
+                upstream_status = raw_detail.get("upstream_status")
+                if isinstance(upstream_status, int) and 100 <= upstream_status <= 599:
+                    structured_detail["upstream_status"] = upstream_status
+                error_type = raw_detail.get("error_type")
+                if isinstance(error_type, str) and len(error_type) <= 100 and error_type.replace("_", "").isalnum():
+                    structured_detail["error_type"] = error_type
+            elif isinstance(raw_detail, str):
+                detail = raw_detail[:500]
         except Exception:
             pass
         if response.status_code == 409:
             raise WorkerConflict(detail or "Downloader worker request conflicts with an active session") from exc
-        raise WorkerUnavailable(detail or f"Downloader worker request failed: {exc}") from exc
+        raise WorkerUnavailable(
+            detail or f"Downloader worker request failed: {exc}",
+            detail=structured_detail,
+        ) from exc
 
 
 def get_spotiflac_providers() -> list[dict]:
