@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-python -m compileall -q Navipod/concierge Navipod/downloader-worker
+python -m compileall -q Navipod/concierge Navipod/downloader-worker Navipod/playlist-importer
 python -m pytest \
   --cov=Navipod/concierge \
   --cov=Navipod/downloader-worker \

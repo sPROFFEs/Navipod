@@ -108,7 +108,7 @@ def test_new_party_room_schema_accepts_loading_status():
         ops_core._migration_024_party_rooms(conn)
         conn.execute(text("INSERT INTO party_rooms(owner_id, name, playback_status) VALUES (1, 'New room', 'loading')"))
 
-    assert ops_core.MIGRATIONS[-1][0] == "028_downloader_mode"
+    assert ops_core.MIGRATIONS[-1][0] == "029_delete_reference_cleanup"
     engine.dispose()
 
 
@@ -138,4 +138,137 @@ def test_downloader_mode_migration_preserves_existing_system_settings():
         ops_core._migration_028_downloader_mode(conn)
 
     assert row == (250, "automatic")
+    engine.dispose()
+
+
+def test_delete_reference_cleanup_migration_handles_legacy_foreign_keys():
+    engine = create_engine("sqlite://")
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+        conn.execute(text("CREATE TABLE users (id INTEGER PRIMARY KEY)"))
+        conn.execute(text("CREATE TABLE tracks (id INTEGER PRIMARY KEY)"))
+        conn.execute(
+            text("""
+            CREATE TABLE playlists (
+                id INTEGER PRIMARY KEY,
+                cover_track_id INTEGER,
+                FOREIGN KEY (cover_track_id) REFERENCES tracks(id)
+            )
+            """)
+        )
+        conn.execute(
+            text("""
+            CREATE TABLE playlist_items (
+                id INTEGER PRIMARY KEY,
+                playlist_id INTEGER NOT NULL,
+                track_id INTEGER NOT NULL,
+                FOREIGN KEY (playlist_id) REFERENCES playlists(id),
+                FOREIGN KEY (track_id) REFERENCES tracks(id)
+            )
+            """)
+        )
+        conn.execute(
+            text("""
+            CREATE TABLE download_jobs (
+                id INTEGER PRIMARY KEY,
+                target_modern_playlist_id INTEGER,
+                resolved_track_id INTEGER,
+                FOREIGN KEY (target_modern_playlist_id) REFERENCES playlists(id),
+                FOREIGN KEY (resolved_track_id) REFERENCES tracks(id)
+            )
+            """)
+        )
+        conn.execute(
+            text("""
+            CREATE TABLE user_favorites (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                track_id INTEGER NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (track_id) REFERENCES tracks(id)
+            )
+            """)
+        )
+        conn.execute(
+            text("""
+            CREATE TABLE track_delete_requests (
+                id INTEGER PRIMARY KEY,
+                track_id INTEGER,
+                FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE SET NULL
+            )
+            """)
+        )
+        conn.execute(
+            text("""
+            CREATE TABLE party_room_queue_items (
+                id INTEGER PRIMARY KEY,
+                track_id INTEGER NOT NULL,
+                FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+            )
+            """)
+        )
+
+        conn.execute(text("INSERT INTO users(id) VALUES (1)"))
+        conn.execute(text("INSERT INTO tracks(id) VALUES (10)"))
+        conn.execute(text("INSERT INTO playlists(id, cover_track_id) VALUES (20, 10), (21, 10)"))
+        conn.execute(text("INSERT INTO playlist_items(id, playlist_id, track_id) VALUES (1, 20, 10), (2, 21, 10)"))
+        conn.execute(
+            text("INSERT INTO download_jobs(id, target_modern_playlist_id, resolved_track_id) VALUES (30, 20, 10)")
+        )
+        conn.execute(text("INSERT INTO user_favorites(id, user_id, track_id) VALUES (40, 1, 10)"))
+        conn.execute(text("INSERT INTO track_delete_requests(id, track_id) VALUES (50, 10)"))
+        conn.execute(text("INSERT INTO party_room_queue_items(id, track_id) VALUES (60, 10)"))
+
+        ops_core._migration_029_delete_reference_cleanup(conn)
+        ops_core._migration_029_delete_reference_cleanup(conn)
+
+        conn.execute(text("DELETE FROM playlists WHERE id = 20"))
+        assert conn.execute(text("SELECT target_modern_playlist_id FROM download_jobs WHERE id = 30")).scalar() is None
+        assert conn.execute(text("SELECT COUNT(*) FROM playlist_items WHERE playlist_id = 20")).scalar() == 0
+
+        conn.execute(text("DELETE FROM tracks WHERE id = 10"))
+        assert conn.execute(text("SELECT COUNT(*) FROM user_favorites")).scalar() == 0
+        assert conn.execute(text("SELECT COUNT(*) FROM playlist_items")).scalar() == 0
+        assert conn.execute(text("SELECT cover_track_id FROM playlists WHERE id = 21")).scalar() is None
+        assert conn.execute(text("SELECT resolved_track_id FROM download_jobs WHERE id = 30")).scalar() is None
+        assert conn.execute(text("SELECT track_id FROM track_delete_requests WHERE id = 50")).scalar() is None
+        assert conn.execute(text("SELECT COUNT(*) FROM party_room_queue_items")).scalar() == 0
+        assert conn.execute(text("PRAGMA foreign_key_check")).all() == []
+
+    engine.dispose()
+
+
+def test_fresh_schema_uses_native_delete_actions():
+    engine = create_engine("sqlite://")
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+        for _name, migration in ops_core.MIGRATIONS:
+            migration(conn)
+
+        actions = {}
+        for table_name in (
+            "playlist_items",
+            "playlists",
+            "download_jobs",
+            "user_favorites",
+            "track_delete_requests",
+            "party_room_queue_items",
+        ):
+            for row in conn.execute(text(f"PRAGMA foreign_key_list({table_name})")):
+                actions[(table_name, row[3])] = row[6]
+
+        expected = {
+            ("playlist_items", "playlist_id"): "CASCADE",
+            ("playlist_items", "track_id"): "CASCADE",
+            ("playlists", "cover_track_id"): "SET NULL",
+            ("download_jobs", "target_modern_playlist_id"): "SET NULL",
+            ("download_jobs", "resolved_track_id"): "SET NULL",
+            ("user_favorites", "track_id"): "CASCADE",
+            ("track_delete_requests", "track_id"): "SET NULL",
+            ("party_room_queue_items", "track_id"): "CASCADE",
+        }
+
+        assert {key: actions.get(key) for key in expected} == expected
+        assert conn.execute(text("PRAGMA foreign_key_check")).all() == []
+
     engine.dispose()

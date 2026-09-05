@@ -10,9 +10,12 @@ import re
 import secrets
 import shutil
 import signal
+import socket
+import ssl
 import subprocess
 import threading
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
@@ -264,6 +267,93 @@ def _spotiflac_provider_status(provider: str) -> dict:
     }
 
 
+def _exception_chain(exc: Exception) -> list[BaseException]:
+    chain: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None and current not in chain and len(chain) < 8:
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+    return chain
+
+
+def _provider_auth_failure_detail(provider: str, exc: Exception) -> dict:
+    chain = _exception_chain(exc)
+    upstream_status = None
+    for item in chain:
+        response = getattr(item, "response", None)
+        candidate = getattr(response, "status_code", None)
+        if isinstance(candidate, int) and 100 <= candidate <= 599:
+            upstream_status = candidate
+            break
+
+    detail = {
+        "code": "provider_start_failed",
+        "message": "Provider verification could not be started because the SpotiFLAC service failed.",
+        "provider": provider,
+        "retryable": False,
+        "error_type": type(exc).__name__,
+    }
+    if upstream_status is not None:
+        detail.update(
+            {
+                "code": "provider_upstream_http_error",
+                "message": (
+                    f"SpotiFLAC verification service is temporarily unavailable (HTTP {upstream_status}). Retry later."
+                    if upstream_status == 429 or upstream_status >= 500
+                    else f"SpotiFLAC verification service rejected the request (HTTP {upstream_status})."
+                ),
+                "retryable": upstream_status == 429 or upstream_status >= 500,
+                "upstream_status": upstream_status,
+            }
+        )
+    elif any(isinstance(item, (httpx.TimeoutException, TimeoutError)) for item in chain):
+        detail.update(
+            {
+                "code": "provider_upstream_timeout",
+                "message": "SpotiFLAC verification service timed out. Retry later.",
+                "retryable": True,
+            }
+        )
+    elif any(isinstance(item, socket.gaierror) for item in chain):
+        detail.update(
+            {
+                "code": "provider_dns_error",
+                "message": "Could not resolve the SpotiFLAC verification service.",
+                "retryable": True,
+            }
+        )
+    elif any(isinstance(item, ssl.SSLError) for item in chain):
+        detail.update(
+            {
+                "code": "provider_tls_error",
+                "message": "TLS verification failed while contacting the SpotiFLAC verification service.",
+            }
+        )
+    elif any(isinstance(item, (httpx.ConnectError, ConnectionError)) for item in chain):
+        detail.update(
+            {
+                "code": "provider_connection_error",
+                "message": "Could not connect to the SpotiFLAC verification service. Retry later.",
+                "retryable": True,
+            }
+        )
+    return detail
+
+
+def _log_provider_auth_failure(provider: str, phase: str, exc: Exception, detail: dict) -> None:
+    # Log traceback frames for diagnosis without formatting the exception value,
+    # which may contain challenge URLs, grants, cookies, or other credentials.
+    frames = "".join(traceback.format_tb(exc.__traceback__)).rstrip()
+    logger.error(
+        "SpotiFLAC provider %s %s failed: code=%s type=%s%s",
+        provider,
+        phase,
+        detail["code"],
+        type(exc).__name__,
+        f"\n{frames}" if frames else "",
+    )
+
+
 def _spotiflac_challenge_url(client, provider: str) -> str:
     """Build the callback-bearing URL required by signedSession@1."""
     challenge_id = str(client.pending_challenge_id or "").strip()
@@ -364,7 +454,8 @@ async def _refresh_spotiflac_sessions_once() -> dict[str, str]:
                         logger.info("Refreshed SpotiFLAC provider session: %s", provider)
                 except Exception as exc:
                     results[provider] = "refresh_failed"
-                    logger.warning("Could not refresh SpotiFLAC provider session %s: %s", provider, exc)
+                    detail = _provider_auth_failure_detail(provider, exc)
+                    _log_provider_auth_failure(provider, "session refresh", exc, detail)
                 finally:
                     with suppress(Exception):
                         await client.aclose()
@@ -493,8 +584,9 @@ async def start_provider_auth(provider: str) -> dict:
             except HTTPException:
                 raise
             except Exception as exc:
-                logger.warning("SpotiFLAC provider %s bootstrap failed: %s", provider, exc)
-                raise HTTPException(status_code=502, detail="Provider verification could not be started") from exc
+                detail = _provider_auth_failure_detail(provider, exc)
+                _log_provider_auth_failure(provider, "bootstrap", exc, detail)
+                raise HTTPException(status_code=502, detail=detail) from exc
             finally:
                 await client.aclose()
 
@@ -540,7 +632,8 @@ async def complete_provider_auth_callback(
                 if not client.authenticated:
                     raise RuntimeError("provider did not return an authenticated session")
             except Exception as exc:
-                logger.warning("SpotiFLAC provider %s callback exchange failed: %s", provider, exc)
+                detail = _provider_auth_failure_detail(provider, exc)
+                _log_provider_auth_failure(provider, "callback exchange", exc, detail)
                 return _verification_result_page(
                     "The provider grant could not be exchanged.", success=False, status_code=502
                 )
@@ -565,8 +658,9 @@ async def complete_provider_auth(provider: str, request: ProviderGrantRequest) -
                     raise RuntimeError("provider did not return an authenticated session")
                 return {"status": "connected", "provider": _spotiflac_provider_status(provider)}
             except Exception as exc:
-                logger.warning("SpotiFLAC provider %s grant exchange failed: %s", provider, exc)
-                raise HTTPException(status_code=502, detail="Provider verification could not be completed") from exc
+                detail = _provider_auth_failure_detail(provider, exc)
+                _log_provider_auth_failure(provider, "grant exchange", exc, detail)
+                raise HTTPException(status_code=502, detail=detail) from exc
             finally:
                 await client.aclose()
 
@@ -595,8 +689,9 @@ async def complete_provider_browser_auth(provider: str) -> dict:
                 auth_browser_manager.clear_captured_grant(provider)
                 return result
             except Exception as exc:
-                logger.warning("SpotiFLAC provider %s captured grant exchange failed: %s", provider, exc)
-                raise HTTPException(status_code=502, detail="Provider verification could not be completed") from exc
+                detail = _provider_auth_failure_detail(provider, exc)
+                _log_provider_auth_failure(provider, "captured grant exchange", exc, detail)
+                raise HTTPException(status_code=502, detail=detail) from exc
             finally:
                 await client.aclose()
 

@@ -12,6 +12,7 @@ import admin_statistics_service
 import auth
 import auth_browser
 import database
+import deletion_service
 import downloader_worker_client
 import library_maintenance
 import loudness
@@ -455,16 +456,16 @@ async def toggle_user_role(
     admin: database.User = Depends(get_current_admin),
 ):
     user_to_edit = db.query(database.User).filter(database.User.id == user_id).first()
-    
+
     if not user_to_edit:
         return {"error": "User not found"}
-        
+
     if user_to_edit.id == admin.id:
         return {"error": "Action not allowed: you cannot change your own role"}
-        
+
     user_to_edit.is_admin = not user_to_edit.is_admin
     db.commit()
-    
+
     new_role = "Admin" if user_to_edit.is_admin else "Standard User"
     return {"msg": f"Role for {user_to_edit.username} updated to {new_role}"}
 
@@ -584,7 +585,7 @@ async def api_downloader_providers(admin: database.User = Depends(get_current_ad
     try:
         providers = await asyncio.to_thread(downloader_worker_client.get_spotiflac_providers)
     except downloader_worker_client.WorkerUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail=exc.detail or str(exc)) from exc
     return JSONResponse({"providers": providers}, headers={"Cache-Control": "private, no-store"})
 
 
@@ -597,7 +598,7 @@ async def api_disconnect_downloader_provider(provider: str, admin: database.User
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except downloader_worker_client.WorkerUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail=exc.detail or str(exc)) from exc
 
 
 @router.post("/api/downloader/providers/{provider}/auth-browser/start", status_code=202)
@@ -618,7 +619,8 @@ async def api_start_provider_auth_browser(provider: str, admin: database.User = 
     except downloader_worker_client.WorkerConflict as exc:
         raise HTTPException(status_code=409, detail="auth_browser_already_running") from exc
     except (downloader_worker_client.WorkerUnavailable, ValueError) as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        detail = exc.detail if isinstance(exc, downloader_worker_client.WorkerUnavailable) and exc.detail else str(exc)
+        raise HTTPException(status_code=503, detail=detail) from exc
 
 
 @router.post("/api/downloader/providers/{provider}/auth-browser/check")
@@ -632,7 +634,7 @@ async def api_check_provider_auth_browser(provider: str, admin: database.User = 
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except downloader_worker_client.WorkerUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail=exc.detail or str(exc)) from exc
 
 
 @router.post("/api/downloader/auth-browser/start", status_code=202)
@@ -1415,6 +1417,7 @@ def _delete_track_from_library(db: Session, track_id: int):
         return {"success": False, "not_found": True, "message": "Track not found"}
 
     filepath = track.filepath
+    deletion_service.detach_track_references(db, track.id)
     db.delete(track)
     db.commit()
 

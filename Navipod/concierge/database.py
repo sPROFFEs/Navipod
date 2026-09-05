@@ -273,7 +273,7 @@ class Playlist(Base):
     source_playlist_id = Column(Integer, nullable=True, index=True)
     m3u_path = Column(String, nullable=True)
     cover_path = Column(String, nullable=True)
-    cover_track_id = Column(Integer, ForeignKey("tracks.id"), nullable=True)
+    cover_track_id = Column(Integer, ForeignKey("tracks.id", ondelete="SET NULL"), nullable=True)
     smart_rules_json = Column(Text, nullable=True)
     smart_updated_at = Column(DateTime, nullable=True)
 
@@ -285,8 +285,8 @@ class PlaylistItem(Base):
     __tablename__ = "playlist_items"
 
     id = Column(Integer, primary_key=True, index=True)
-    playlist_id = Column(Integer, ForeignKey("playlists.id"))
-    track_id = Column(Integer, ForeignKey("tracks.id"))
+    playlist_id = Column(Integer, ForeignKey("playlists.id", ondelete="CASCADE"))
+    track_id = Column(Integer, ForeignKey("tracks.id", ondelete="CASCADE"))
     position = Column(Integer, default=0)
     added_at = Column(DateTime, default=func.now())
 
@@ -348,12 +348,12 @@ class DownloadJob(Base):
     resolved_title = Column(String, nullable=True)
     resolved_artist = Column(String, nullable=True)
     resolved_album = Column(String, nullable=True)
-    resolved_track_id = Column(Integer, ForeignKey("tracks.id"), nullable=True)
+    resolved_track_id = Column(Integer, ForeignKey("tracks.id", ondelete="SET NULL"), nullable=True)
     resolved_track_count = Column(Integer, default=0)
     engine_used = Column(String, nullable=True)
     fallback_reason = Column(Text, nullable=True)
     error_type = Column(String, nullable=True)
-    target_modern_playlist_id = Column(Integer, ForeignKey("playlists.id"), nullable=True)
+    target_modern_playlist_id = Column(Integer, ForeignKey("playlists.id", ondelete="SET NULL"), nullable=True)
     new_playlist_name = Column(String, nullable=True)
     status = Column(String, default="pending")
     progress_percent = Column(Integer, default=0)
@@ -371,7 +371,7 @@ class TrackDeleteRequest(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    track_id = Column(Integer, ForeignKey("tracks.id"), nullable=True, index=True)
+    track_id = Column(Integer, ForeignKey("tracks.id", ondelete="SET NULL"), nullable=True, index=True)
     track_title = Column(String, nullable=True)
     track_artist = Column(String, nullable=True)
     reason = Column(Text, nullable=False)
@@ -411,7 +411,7 @@ class UserFavorite(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-    track_id = Column(Integer, ForeignKey("tracks.id"))
+    track_id = Column(Integer, ForeignKey("tracks.id", ondelete="CASCADE"))
     added_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="favorites")

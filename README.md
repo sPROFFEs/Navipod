@@ -185,6 +185,7 @@ Navipod/
     ├── assets/
     ├── concierge/
     ├── deployment-templates/
+    ├── playlist-importer/  # Optional proof of concept
     ├── docker-compose.yaml
     ├── nginx.conf
     ├── setup.sh

@@ -14,7 +14,11 @@ async function responseJson(response) {
   try {
     payload = await response.json();
   } catch (_error) {}
-  if (!response.ok) throw new Error(payload.detail || `Request failed with HTTP ${response.status}`);
+  if (!response.ok) {
+    const detail = payload.detail;
+    const message = typeof detail === 'object' && detail ? detail.message : detail;
+    throw new Error(message || `Request failed with HTTP ${response.status}`);
+  }
   return payload;
 }
 

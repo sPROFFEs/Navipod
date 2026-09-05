@@ -156,6 +156,36 @@ def test_provider_check_asks_worker_to_exchange_captured_grant(monkeypatch):
     assert requested == ["/providers/qobuz/auth/browser-complete"]
 
 
+def test_worker_provider_error_preserves_only_safe_structured_fields():
+    response = httpx.Response(
+        502,
+        json={
+            "detail": {
+                "code": "provider_upstream_http_error",
+                "message": "SpotiFLAC verification service is temporarily unavailable (HTTP 522). Retry later.",
+                "provider": "qobuz",
+                "retryable": True,
+                "upstream_status": 522,
+                "verification_url": "https://example.test/challenge?token=secret",
+            }
+        },
+        request=httpx.Request("POST", "http://downloader:8081/providers/qobuz/auth/start"),
+    )
+
+    with pytest.raises(downloader_worker_client.WorkerUnavailable) as exc_info:
+        downloader_worker_client._worker_json(response)
+
+    assert str(exc_info.value) == "SpotiFLAC verification service is temporarily unavailable (HTTP 522). Retry later."
+    assert exc_info.value.detail == {
+        "code": "provider_upstream_http_error",
+        "message": "SpotiFLAC verification service is temporarily unavailable (HTTP 522). Retry later.",
+        "provider": "qobuz",
+        "retryable": True,
+        "upstream_status": 522,
+    }
+    assert "verification_url" not in exc_info.value.detail
+
+
 def test_worker_output_copy_rolls_back_partial_promotion(tmp_path, monkeypatch):
     staging_root = tmp_path / "staging"
     job_root = staging_root / "jobs" / "job-atomic"

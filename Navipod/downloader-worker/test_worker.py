@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import httpx
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -134,6 +135,61 @@ def test_provider_auth_start_returns_callback_bearing_challenge(monkeypatch):
     assert callback_query["cb_version"] == ["v2grant"]
     assert callback_query["state"] == ["tidal-web"]
     assert len(callback_query["token"][0]) >= 32
+
+
+def test_provider_auth_start_reports_upstream_status_without_leaking_exception(caplog, monkeypatch):
+    secret = "sensitive-callback-token"
+
+    class FakeClient:
+        authenticated = False
+
+        async def bootstrap(self):
+            request = httpx.Request("GET", f"https://api.example.test/bootstrap?token={secret}")
+            response = httpx.Response(522, request=request)
+            raise httpx.HTTPStatusError(f"upstream failed with {secret}", request=request, response=response)
+
+        async def aclose(self):
+            return None
+
+    monkeypatch.setattr(worker, "_spotiflac_client", lambda _provider: FakeClient())
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(worker.start_provider_auth("qobuz"))
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail == {
+        "code": "provider_upstream_http_error",
+        "message": "SpotiFLAC verification service is temporarily unavailable (HTTP 522). Retry later.",
+        "provider": "qobuz",
+        "retryable": True,
+        "error_type": "HTTPStatusError",
+        "upstream_status": 522,
+    }
+    assert secret not in caplog.text
+    assert secret not in str(exc_info.value.detail)
+
+
+@pytest.mark.parametrize(
+    ("error", "code", "message"),
+    [
+        (
+            httpx.ReadTimeout(""),
+            "provider_upstream_timeout",
+            "SpotiFLAC verification service timed out. Retry later.",
+        ),
+        (
+            RuntimeError(""),
+            "provider_start_failed",
+            "Provider verification could not be started because the SpotiFLAC service failed.",
+        ),
+    ],
+)
+def test_provider_auth_failure_classification_handles_empty_messages(error, code, message):
+    detail = worker._provider_auth_failure_detail("deezer", error)
+
+    assert detail["code"] == code
+    assert detail["message"] == message
+    assert detail["error_type"] == type(error).__name__
 
 
 def test_provider_auth_callback_exchanges_one_time_grant(monkeypatch):

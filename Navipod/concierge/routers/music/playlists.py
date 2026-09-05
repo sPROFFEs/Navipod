@@ -10,6 +10,7 @@ import os
 import uuid
 
 import database
+import deletion_service
 import library_service
 import manager
 from fastapi import APIRouter, Depends, File, Request, UploadFile
@@ -931,6 +932,7 @@ async def delete_playlist(playlist_id: int, request: Request, db: Session = Depe
     # Explicit Sync: Clean remote playlist immediately
     await clean_remote_playlist(user.username, playlist.name)
 
+    deletion_service.detach_playlist_references(db, playlist.id)
     db.delete(playlist)
     db.commit()
 

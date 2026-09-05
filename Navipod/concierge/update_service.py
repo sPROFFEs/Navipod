@@ -118,14 +118,15 @@ def _select_services_for_update(changed_files: list[str]) -> tuple[list[str], li
     deferred = ["updater"]
 
     compose_changed = any(ops._path_matches_required_target(path, "docker-compose.yaml") for path in changed_files)
-    
+
     concierge_backend_changed = compose_changed or any(
-        (variant.endswith(".py") and "concierge/" in variant) or
-        ops._path_matches_required_target(path, "concierge/requirements.txt") or
-        ops._path_matches_required_target(path, "concierge/Dockerfile") or
-        ops._path_matches_required_target(path, "concierge/Dockerfile.updater") or
-        ops._path_matches_required_target(path, "concierge/entrypoint.sh")
-        for path in changed_files for variant in ops._path_variants_for_match(path)
+        (variant.endswith(".py") and "concierge/" in variant)
+        or ops._path_matches_required_target(path, "concierge/requirements.txt")
+        or ops._path_matches_required_target(path, "concierge/Dockerfile")
+        or ops._path_matches_required_target(path, "concierge/Dockerfile.updater")
+        or ops._path_matches_required_target(path, "concierge/entrypoint.sh")
+        for path in changed_files
+        for variant in ops._path_variants_for_match(path)
     )
 
     if concierge_backend_changed:
@@ -622,7 +623,12 @@ def _run_compose_update(job_id: int, changed_files: list[str]):
                 "deferred_services": deferred_services,
             },
         )
-        return False, {"status": "skipped", "message": "No backend services require recreation"}, normalized_changed_files, rebuild_targets
+        return (
+            False,
+            {"status": "skipped", "message": "No backend services require recreation"},
+            normalized_changed_files,
+            rebuild_targets,
+        )
 
     compose_args = _build_compose_update_args(rebuild_required, services)
     compose_phase = "build" if rebuild_required else "recreate"

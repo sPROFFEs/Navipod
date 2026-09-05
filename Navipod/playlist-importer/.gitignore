@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.key
+*.pem
+*.p12
+*cookie*
+cover-cache/
+data/
