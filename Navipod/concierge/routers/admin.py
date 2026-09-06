@@ -12,6 +12,7 @@ import admin_statistics_service
 import auth
 import auth_browser
 import database
+import deletion_service
 import downloader_worker_client
 import library_maintenance
 import loudness
@@ -1415,6 +1416,7 @@ def _delete_track_from_library(db: Session, track_id: int):
         return {"success": False, "not_found": True, "message": "Track not found"}
 
     filepath = track.filepath
+    deletion_service.detach_track_references(db, track.id)
     db.delete(track)
     db.commit()
 

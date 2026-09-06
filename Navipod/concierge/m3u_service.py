@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, Optional
 
 import database
+import deletion_service
 from navipod_config import settings
 from playlist_files import normalize_playlist_name, playlist_m3u_filename
 from sqlalchemy.orm import Session
@@ -59,6 +60,7 @@ class M3UService:
             return False
 
         self._delete_m3u_file(playlist)
+        deletion_service.detach_playlist_references(self.db, playlist.id)
         self.db.delete(playlist)
         self.db.commit()
         logger.info("Playlist deleted: %s", playlist.name)

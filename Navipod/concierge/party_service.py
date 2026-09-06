@@ -245,42 +245,79 @@ def add_track(db: Session, room: database.PartyRoom, user: database.User, track_
         db.commit()
 
 
-def remove_queue_item(db: Session, room: database.PartyRoom, user: database.User, item_id: int) -> None:
-    if user.id != room.owner_id:
-        raise PartyError("Only the room owner can remove songs", 403)
-    with _write_lock:
-        items = _ordered_items(room)
-        remove_index = next((i for i, item in enumerate(items) if item.id == item_id), -1)
-        if remove_index < 0:
+def _remove_queue_items(
+    db: Session, room: database.PartyRoom, item_ids: set[int], *, missing_is_error: bool = False
+) -> int:
+    """Remove queue items while preserving the room's current-track invariant."""
+    items = _ordered_items(room)
+    removed = [item for item in items if item.id in item_ids]
+    if not removed:
+        if missing_is_error:
             raise PartyError("Queue item not found", 404)
-        db.delete(items[remove_index])
-        for position, item in enumerate(item for i, item in enumerate(items) if i != remove_index):
-            item.position = position
-        if len(items) == 1:
+        return 0
+
+    remaining = [item for item in items if item.id not in item_ids]
+    old_current_index = room.current_index
+    current_item = items[old_current_index] if 0 <= old_current_index < len(items) else None
+
+    for item in removed:
+        db.delete(item)
+    for position, item in enumerate(remaining):
+        item.position = position
+
+    if not remaining:
+        room.current_index = -1
+        room.playback_status = "paused"
+        room.playback_position_ms = 0
+        room.playback_started_at = None
+    elif current_item and current_item in remaining:
+        room.current_index = remaining.index(current_item)
+    elif current_item:
+        successor = next((item for item in items[old_current_index + 1 :] if item in remaining), None)
+        if successor:
+            room.current_index = remaining.index(successor)
+            room.playback_position_ms = 0
+            if room.playback_status == "playing":
+                room.playback_status = "loading"
+            room.playback_started_at = None
+        else:
             room.current_index = -1
             room.playback_status = "paused"
             room.playback_position_ms = 0
             room.playback_started_at = None
-        elif remove_index < room.current_index:
-            room.current_index -= 1
-        elif remove_index == room.current_index:
-            remaining_count = len(items) - 1
-            if remove_index >= remaining_count:
-                # The current item was the tail. There is no successor to
-                # continue with, so end playback instead of replaying an
-                # already-consumed previous song.
-                room.current_index = -1
-                room.playback_status = "paused"
-                room.playback_position_ms = 0
-                room.playback_started_at = None
-            else:
-                room.current_index = remove_index
-                room.playback_position_ms = 0
-                if room.playback_status == "playing":
-                    room.playback_status = "loading"
-                room.playback_started_at = None
-        room.revision += 1
+    elif old_current_index >= len(items):
+        room.current_index = -1
+        room.playback_status = "paused"
+        room.playback_position_ms = 0
+        room.playback_started_at = None
+
+    room.revision += 1
+    return len(removed)
+
+
+def remove_queue_item(db: Session, room: database.PartyRoom, user: database.User, item_id: int) -> None:
+    if user.id != room.owner_id:
+        raise PartyError("Only the room owner can remove songs", 403)
+    with _write_lock:
+        _remove_queue_items(db, room, {item_id}, missing_is_error=True)
         db.commit()
+
+
+def remove_track_from_queues(db: Session, track_id: int) -> int:
+    """Remove every occurrence of a deleted track without corrupting live rooms."""
+    with _write_lock:
+        rooms = (
+            db.query(database.PartyRoom)
+            .join(database.PartyRoomQueueItem)
+            .filter(database.PartyRoomQueueItem.track_id == track_id)
+            .distinct()
+            .all()
+        )
+        removed_count = 0
+        for room in rooms:
+            item_ids = {item.id for item in _ordered_items(room) if item.track_id == track_id}
+            removed_count += _remove_queue_items(db, room, item_ids)
+        return removed_count
 
 
 def control_room(
