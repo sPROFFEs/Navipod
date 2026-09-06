@@ -112,9 +112,7 @@ def test_frontend_change_with_python_tests_does_not_recreate_services():
 
 
 def test_concierge_runtime_python_change_recreates_concierge():
-    selected, deferred = update_service._select_services_for_update(
-        ["Navipod/concierge/routers/admin.py"]
-    )
+    selected, deferred = update_service._select_services_for_update(["Navipod/concierge/routers/admin.py"])
 
     assert selected == ["concierge"]
     assert deferred == ["updater"]

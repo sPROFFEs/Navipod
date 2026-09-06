@@ -456,16 +456,16 @@ async def toggle_user_role(
     admin: database.User = Depends(get_current_admin),
 ):
     user_to_edit = db.query(database.User).filter(database.User.id == user_id).first()
-    
+
     if not user_to_edit:
         return {"error": "User not found"}
-        
+
     if user_to_edit.id == admin.id:
         return {"error": "Action not allowed: you cannot change your own role"}
-        
+
     user_to_edit.is_admin = not user_to_edit.is_admin
     db.commit()
-    
+
     new_role = "Admin" if user_to_edit.is_admin else "Standard User"
     return {"msg": f"Role for {user_to_edit.username} updated to {new_role}"}
 
