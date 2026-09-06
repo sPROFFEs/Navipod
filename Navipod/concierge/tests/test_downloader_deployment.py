@@ -96,6 +96,30 @@ def test_regular_frontend_change_does_not_recreate_worker():
     assert deferred == ["updater"]
 
 
+def test_frontend_change_with_python_tests_does_not_recreate_services():
+    selected, deferred = update_service._select_services_for_update(
+        [
+            "Navipod/assets/css/ui_home.css",
+            "Navipod/assets/js/modules/party.js",
+            "Navipod/assets/js/modules/views.js",
+            "Navipod/concierge/templates/login.html",
+            "Navipod/concierge/tests/test_frontend_styles.py",
+        ]
+    )
+
+    assert selected == []
+    assert deferred == ["updater"]
+
+
+def test_concierge_runtime_python_change_recreates_concierge():
+    selected, deferred = update_service._select_services_for_update(
+        ["Navipod/concierge/routers/admin.py"]
+    )
+
+    assert selected == ["concierge"]
+    assert deferred == ["updater"]
+
+
 def test_compose_change_keeps_tunnel_running():
     selected, deferred = update_service._select_services_for_update(["Navipod/docker-compose.yaml"])
 

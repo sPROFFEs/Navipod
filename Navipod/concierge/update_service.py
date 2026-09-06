@@ -118,14 +118,19 @@ def _select_services_for_update(changed_files: list[str]) -> tuple[list[str], li
     deferred = ["updater"]
 
     compose_changed = any(ops._path_matches_required_target(path, "docker-compose.yaml") for path in changed_files)
-    
+
     concierge_backend_changed = compose_changed or any(
-        (variant.endswith(".py") and "concierge/" in variant) or
-        ops._path_matches_required_target(path, "concierge/requirements.txt") or
-        ops._path_matches_required_target(path, "concierge/Dockerfile") or
-        ops._path_matches_required_target(path, "concierge/Dockerfile.updater") or
-        ops._path_matches_required_target(path, "concierge/entrypoint.sh")
-        for path in changed_files for variant in ops._path_variants_for_match(path)
+        (
+            variant.endswith(".py")
+            and "concierge/" in variant
+            and "concierge/tests/" not in variant
+        )
+        or ops._path_matches_required_target(path, "concierge/requirements.txt")
+        or ops._path_matches_required_target(path, "concierge/Dockerfile")
+        or ops._path_matches_required_target(path, "concierge/Dockerfile.updater")
+        or ops._path_matches_required_target(path, "concierge/entrypoint.sh")
+        for path in changed_files
+        for variant in ops._path_variants_for_match(path)
     )
 
     if concierge_backend_changed:
