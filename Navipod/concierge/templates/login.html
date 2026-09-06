@@ -21,16 +21,16 @@
 
     <style>
         :root {
-            --primary: #149a51;
-            --primary-hover: #118547;
-            --background: #111315;
-            --surface: #171a1e;
-            --surface-2: #1f242a;
-            --border: #2f3640;
-            --input-bg: #14181c;
-            --input-border: #313944;
-            --text-main: #eef2f6;
-            --text-sub: #98a2ad;
+            --primary: #1ed760;
+            --primary-hover: #3be477;
+            --background: #0f1011;
+            --surface: #151718;
+            --surface-2: #1d2022;
+            --border: #3a3d40;
+            --input-bg: #121415;
+            --input-border: #72767a;
+            --text-main: #f5f7f8;
+            --text-sub: #a7adb2;
         }
 
         * {
@@ -42,98 +42,82 @@
         }
 
         body {
-            background:
-                linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 22%),
-                linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
-                linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
-                var(--background);
-            background-size: auto, 24px 24px, 24px 24px, auto;
-            height: 100vh;
+            background: var(--background);
+            min-height: 100vh;
             width: 100vw;
-            overflow: hidden;
             display: flex;
             align-items: center;
             justify-content: center;
             color: var(--text-main);
-            position: relative;
+            padding: 32px 16px;
         }
 
         .login-wrapper {
-            position: relative;
-            z-index: 10;
             width: 100%;
-            max-width: 390px;
-            padding: 20px;
+            max-width: 420px;
             opacity: 0;
-            animation: fadeIn 0.8s ease-out forwards 0.2s;
+            animation: fadeIn 320ms ease-out forwards;
         }
 
         @keyframes fadeIn {
             from {
                 opacity: 0;
-                transform: translateY(30px) scale(0.95);
+                transform: translateY(8px);
             }
 
             to {
                 opacity: 1;
-                transform: translateY(0) scale(1);
+                transform: translateY(0);
             }
         }
 
         .login-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            padding: 40px 32px 32px;
-            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
-            text-align: center;
-            overflow: hidden;
-            position: relative;
-        }
-
-        .login-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            inset-inline: 0;
-            height: 1px;
-            background: rgba(255, 255, 255, 0.08);
+            padding: 36px 42px 32px;
+            text-align: left;
         }
 
         /* --- BRANDING --- */
         .brand-section {
-            margin-bottom: 28px;
+            margin-bottom: 34px;
             display: flex;
             flex-direction: column;
             align-items: center;
         }
 
         .brand-icon {
-            width: 64px;
-            height: 64px;
-            margin-bottom: 16px;
-            border-radius: 14px;
+            width: 48px;
+            height: 48px;
+            margin-bottom: 18px;
+            border-radius: 50%;
             box-shadow: none;
         }
 
         .app-title {
-            font-size: 1.85rem;
+            font-size: clamp(1.8rem, 7vw, 2.15rem);
             font-weight: 700;
-            margin-bottom: 4px;
+            margin-bottom: 6px;
             color: var(--text-main);
             letter-spacing: -0.04em;
         }
 
         .app-subtitle {
             color: var(--text-sub);
-            font-weight: 500;
-            font-size: 0.88rem;
+            font-weight: 400;
+            font-size: 0.92rem;
         }
 
         /* --- INPUTS --- */
         .input-group {
-            margin-bottom: 20px;
+            margin-bottom: 18px;
             text-align: left;
+        }
+
+        .input-label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-main);
+            font-size: 0.84rem;
+            font-weight: 600;
         }
 
         .input-wrapper {
@@ -142,10 +126,11 @@
 
         .login-input {
             width: 100%;
-            padding: 16px 16px 16px 50px;
+            min-height: 48px;
+            padding: 12px 14px;
             background: var(--input-bg);
             border: 1px solid var(--input-border);
-            border-radius: 10px;
+            border-radius: 4px;
             color: var(--text-main);
             font-size: 1rem;
             font-weight: 500;
@@ -159,31 +144,16 @@
 
         .login-input:focus {
             outline: none;
-            background: var(--surface-2);
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(20, 154, 81, 0.14);
-        }
-
-        .input-icon {
-            position: absolute;
-            left: 18px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: rgba(255, 255, 255, 0.4);
-            font-size: 1.1rem;
-            pointer-events: none;
-            transition: color 0.2s, transform 0.2s;
-        }
-
-        .login-input:focus~.input-icon {
-            color: var(--primary);
+            background: var(--input-bg);
+            border-color: var(--text-main);
+            box-shadow: 0 0 0 1px var(--text-main);
         }
 
         .remember-row {
             display: flex;
             align-items: flex-start;
             gap: 10px;
-            margin: -4px 0 8px;
+            margin: 2px 0 8px;
             color: var(--text-sub);
             text-align: left;
             font-size: 0.84rem;
@@ -211,23 +181,23 @@
             width: 100%;
             padding: 16px;
             background: var(--primary);
-            color: #f3fff8;
+            color: #07130b;
             border: none;
-            border-radius: 10px;
-            font-weight: 600;
-            font-size: 0.96rem;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 1rem;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 10px;
-            transition: background-color 0.2s ease, box-shadow 0.2s ease;
-            margin-top: 12px;
+            transition: background-color 0.2s ease, transform 0.2s ease;
+            margin-top: 18px;
         }
 
         .btn-login-pro:hover {
             background: var(--primary-hover);
-            box-shadow: 0 10px 22px rgba(20, 154, 81, 0.2);
+            transform: scale(1.015);
         }
 
         .btn-login-pro:active {
@@ -236,27 +206,26 @@
 
         /* --- FOOTER & ERROR --- */
         .login-footer-pro {
-            margin-top: 32px;
+            margin-top: 36px;
             font-size: 0.8rem;
             color: var(--text-sub);
-            opacity: 0.7;
+            text-align: center;
         }
 
         .error-pill-pro {
-            background: rgba(239, 68, 68, 0.15);
-            color: #ff6b6b;
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            padding: 12px 16px;
-            border-radius: 12px;
+            background: transparent;
+            color: #ff7685;
+            border: 0;
+            padding: 0;
+            border-radius: 0;
             font-size: 0.9rem;
             font-weight: 500;
             display: flex;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
             gap: 10px;
             margin-bottom: 24px;
             animation: shake 0.4s ease-in-out;
-            backdrop-filter: blur(10px);
         }
 
         .sr-only {
@@ -296,14 +265,19 @@
 
         /* --- RESPONSIVE --- */
         @media (max-width: 480px) {
-            .login-wrapper {
-                padding: 16px;
+            body {
+                align-items: flex-start;
+                padding-top: max(48px, env(safe-area-inset-top));
             }
 
             .login-card {
-                padding: 40px 24px;
-                border-radius: 12px;
+                padding: 24px 12px;
             }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .login-wrapper { animation: none; opacity: 1; }
+            .btn-login-pro { transition: none; }
         }
 
         /* --- PWA INSTALL BANNER --- */
@@ -406,8 +380,8 @@
             <div class="brand-section">
                 <img src="/assets/icon.png?v={{ static_v }}" alt="Navipod" class="brand-icon"
                     onerror="this.src='/static/img/default_cover.png'">
-                <h1 class="app-title">Navipod</h1>
-                <p class="app-subtitle">Sign in to your library</p>
+                <h1 class="app-title">Log in to Navipod</h1>
+                <p class="app-subtitle">Your private music library, ready when you are.</p>
             </div>
 
             {% if error %}
@@ -419,20 +393,18 @@
 
             <form action="/login" method="post" class="login-form">
                 <div class="input-group">
-                    <label for="username" class="sr-only">Username</label>
+                    <label for="username" class="input-label">Username</label>
                     <div class="input-wrapper">
                         <input type="text" id="username" name="username" class="login-input" placeholder="Username"
                             required autocomplete="username">
-                        <i class="fa-solid fa-user input-icon"></i>
                     </div>
                 </div>
 
                 <div class="input-group">
-                    <label for="password" class="sr-only">Password</label>
+                    <label for="password" class="input-label">Password</label>
                     <div class="input-wrapper">
                         <input type="password" id="password" name="password" class="login-input" placeholder="Password"
                             required autocomplete="current-password">
-                        <i class="fa-solid fa-lock input-icon"></i>
                     </div>
                 </div>
 
@@ -444,12 +416,12 @@
                 <input type="hidden" name="next" value="{{ next }}">
 
                 <button type="submit" class="btn-login-pro">
-                    <span>Log In</span>
+                    <span>Log in</span>
                 </button>
             </form>
 
             <div class="login-footer-pro">
-                <p>&copy; 2026 Navipod. Private Music Cloud.</p>
+                <p>Private music cloud</p>
             </div>
         </div>
     </div>

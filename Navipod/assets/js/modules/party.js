@@ -57,7 +57,7 @@ function roomCard(room, compact = false) {
 
 export function renderHomeShelf(rooms) {
   return `
-    <section class="shelf-section party-home-shelf">
+    <section class="shelf-section home-shelf party-home-shelf">
       <div class="shelf-header">
         <h2 class="shelf-title">Party rooms</h2>
         <button class="party-text-action" onclick="loadView('party')">See all</button>

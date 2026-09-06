@@ -81,6 +81,40 @@ def test_library_search_controls_and_facets_have_explicit_dark_styles():
     assert ".library-facet-row:focus-visible" in css
 
 
+def test_login_uses_minimal_accessible_form_without_changing_auth_contract():
+    template_path = Path(__file__).resolve().parents[1] / "templates" / "login.html"
+    template = template_path.read_text(encoding="utf-8")
+
+    assert '<h1 class="app-title">Log in to Navipod</h1>' in template
+    assert '<form action="/login" method="post" class="login-form">' in template
+    assert '<label for="username" class="input-label">Username</label>' in template
+    assert '<label for="password" class="input-label">Password</label>' in template
+    assert 'autocomplete="username"' in template
+    assert 'autocomplete="current-password"' in template
+    assert 'id="remember_me" name="remember_me" value="true"' in template
+    assert '<input type="hidden" name="next" value="{{ next }}">' in template
+    assert "border-radius: 999px;" in template
+
+
+def test_home_dashboard_uses_compact_scrollable_shelves_and_fading_overview():
+    assets_root = Path(__file__).resolve().parents[2] / "assets"
+    css = (assets_root / "css" / "ui_home.css").read_text(encoding="utf-8")
+    views = (assets_root / "js" / "modules" / "views.js").read_text(encoding="utf-8")
+    party = (assets_root / "js" / "modules" / "party.js").read_text(encoding="utf-8")
+
+    assert ".home-overview::before" in css
+    assert "radial-gradient" in css
+    assert ".home-rail" in css
+    assert "grid-auto-flow: column;" in css
+    assert "overflow-x: auto;" in css
+    assert "scroll-snap-type: x proximity;" in css
+    assert 'class="grid-shelf home-rail" tabindex="0"' in views
+    assert 'class="shelf-section home-shelf"' in views
+    assert "${ui.homeTabsBar('all')}" in views
+    assert "html += party.renderHomeShelf(partyRooms);" in views
+    assert 'class="shelf-section home-shelf party-home-shelf"' in party
+
+
 def test_playlist_actions_use_minimal_outline_controls_on_desktop_and_mobile():
     assets_root = Path(__file__).resolve().parents[2] / "assets"
     desktop_css = (assets_root / "css" / "ui_components.css").read_text(encoding="utf-8")

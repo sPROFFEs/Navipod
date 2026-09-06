@@ -507,7 +507,7 @@ function _renderQuickPicksGrid() {
       </button>`;
   };
 
-  return `<div class="quick-picks-grid">${likedTile}${slots.map(tile).join('')}</div>`;
+  return `<div class="quick-picks-grid" role="region" aria-label="Quick access">${likedTile}${slots.map(tile).join('')}</div>`;
 }
 
 export async function renderHome(container) {
@@ -537,14 +537,17 @@ export async function renderHome(container) {
   }
 
   const username = ui.escHtml(window.USER_DATA?.username || 'User');
-  let html = `${ui.homeTabsBar('all')}
-    <section class="hero-section">
-        <div class="hero-kicker">Your library, tuned for right now</div>
-        <h1 class="hero-greeting">Good ${ui.getGreeting()}, <span class="hero-username">${username}</span></h1>
+  const quickPicks = _renderQuickPicksGrid();
+  let html = `<section class="home-overview">
+      ${ui.homeTabsBar('all')}
+      <div class="hero-section">
+          <div class="hero-kicker">Your library, tuned for right now</div>
+          <h1 class="hero-greeting">Good ${ui.getGreeting()}, <span class="hero-username">${username}</span></h1>
+      </div>
+      ${quickPicks}
     </section>`;
 
   html += party.renderHomeShelf(partyRooms);
-  html += _renderQuickPicksGrid();
 
   if (wrapped) {
     html += createWrappedHomeCard(wrapped);
@@ -552,25 +555,25 @@ export async function renderHome(container) {
 
   if (mixes && mixes.length > 0) {
     html += `
-            <div class="shelf-section">
+            <section class="shelf-section home-shelf">
                 <div class="shelf-header">
                     <h2 class="shelf-title">Your Mixes</h2>
                 </div>
-                <div class="grid-shelf">${mixes.map(createMixCard).join('')}</div>
-            </div>`;
+                <div class="grid-shelf home-rail" tabindex="0" aria-label="Your Mixes">${mixes.map(createMixCard).join('')}</div>
+            </section>`;
   }
 
   if (sections && sections.length > 0) {
     sections.forEach((s) => {
       html += `
-            <div class="shelf-section">
+            <section class="shelf-section home-shelf">
                 <div class="shelf-header">
                     <h2 class="shelf-title">${ui.escHtml(s.title)}</h2>
                 </div>
-                <div class="grid-shelf">${s.items.map(createCard).join('')}</div>
-            </div>`;
+                <div class="grid-shelf home-rail" tabindex="0" aria-label="${ui.escHtml(s.title)}">${s.items.map(createCard).join('')}</div>
+            </section>`;
     });
-  } else if (!_renderQuickPicksGrid() && !mixes?.length) {
+  } else if (!quickPicks && !mixes?.length) {
     html += `<div class="empty-state glass-panel">
             <i data-lucide="music" class="empty-icon"></i>
             <p>Welcome! Explore the <strong>Search</strong> tab to find music.</p>
