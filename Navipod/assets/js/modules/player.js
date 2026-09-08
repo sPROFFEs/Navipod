@@ -1520,11 +1520,24 @@ export function setupPlayer() {
     // threshold while still catching the rare case where 'ended'
     // doesn't fire on time.
     if (state.audio.duration && state.audio.currentTime >= state.audio.duration - 0.15) {
-      // Repeat-one: one-shot re-play handled in 'ended'. Don't advance here.
-      if (state.repeatMode === 'one') return;
       if (!state.audio._endHandled) {
         state.audio._endHandled = true;
         console.log('[BG-PLAY] Fallback triggered, advancing to next');
+        if (state.repeatMode === 'one' && _repeatOnePending && state.currentTrack) {
+          _repeatOnePending = false;
+          state.setRepeatMode('off');
+          _updateRepeatButton();
+          state.audio.currentTime = 0;
+          state.audio._endHandled = false;
+          state.audio.play().catch(() => {});
+          finalizeListenSession('repeat-one');
+          beginListenSession(state.currentTrack);
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = 'playing';
+          }
+          return;
+        }
+
         if ('mediaSession' in navigator) {
           navigator.mediaSession.playbackState =
             _partyController?.isActive?.() || hasUpcomingTrack() ? 'playing' : 'none';
