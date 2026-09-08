@@ -221,12 +221,12 @@ export async function applyReplayGain(trackId) {
 // handler and fadeIn() at the start of the next track's playback.
 
 export function fadeIn(seconds = null) {
-  if (!ensureInitialized() || !_ctx || !_gainFade) return;
   const dur = seconds ?? getCrossfadeSeconds();
   if (dur <= 0) {
-    _gainFade.gain.value = 1.0;
+    if (_gainFade) _gainFade.gain.value = 1.0;
     return;
   }
+  if (!ensureInitialized() || !_ctx || !_gainFade) return;
   const now = _ctx.currentTime;
   _gainFade.gain.cancelScheduledValues(now);
   _gainFade.gain.setValueAtTime(0.0001, now);
@@ -234,9 +234,9 @@ export function fadeIn(seconds = null) {
 }
 
 export function fadeOut(seconds = null) {
-  if (!ensureInitialized() || !_ctx || !_gainFade) return;
   const dur = seconds ?? getCrossfadeSeconds();
   if (dur <= 0) return;
+  if (!ensureInitialized() || !_ctx || !_gainFade) return;
   const now = _ctx.currentTime;
   _gainFade.gain.cancelScheduledValues(now);
   // exponentialRampToValueAtTime won't accept exactly 0, so use a

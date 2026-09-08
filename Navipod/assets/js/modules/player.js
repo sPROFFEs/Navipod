@@ -440,30 +440,38 @@ function inferArtworkMime(url) {
 function updateMediaSessionMetadata(track) {
   if (!('mediaSession' in navigator) || !track) return;
   const artworkUrl = track.thumbnail || '/static/img/default_cover.png';
+
+  const metaObj = {
+    title: track.title || 'Unknown',
+    artist: track.artist || 'Unknown',
+    album: track.album || '',
+    artwork: [
+      { src: artworkUrl, sizes: '96x96', type: inferArtworkMime(artworkUrl) },
+      { src: artworkUrl, sizes: '256x256', type: inferArtworkMime(artworkUrl) },
+      { src: artworkUrl, sizes: '512x512', type: inferArtworkMime(artworkUrl) }
+    ]
+  };
+
   try {
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: track.title || 'Unknown',
-      artist: track.artist || 'Unknown',
-      album: track.album || '',
-      artwork: [
-        { src: artworkUrl, sizes: '96x96', type: inferArtworkMime(artworkUrl) },
-        { src: artworkUrl, sizes: '256x256', type: inferArtworkMime(artworkUrl) },
-        { src: artworkUrl, sizes: '512x512', type: inferArtworkMime(artworkUrl) }
-      ]
-    });
-    if (Number.isFinite(state.audio.duration) && state.audio.duration > 0) {
-      try {
-        navigator.mediaSession.setPositionState({
-          duration: state.audio.duration,
-          position: Math.min(state.audio.currentTime || 0, state.audio.duration),
-          playbackRate: state.audio.playbackRate || 1
-        });
-      } catch (e) {
-        /* unsupported */
-      }
+    if (typeof MediaMetadata === 'function') {
+      navigator.mediaSession.metadata = new MediaMetadata(metaObj);
+    } else {
+      navigator.mediaSession.metadata = metaObj;
     }
   } catch (e) {
     console.warn('[BG-PLAY] Failed to set MediaSession metadata:', e);
+  }
+
+  if (Number.isFinite(state.audio.duration) && state.audio.duration > 0) {
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: state.audio.duration,
+        position: Math.min(state.audio.currentTime || 0, state.audio.duration),
+        playbackRate: state.audio.playbackRate || 1
+      });
+    } catch (e) {
+      /* unsupported */
+    }
   }
 }
 
@@ -839,10 +847,10 @@ export function playTrack(track, options = {}) {
         // enabled them in settings. ReplayGain is fetched per track;
         // fade-in only triggers when crossfade-seconds > 0.
         try {
-          audioEngine.resumeIfSuspended();
           audioEngine.resetFade();
           audioEngine.fadeIn();
           audioEngine.applyReplayGain(track.db_id);
+          audioEngine.resumeIfSuspended();
         } catch (e) {
           // Engine errors must never break playback. Log only.
           console.warn('[PLAYER] audio engine post-play error:', e);
