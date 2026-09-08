@@ -232,7 +232,20 @@ def _read_youtube_cookies(user_settings) -> str | None:
         cookie_path = Path(configured_path)
         if cookie_path.stat().st_size > MAX_COOKIE_BYTES:
             raise OSError("cookie file exceeds the 1 MiB worker limit")
-        return cookie_path.read_text(encoding="utf-8")
+        raw = cookie_path.read_bytes()
+        
+        if raw.startswith(b"\xff\xfe"):
+            decoded = raw.decode("utf-16-le", errors="replace")
+        elif raw.startswith(b"\xfe\xff"):
+            decoded = raw.decode("utf-16-be", errors="replace")
+        elif raw.startswith(b"\xef\xbb\xbf"):
+            decoded = raw.decode("utf-8-sig", errors="replace")
+        else:
+            # yt-dlp requires Netscape format. If it's a binary sqlite file, this will garble it, 
+            # but yt-dlp would reject it anyway. Text encodings often fallback cleanly.
+            decoded = raw.decode("utf-8", errors="ignore")
+            
+        return decoded.replace("\r\n", "\n").strip()
     except (OSError, UnicodeError) as exc:
         logger.warning("Could not read configured YouTube cookies for the downloader worker: %s", exc)
         return None
