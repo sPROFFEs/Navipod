@@ -827,6 +827,9 @@ export function playTrack(track, options = {}) {
     state.audio.src = newSrc;
     if (!srcChanged && state.audio.currentTime > 0) {
       state.audio.currentTime = 0;
+      state.audio._endHandled = false;
+      state.audio._fadeOutStarted = false;
+      _repeatOnePending = state.repeatMode === 'one' && !!state.currentTrack;
     }
     if (options.autoplay === false) {
       _trackTransitionInFlight = false;
