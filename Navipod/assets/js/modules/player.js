@@ -789,11 +789,12 @@ export function playTrack(track, options = {}) {
   // Highlight in lists
   document.querySelectorAll('.track-row').forEach((row) => row.classList.remove('active-track'));
   if (state.currentViewList) {
-    const idx = state.currentViewList.findIndex((t) => t.id === track.id);
-    if (idx !== -1) {
-      const row = document.querySelector(`.track-row[data-idx="${idx}"]`);
-      if (row) row.classList.add('active-track');
-    }
+    state.currentViewList.forEach((t, idx) => {
+      if ((t.id && track.id && t.id === track.id) || (t.db_id && track.db_id && t.db_id === track.db_id)) {
+        const row = document.querySelector(`.track-row[data-idx="${idx}"]`);
+        if (row) row.classList.add('active-track');
+      }
+    });
   }
 
   if (window.renderQueue) window.renderQueue();
@@ -1163,13 +1164,9 @@ let _prefetchController = null;
 function resolveNextTrackForPrefetch() {
   if (_partyController?.isActive?.()) return null;
 
-  // Repeat-one: the first end replays the current track. After that
-  // one-shot, repeat turns off and the next track plays. Prefetch the
-  // next track during the first play so the post-repeat advance is
-  // gapless. During the re-play (_repeatOnePending false), the current
-  // track is already cached — no prefetch needed.
   if (state.repeatMode === 'one') {
-    return _repeatOnePending ? _resolveNextTrackAfterCurrent() : null;
+    // Current track loops infinitely and is already cached
+    return null;
   }
 
   return _resolveNextTrackAfterCurrent();

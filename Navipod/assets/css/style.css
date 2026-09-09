@@ -2578,10 +2578,23 @@ body {
 }
 
 .playing-icon {
+    display: none;
     color: var(--primary);
     width: 16px;
     height: 16px;
     animation: pulse 2s infinite;
+}
+
+.track-row.active-track .playing-icon {
+    display: block;
+}
+
+.track-row.active-track:hover .playing-icon {
+    display: none;
+}
+
+.track-row.active-track .num-text {
+    display: none;
 }
 
 @keyframes pulse {

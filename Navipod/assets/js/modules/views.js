@@ -1022,7 +1022,7 @@ export function createTrackRow(item, idx, playlistId = null) {
         <div class="track-num">
             <span class="num-text">${idx + 1}</span>
             <i data-lucide="play" class="hover-play-icon"></i>
-            ${isActive ? '<i data-lucide="bar-chart-2" class="playing-icon"></i>' : ''}
+            <i data-lucide="bar-chart-2" class="playing-icon"></i>
         </div>
         <div class="track-main">
             <img src="${ui.escHtml(img)}" class="track-cover-sm" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
@@ -1105,7 +1105,7 @@ export function createPlaylistTrackRow(item, idx, playlistId = null) {
         <div class="track-num">
             <span class="num-text">${idx + 1}</span>
             <i data-lucide="play" class="hover-play-icon"></i>
-            ${isActive ? '<i data-lucide="bar-chart-2" class="playing-icon"></i>' : ''}
+            <i data-lucide="bar-chart-2" class="playing-icon"></i>
         </div>
         <div class="track-main">
             <img src="${ui.escHtml(img)}" class="track-cover-sm" loading="lazy" decoding="async" onerror="this.src='/static/img/default_cover.png'">
