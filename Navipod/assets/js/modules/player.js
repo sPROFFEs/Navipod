@@ -23,7 +23,6 @@ const MAX_STALL_RETRIES = 2;
 // Repeat-one: when active, the FIRST end-of-track restarts the current song;
 // the SECOND end advances to the next track and turns repeat off. This gives
 // "play this song once more, then continue" instead of infinite loop.
-let _repeatOnePending = false;
 let _partyController = null;
 let _partyScheduledStartTimer = null;
 let _partyScheduledStartKey = null;
@@ -352,7 +351,6 @@ export function applyPlaybackModes() {
     state.audio.loop = false;
   }
   // Arm the one-shot repeat when repeat-one is active and a track is playing.
-  _repeatOnePending = state.repeatMode === 'one' && !!state.currentTrack;
 }
 
 // Register MediaSession action handlers exactly once. Re-registering on every
@@ -829,7 +827,6 @@ export function playTrack(track, options = {}) {
       state.audio.currentTime = 0;
       state.audio._endHandled = false;
       state.audio._fadeOutStarted = false;
-      _repeatOnePending = state.repeatMode === 'one' && !!state.currentTrack;
     }
     if (options.autoplay === false) {
       _trackTransitionInFlight = false;
@@ -1042,6 +1039,11 @@ export async function playNext() {
 
   // 3. Regular Context Queue
   if (state.contextQueue.length === 0) {
+    if (state.repeatMode === 'all' && state.currentTrack) {
+      console.log('[BG-PLAY] Queue is empty but Repeat All is active. Replaying current track.');
+      playTrack(state.currentTrack);
+      return;
+    }
     clearFinishedPlaybackState();
     return;
   }
@@ -1060,7 +1062,15 @@ export async function playNext() {
   }
 
   state.setContextIndex(nextIdx);
-  playTrack(state.contextQueue[state.contextIndex]);
+  const trackToPlay = state.contextQueue[state.contextIndex];
+  console.log(
+    `[BG-PLAY] playNext selected index ${nextIdx} from queue of length ${state.contextQueue.length}. Track:`,
+    trackToPlay
+  );
+  if (!trackToPlay) {
+    console.error('[BG-PLAY] CRITICAL: trackToPlay is undefined in playNext!');
+  }
+  playTrack(trackToPlay);
 }
 
 export function playPrev() {
@@ -1116,7 +1126,10 @@ export function syncPlayerShellVisibility(track = state.currentTrack) {
 function hasUpcomingTrack() {
   if (state.userQueue.length > 0) return true;
   if (state.shuffleMode && state.contextQueue.length === 0) return true;
-  if (state.contextQueue.length === 0) return false;
+  if (state.contextQueue.length === 0) {
+    if (state.repeatMode === 'all' && state.currentTrack) return true;
+    return false;
+  }
 
   const nextIdx = state.contextIndex + 1;
   if (nextIdx < state.contextQueue.length) return true;
@@ -1392,7 +1405,6 @@ export function setupPlayer() {
     state.audio._fadeOutStarted = false;
     // Arm one-shot repeat-one for this track instance. This covers both
     // the initial play and the re-play after the first end.
-    _repeatOnePending = state.repeatMode === 'one' && !!state.currentTrack;
     acquirePlaybackLock();
     startPlaybackSessionPersistence();
     persistPlaybackSession();
@@ -1444,11 +1456,10 @@ export function setupPlayer() {
     }
     // Repeat-one: one-shot re-play. First end restarts the current track;
     // second end turns repeat off and advances to the next song.
-    if (state.repeatMode === 'one' && _repeatOnePending && state.currentTrack) {
-      _repeatOnePending = false; // consume the one-shot
-      state.setRepeatMode('off');
-      _updateRepeatButton();
+    if (state.repeatMode === 'one' && state.currentTrack) {
       state.audio.currentTime = 0;
+      state.audio._endHandled = false;
+      state.audio._fadeOutStarted = false;
       state.audio.play().catch(() => {});
       finalizeListenSession('repeat-one');
       beginListenSession(state.currentTrack);
@@ -1494,7 +1505,7 @@ export function setupPlayer() {
     // Early in playback (duration not known yet) this is a no-op.
     try {
       if (
-        !(state.repeatMode === 'one' && !_repeatOnePending) &&
+        !(state.repeatMode === 'one') &&
         state.audio.duration > 0 &&
         state.audio.duration - state.audio.currentTime <= 15 &&
         state.audio.currentTime > 0
@@ -1516,7 +1527,7 @@ export function setupPlayer() {
       const xfDur = audioEngine.getCrossfadeSeconds();
       if (
         xfDur > 0 &&
-        !(state.repeatMode === 'one' && !_repeatOnePending) &&
+        !(state.repeatMode === 'one') &&
         state.audio.duration &&
         !state.audio._fadeOutStarted &&
         state.audio.currentTime >= state.audio.duration - xfDur - 0.1 &&
@@ -1539,12 +1550,10 @@ export function setupPlayer() {
       if (!state.audio._endHandled) {
         state.audio._endHandled = true;
         console.log('[BG-PLAY] Fallback triggered, advancing to next');
-        if (state.repeatMode === 'one' && _repeatOnePending && state.currentTrack) {
-          _repeatOnePending = false;
-          state.setRepeatMode('off');
-          _updateRepeatButton();
+        if (state.repeatMode === 'one' && state.currentTrack) {
           state.audio.currentTime = 0;
           state.audio._endHandled = false;
+          state.audio._fadeOutStarted = false;
           state.audio.play().catch(() => {});
           finalizeListenSession('repeat-one');
           beginListenSession(state.currentTrack);
@@ -1737,15 +1746,10 @@ export function setupPlayer() {
         state.audio._endHandled = true;
         if (_partyController?.isActive?.()) {
           _partyController.handleEnded?.();
-        } else if (state.repeatMode === 'one' && _repeatOnePending && state.currentTrack) {
-          // One-shot repeat-one: replay the current track once, then
-          // turn repeat off. Mirrors the 'ended' handler logic for the
-          // backgrounded case (iOS/Android resume path).
-          _repeatOnePending = false;
-          state.setRepeatMode('off');
-          _updateRepeatButton();
+        } else if (state.repeatMode === 'one' && state.currentTrack) {
           state.audio.currentTime = 0;
           state.audio._endHandled = false;
+          state.audio._fadeOutStarted = false;
           state.audio.play().catch(() => {});
           finalizeListenSession('repeat-one');
           beginListenSession(state.currentTrack);
