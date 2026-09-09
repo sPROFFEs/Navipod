@@ -822,7 +822,12 @@ export function playTrack(track, options = {}) {
     // handled in 'ended'/'play') and arms _repeatOnePending if repeat-
     // one is active.
     applyPlaybackModes();
-    state.audio.src = `/api/stream/${track.db_id}`;
+    const newSrc = `/api/stream/${track.db_id}`;
+    const srcChanged = !state.audio.src.endsWith(newSrc);
+    state.audio.src = newSrc;
+    if (!srcChanged && state.audio.currentTime > 0) {
+      state.audio.currentTime = 0;
+    }
     if (options.autoplay === false) {
       _trackTransitionInFlight = false;
       state.setIsPlaying(false);
